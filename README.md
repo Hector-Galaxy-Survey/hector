@@ -1,7 +1,7 @@
-SAMI
+Hector (will be updated later)
 ====
 
-The SAMI python package contains functionality for running the data reduction process described in Sharp et al. (2014). See also Allen et al. (2014) for an assessment of the quality of the finished products.
+The Hector python package contains functionality for running the data reduction process described in Sharp et al. (2014). See also Allen et al. (2014) for an assessment of the quality of the finished products.
 
 There is currently no automated installation. Instead you should place the source code in your `PYTHONPATH` and make sure you have the following packages installed:
 
