@@ -170,7 +170,7 @@ def EBV(name, theta, phi):
 
 
 
-def dustCorrectSAMICube( path, overwrite=False ):
+def dustCorrectHectorCube( path, overwrite=False ):
     if not HEALPY_AVAILABLE:
         print('healpy not installed; cannot process dust data.')
         return

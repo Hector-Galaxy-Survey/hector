@@ -1,5 +1,7 @@
 """
-Code for organising and reducing SAMI data.
+Code for organising and reducing Hector (and SAMI) data.
+Instructions are overally correct but some are not yet comparable to Hector yet.
+=============  
 
 Instructions on how to use this module are given in the docstring for the
 Manager class. The following describes some of the under-the-hood details.
@@ -73,7 +75,6 @@ from six.moves import input
 
 # Set up logging
 from . import slogging
-
 log = slogging.getLogger(__name__)
 log.setLevel(slogging.WARNING)
 # log.enable_console_logging()
@@ -147,13 +148,9 @@ else:
 #IDX_FILES_SLOW = {'580V': 'sami580V_v1_7.idx',
 #                  '1500V': 'sami1500V_v1_5.idx',
 #                  '1000R': 'sami1000R_v1_7.idx',
-#                  'SPECTOR1':'spector1_v0.idx',
-#                  'SPECTOR2':'spector2_v0.idx'}
 #IDX_FILES_FAST = {'580V': 'sami580V.idx',
 #                  '1500V': 'sami1500V.idx',
 #                  '1000R': 'sami1000R.idx',
-#                  'SPECTOR1':'spector1_v0.idx',
-#                  'SPECTOR2':'spector2_v0.idx'}
 
 IDX_FILES_SLOW = {'580V': 'hector1_v1.idx',
                   '1000R': 'hector2_v1.idx',
@@ -322,7 +319,7 @@ def stellar_mags_files():
 
 
 class Manager:
-    """Object for organising and reducing SAMI data.
+    """Object for organising and reducing Hector (and SAMI) data.
 
     Initial setup
     =============
@@ -330,8 +327,8 @@ class Manager:
     You start a new manager by creating an object, and telling it where
     to put its data, e.g.:
 
-    >>> import sami
-    >>> mngr = sami.manager.Manager('130305_130317')
+    >>> import hector
+    >>> mngr = hector.manager.Manager('130305_130317')
 
     The directory name you give it should normally match the dates of the
     observing run that you will be reducing.
@@ -353,7 +350,7 @@ class Manager:
     can be quite slow. If you want quick-look reductions only (e.g. if you are
     at the telescope, or for testing purposes), then set the 'fast' keyword:
 
-    >>> mngr = sami.manager.Manager('130305_130317', fast=True)
+    >>> mngr = hector.manager.Manager('130305_130317', fast=True)
 
     At this point the manager is not aware of any actual data - skip to
     "Importing data" and carry on from there.
@@ -373,7 +370,7 @@ class Manager:
     b) for the blue arm if no twilight frame was available to derive the
     tram-line maps.
 
-    >>> mngr = sami.manager.Manager('130305_130317',use_twilight_tlm_blue=True)
+    >>> mngr = hector.manager.Manager('130305_130317',use_twilight_tlm_blue=True)
 
     The reductions will search for a twilight from the same plate to use as
     a TLM file.  If one from the same plate cannot be found, a twilight from another
@@ -411,15 +408,15 @@ class Manager:
     =============================
 
     If you quit python and want to get back to where you were, just restart
-    the manager on the same directory (after importing sami):
+    the manager on the same directory (after importing hector):
 
-    >>> mngr = sami.manager.Manager('130305_130317')
+    >>> mngr = hector.manager.Manager('130305_130317')
 
     It will search through the subdirectories and restore its previous
     state. By default it will restore previously-assigned object names that
     were stored in the headers. To re-assign all names:
 
-    >>> mngr = sami.manager.Manager('data_directory', trust_header=False)
+    >>> mngr = hector.manager.Manager('data_directory', trust_header=False)
 
     As before, set the 'fast' keyword if you want quick-look reductions.
 
@@ -791,7 +788,7 @@ class Manager:
     You can make use of multi-core machines by setting the number of CPUs to
     use when the manager is made, e.g.:
 
-    >>> mngr = sami.manager.Manager('130305_130317', n_cpu=4)
+    >>> mngr = hector.manager.Manager('130305_130317', n_cpu=4)
 
     Note that you cannot run multiple instances of 2dfdr in the same
     directory, so you wont always be able to use all your cores. To keep
@@ -813,8 +810,8 @@ class Manager:
     To combine the data, first create a manager for each run (you may
     already have done this):
 
-    >>> mngr = sami.manager.Manager('2014_04_24-2014_05_04')
-    >>> mngr_old = sami.manager.Manager('2014_05_23-2014_06_01')
+    >>> mngr = hector.manager.Manager('2014_04_24-2014_05_04')
+    >>> mngr_old = hector.manager.Manager('2014_05_23-2014_06_01')
 
     Then create the link:
 
@@ -988,7 +985,7 @@ class Manager:
         return next_step
 
     def __repr__(self):
-        return "SAMIManagerInstance at {}".format(self.root)
+        return "HectorManagerInstance at {}".format(self.root)
 
     def map(self, function, input_list):
         """Map inputs to a function, using built-in map or multiprocessing."""
@@ -2814,7 +2811,7 @@ class Manager:
                         max_seeing=max_seeing, tag=tag, gzipped=False)
                     if path:
                         if '.gz' not in path:
-                            dust.dustCorrectSAMICube(path, overwrite=overwrite)
+                            dust.dustCorrectHectorCube(path, overwrite=overwrite)
 
         self.next_step('record_dust',print_message=True)
         return
@@ -4536,7 +4533,7 @@ class Manager:
         # headers and jump to the ``return`` statement.
         if user_comment != 'n':
 
-            time_stamp = 'Comment added by SAMI Observer on '
+            time_stamp = 'Comment added by Hector Observer on '
             time_stamp += '{:%Y-%b-%d %H:%M:%S}'.format(datetime.datetime.now())
             user_comment += ' (' + time_stamp + ')'
 
@@ -4803,7 +4800,7 @@ class FITSFile:
                                    ' it in list of known pilot fields: ' +
                                    self.filename)
         else:
-            # SAMIv2. Should be in the fibre table header somewhere
+            # SAMIv2 and Hector. Should be in the fibre table header somewhere
             header = self.hdulist[self.fibres_extno].header
             # First, see if it's included in the LABEL keyword
             match = re.search(r'(field )([0-9]+)', header['LABEL'])
@@ -5082,7 +5079,7 @@ class FITSFile:
                                  r'do not use any of []\/*?<>|;:&,.$ or space')
             # Update the FITS header
             self.add_header_item('MNGRNAME', name,
-                                 'Object name set by SAMI manager')
+                                 'Object name set by Hector manager')
             # Update the object
             self.name = name
         return
@@ -5102,7 +5099,7 @@ class FITSFile:
         if self.do_not_use != do_not_use:
             # Update the FITS header
             self.add_header_item('DONOTUSE', do_not_use,
-                                 'Do Not Use flag for SAMI manager')
+                                 'Do Not Use flag for Hector manager')
             # Update the object
             self.do_not_use = do_not_use
             # Update the file system

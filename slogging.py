@@ -67,7 +67,8 @@ console_handler = None
 # if there are any already present.
 complement_existing_loggers = False
 
-PACKAGE_LOGGER_NAME = 'sami'
+PACKAGE_LOGGER_NAME = 'hector'
+
 
 # Copy some things from parent package
 DEBUG = logging.DEBUG

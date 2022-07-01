@@ -9,7 +9,8 @@ import logging
 
 # Initialise the logger:
 
-logger = logging.getLogger('sami')
+logger = logging.getLogger('hector')
+#logger = logging.getLogger('sami')
 logger.setLevel(logging.DEBUG)
 # create file handler which logs even debug messages
 #fh = logging.FileHandler('spam.log')

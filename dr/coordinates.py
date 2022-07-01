@@ -16,7 +16,7 @@ from __future__ import absolute_import, division, print_function, unicode_litera
 
 import astropy.io.fits as pf
 import numpy as np
-from sami.utils.other import find_fibre_table
+from ..utils.other import find_fibre_table
 from scipy.optimize import leastsq
 import os
 

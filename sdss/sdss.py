@@ -71,7 +71,7 @@ import astropy.io.fits as pf
 import urllib
 
 import pylab as py
-import sami.utils as utils
+from .. import utils
 import matplotlib.patches as patches
 import matplotlib.pyplot as plt
 import astropy.io.ascii as tab
