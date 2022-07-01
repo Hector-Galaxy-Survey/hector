@@ -3213,15 +3213,15 @@ class Manager:
         if fits.ccd == 'ccd_2':
             # Turn off bias and dark subtraction
             if fits.detector == 'E2V3':
-                options.extend(['-USEBIASIM', '0', '-USEDARKIM', '0'])
+                options.extend(['-USEBIASIM', '0','-BIAS_FILENAME', ' ', '-USEDARKIM', '0','-DARK_FILENAME', ' '])
             elif fits.detector == 'E2V3A':
-                options.extend(['-USEBIASIM', '0'])
+                options.extend(['-USEBIASIM', '0','-BIAS_FILENAME', ' '])
 
         # turn off bias and dark for new CCD. These are named
         # E2V2A (blue) and E2V3A (red).  The old ones are E2V2 (blue
         # and E2V3 (red).
         if fits.detector == 'E2V2A':
-            options.extend(['-USEBIASIM', '0', '-USEDARKIM', '0'])
+            options.extend(['-USEBIASIM', '0','-BIAS_FILENAME', ' ', '-USEDARKIM', '0','-DARK_FILENAME', ' '])
 
         if fits.ndf_class == 'BIAS':
             files_to_match = []
@@ -3307,11 +3307,11 @@ class Manager:
         # Disable bias/dark/lflat if they're not being used
         # If you don't, 2dfdr might barf
         if 'bias' not in files_to_match and '-USEBIASIM' not in options:
-            options.extend(['-USEBIASIM', '0'])
+            options.extend(['-USEBIASIM', '0','-BIAS_FILENAME', ' '])
         if 'dark' not in files_to_match and '-USEDARKIM' not in options:
-            options.extend(['-USEDARKIM', '0'])
+            options.extend(['-USEDARKIM', '0','-DARK_FILENAME', ' '])
         if 'lflat' not in files_to_match and '-USEFLATIM' not in options:
-            options.extend(['-USEFLATIM', '0'])
+            options.extend(['-USEFLATIM', '0','-LFLAT_FILENAME', ' '])
         for match_class in files_to_match:
             # this is the main call to the matching routine:
             filename_match = self.match_link(fits, match_class)
@@ -3320,17 +3320,17 @@ class Manager:
                 if match_class == 'bias':
                     print('Warning: Bias frame not found. '
                           'Turning off bias subtraction for ' + fits.filename)
-                    options.extend(['-USEBIASIM', '0'])
+                    options.extend(['-USEBIASIM', '0','-BIAS_FILENAME', ' '])
                     continue
                 elif match_class == 'dark':
                     print('Warning: Dark frame not found. '
                           'Turning off dark subtraction for ' + fits.filename)
-                    options.extend(['-USEDARKIM', '0'])
+                    options.extend(['-USEDARKIM', '0','-DARK_FILENAME', ' '])
                     continue
                 elif match_class == 'lflat':
                     print('Warning: LFlat frame not found. '
                           'Turning off LFlat division for ' + fits.filename)
-                    options.extend(['-USEFLATIM', '0'])
+                    options.extend(['-USEFLATIM', '0','-LFLAT_FILENAME', ' '])
                     continue
                 elif match_class == 'thput':
                     # Try to find a fake MFSKY made from a dome flat
