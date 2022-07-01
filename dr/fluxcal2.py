@@ -123,7 +123,7 @@ def generate_subgrid(fibre_radius, n_inner=6, n_rings=10, wt_profile=False):
     radius = []
     theta = []
     for i_ring, radius_ring in enumerate(radii):
-        n_points = np.int(np.round(n_inner * radius_ring))
+        n_points = int(np.round(n_inner * radius_ring))
         theta_ring = (np.linspace(0.0, 2.0*np.pi, n_points, endpoint=False) + 
                       rot_angle)
         radius = np.hstack((radius, np.ones(n_points) * radius_ring))

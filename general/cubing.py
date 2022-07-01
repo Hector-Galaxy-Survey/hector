@@ -225,7 +225,7 @@ else:
 
 # Some global constants:
 
-epsilon = np.finfo(np.float).eps
+epsilon = np.finfo(float).eps
 # Store the value of epsilon for quick access.
 
 def get_object_names(infile):
