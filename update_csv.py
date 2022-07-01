@@ -7,8 +7,8 @@ Dependencies were kept to a minimum so that it could be run on old systems
 at the AAT, but in practice this hasn't made any difference.
 
 The definitions of the frames are kept separately, so that the sami package
-can be imported on systems that don't have Tkinter installed without error.
-Of course, this module cannot be used without Tkinter.
+can be imported on systems that don't have tkinter installed without error.
+Of course, this module cannot be used without tkinter.
 """
 from __future__ import absolute_import, division, print_function, unicode_literals
 
@@ -18,10 +18,10 @@ import argparse
 tkinter_available = True
 try:
     import tkinter
-    import tkMessageBox
-    from update_csv_frames import AllocationEntry
+    from tkinter import messagebox
+    from .update_csv_frames import AllocationEntry
 except ImportError:
-    print("Warning: Tkinter not available; "
+    print("Warning: tkinter not available; "
           "probe allocation cannot be done here.")
     tkinter_available = False
 
@@ -37,20 +37,20 @@ def allocate(infile, outfile, do_central=False, do_object=True, do_sky=True,
     """Main function for interactive allocations.
     Typically called from command line."""
     if not tkinter_available:
-        print("Tkinter isn't installed on this computer!")
+        print("tkinter isn't installed on this computer!")
         print("You can't run the allocation script here!")
         return
-    # Set up Tkinter
-    root = Tkinter.Tk()
+    # Set up tkinter
+    root = tkinter.Tk()
     # Withdraw the Tk window while potential error messages are resolved
     root.withdraw()
     try:
         csvfile = CSV(infile)
     except IOError:
-        tkMessageBox.showerror('Error', 'Input file not found!')
+        messagebox.showerror('Error', 'Input file not found!')
         return
     if os.path.isfile(outfile):
-        cont = tkMessageBox.askokcancel(
+        cont = messagebox.askokcancel(
             'Warning', 'Output file already exists. Overwrite?')
         if not cont:
             return
@@ -62,7 +62,7 @@ def allocate(infile, outfile, do_central=False, do_object=True, do_sky=True,
                                           do_sky=do_sky,
                                           do_guide=do_guide,
                                           root=root)
-    # Done with the interactive part, so destroy the Tkinter interface
+    # Done with the interactive part, so destroy the tkinter interface
     root.destroy()
     # Final tweak to CSV file contents, set the rotations correctly
     if zero_rotations:
@@ -144,9 +144,9 @@ class CSV:
                                       do_sky=True, do_guide=True, root=None):
         """Update the probe allocations in an interactive manner."""
 
-        # Set up Tkinter, if not already done
+        # Set up tkinter, if not already done
         if root is None:
-            self.root = Tkinter.Tk()
+            self.root = tkinter.Tk()
         else:
             self.root = root
 
