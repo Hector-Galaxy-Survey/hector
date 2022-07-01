@@ -93,11 +93,11 @@ except ImportError:
     warnings.warn("Not Using bottleneck: Speed will be improved if you install bott    leneck")
 
 # import of ppxf for fitting of secondary stds:
-import ppxf as ppxf_package
-#from ppxf.ppxf import ppxf
-#from ppxf.ppxf_util import log_rebin
-from ppxf import ppxf
-from ppxf_util import log_rebin
+#import ppxf as ppxf_package
+from ppxf.ppxf import ppxf
+from ppxf.ppxf_util import log_rebin
+#from ppxf import ppxf
+#from ppxf_util import log_rebin
 
 
 # Get the astropy version as a tuple of integers
