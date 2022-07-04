@@ -1648,7 +1648,6 @@ class Manager:
             self.reduce_file_iterable(fits_twilight_list, overwrite=overwrite, tlm=True, leave_reduced=leave_reduced,
                                       check='TLM')
 
-
         # now we will process the normal MFFFF files
         # this currently only allows TLMs to be made from MFFFF files
         file_iterable = self.files(ndf_class='MFFFF', do_not_use=False,
@@ -1658,6 +1657,93 @@ class Manager:
             file_iterable, overwrite=overwrite, tlm=True,
             leave_reduced=leave_reduced, check='TLM')
         self.next_step('make_tlm', print_message=True)
+        return
+
+    def check_tramline(self, overwrite=False, **kwargs):
+        """Automatically detect tramline failure. It will properly work after running make_tlm(),reduce_arc(),and reduce_fflat()."""
+        #if os.path.exists(str(self.abs_root)+'/disable.txt'):  #disable files
+        #    id = np.loadtxt(str(self.abs_root)+'/disable.txt',dtype='U'); self.disable_files(id)
+
+        file_iterable = self.files(ndf_class='MFFFF', do_not_use=False, reduced=True,**kwargs)
+
+        f = open(self.abs_root+'/tlm_failure.txt', 'w')
+        f.write('This is an output of hector.manager.check_tramline() generated at {:%Y-%b-%d %H:%M:%S}'.format(datetime.datetime.now())+'\n\n')
+        f.write('Automatic detection of tramline failure using the following criteria:\n')
+        f.write('  1. failed tlm maps have at least one unexpected low thput fibres allocated in the wrong position\n')
+        f.write('  2. failed tlm maps sometimes show tlms not in numerical order\n\n')
+
+        f.write('Check the bottom of the page for the conclusion and the cure\n\n')
+
+
+        nfail = 0
+        for fits in file_iterable:
+           
+            exfile = pf.open(fits.reduced_path[0:-8]+'ex.fits')
+            ex = exfile['PRIMARY'].data
+            fibtab = pf.getdata(fits.reduced_path[0:-8]+'.fits', 'MORE.FIBRES_IFU')
+            fib_spec_id = fibtab.field('SPEC_ID'); fib_type = fibtab.field('TYPE')
+            thput = np.nanmedian(ex,1); thput = thput/np.nanmedian(thput)
+
+            tlmfail = np.ones(len(fib_spec_id))
+            tlmfail[np.where((fib_type == 'N') | (fib_type == 'U'))] = 0 # ignore inactive fibres
+            tlmfail[np.where(((fib_spec_id == 51) | (fib_spec_id == 181)) & ((fits.ccd == 'ccd_3') | (fits.ccd == 'ccd_4')))] = 0 #ignore known low thput fibres
+            tlmfail[np.where(thput > 0.1)] = 0 # failed tlm maps have at least one unexpected low thput fibres (<0.1) allocated in the wrong position
+            tlmfile = pf.open(fits.reduced_path[0:-8]+'tlm.fits')
+            tlm = tlmfile['PRIMARY'].data
+            tlm_original = (tlm[:,0]) ; tlm_shift = np.insert(tlm_original[0:-1],0,0); tlm_diff = tlm_original - tlm_shift
+            tlmfail[np.where(tlm_diff < 0)] = 2 #tlms not in numerical order in the starting point
+            tlm_original = (tlm[:,-1]); tlm_shift = np.insert(tlm_original[0:-1],0,0); tlm_diff = tlm_original - tlm_shift
+            tlmfail[np.where(tlm_diff < 0)] = 2 #tlms not in numerical order in the end point
+
+            sub = np.where(tlmfail != 0)
+            if len(fib_spec_id[sub]) > 0:
+                f.write('***********'+str(fits.filename)+': Failure detected!!! ***********\n')
+                for i in sub[0]:
+                    if tlmfail[i] == 1:
+                        f.write('     Fibre '+str(fib_spec_id[i])+' is allocated wrong position.\n')
+                    if tlmfail[i] == 2:
+                        f.write('     Fibre '+str(fib_spec_id[i]-1)+' and '+str(fib_spec_id[i])+' are swapped.\n')
+                f.write('     tlm directory: '+fits.reduced_dir+'\n')
+                rawfile = pf.open(fits.reduced_path[0:-8]+'.fits'); raw = rawfile['PRIMARY'].data
+         #       raw[0,:] = 65535.
+                f.write('     max count: '+str(np.max(raw))+'   number of pixel: '+str(len(raw[np.where(raw > 65534)]))+'\n')
+                if(np.max(raw) > 65534.):
+                    f.write('       Max count reaches to the saturation level. Is it saturated or just cosmic ray?\n')
+                    f.write('       Open and check the frame:\n')
+                    f.write('       hector@aatlxe:~$ ds9 '+fits.reduced_dir+'/'+str(fits.filename)+' &\n')
+                else:
+                    f.write('       This frame is not saturated.\n')
+                nfail = nfail + 1
+            else:
+                f.write(str(fits.filename)+'  checked. No failure found.\n')
+
+        print('\nNote that this task properly works after running make_tlm(),reduce_arc(),and reduce_fflat()')
+
+        if nfail > 0:
+            f.write('\n=======\nUnfortunately tramline failures are detected. Follow the steps.\n')
+            f.write('  1. Make sure the frame is not saturated. Check max count above. If saturated, add them on '+str(self.abs_root)+'/disable.txt\n')
+            f.write('  2. Visually check the tramlines\n')
+            f.write('    - navigate to tlm directory: (base) hector@aatlxe:~$ cd [tlm directory]\n')
+            f.write('    - run drcontrol: (base) hector@aatlxe:~$ drcontrol hector'+str(fits.ccd)[4:5]+'_v1.idx &\n')
+            f.write('    - when the drcontrol window pops up, click the triangle symbol for the right file, select the tlm file (*tlm.fits), and click 2D Plot\n')
+            f.write('    - Zoom it and find the fibre listed above\n')
+            f.write('  3. Take another flat frame with different exposure time, but make sure it is not saturated. Try this task again.\n')
+            print('\nUnfortunately tramline failures are detected. \nFind '+str(self.abs_root)+'/tlm_failure.txt and follow the steps.\n')
+        else:
+            print('\nCongratulations! No tramline failures are detected.\nFind list of frames checked: '+str(self.abs_root)+'/tlm_failure.txt\n')
+            f.write('\n=======\nCongratulations! No tramline failures are detected.\n')
+
+
+
+        f.close()
+
+
+
+
+            
+
+
+        #self.next_step('make_tlm', print_message=True)
         return
 
     def reduce_arc(self, overwrite=False, **kwargs):
@@ -1691,7 +1777,6 @@ class Manager:
         else:
             kwargs_copy = dict(kwargs)
 
-
         if ((self.use_twilight_flat_blue and do_twilight) or self.use_twilight_flat_all):
             fits_twilight_list = []
             if(self.use_twilight_flat_blue and do_twilight):
@@ -1710,7 +1795,8 @@ class Manager:
             # processed as normal MFFFF files.
 
             for nccd in ccdname:
-                for fits in self.files(ndf_class='MFSKY', do_not_use=False, ccd=nccd, **kwargs):
+                for fits in self.files(ndf_class='MFSKY', do_not_use=False, ccd=nccd, **kwargs): 
+                    #marie does it need to be **kwargs or **kwargs_copy??? SAMI has **kwargs here. Why did I change this?
                     fits_twilight_list.append(self.copy_as(fits, 'MFFFF', overwrite=overwrite))
 
                 # use the iterable file reducer to loop over the copied twilight list and
@@ -1721,34 +1807,6 @@ class Manager:
                 if len(reduced_twilights) >= 3:
                     path_list = [os.path.join(fits.reduced_dir, fits.copy_reduced_filename) for fits in reduced_twilights]
                     correct_bad_fibres(path_list)
-
-
-#            for fits in self.files(ndf_class='MFSKY', do_not_use=False, ccd=nccd, **kwargs_copy):
-#                fits_twilight_list.append(self.copy_as(fits, 'MFFFF', overwrite=overwrite))
-#
-#            # use the iterable file reducer to loop over the copied twilight list and
-#            # reduce them as MFFFF files:
-#            reduced_twilights = self.reduce_file_iterable(fits_twilight_list, overwrite=overwrite, check='FLT')
-#
-#            # Identify bad fibres and replace with an average over all other twilights
-#            if len(reduced_twilights) >= 3:
-#                path_list = [os.path.join(fits.reduced_dir, fits.copy_reduced_filename) for fits in reduced_twilights]
-#                correct_bad_fibres(path_list)
-
-#marie
-#        if (self.use_twilight_flat_all):
-#            ccdname = ['ccd_1','ccd_2','ccd_3','ccd_4']
-#            fits_twilight_list = []
-#            print('Processing twilight frames for *all* ccds to get fibre flat field')
-#            for nccd in ccdname:
-#                for fits in self.files(ndf_class='MFSKY', do_not_use=False, ccd=nccd, **kwargs):
-#                    fits_twilight_list.append(self.copy_as(fits, 'MFFFF', overwrite=overwrite))
-#                reduced_twilights = self.reduce_file_iterable(fits_twilight_list, overwrite=overwrite, check='FLT')
-#                if len(reduced_twilights) >= 3:
-#                    path_list = [os.path.join(fits.reduced_dir, fits.copy_reduced_filename) for fits in reduced_twilights]
-#                    correct_bad_fibres(path_list)
-#marie
-
 
         # now we will process the normal MFFFF files
         if (not twilight_only):
@@ -1800,28 +1858,6 @@ class Manager:
                 arc_paths = [fits.reduced_path for fits in arc_file_iterable]
                 for arc_path in arc_paths:
                     apply_wavecorr(arc_path,self.root)           
-
-# marie copied aboved for ccd_3
-#            file_list_tw = []
-#            for f in file_list:
-#                if f.ccd == 'ccd_3':
-#                    file_list_tw.append(f)
-#            input_list = zip(file_list_tw,[overwrite]*len(file_list_tw))
-#            self.map(wavecorr_frame,input_list)
-#            wavecorr_av(file_list_tw,self.root)
-#
-#            kwargs_tmp = kwargs.copy()
-#            if 'ccd' in kwargs_tmp:
-#                del kwargs_tmp['ccd']
-#
-#            arc_file_iterable = self.files(ndf_class='MFARC', ccd = 'ccd_3',
-#                                    do_not_use=False, **kwargs_tmp)
-#
-#            arc_paths = [fits.reduced_path for fits in arc_file_iterable]
-#            for arc_path in arc_paths:
-#                apply_wavecorr(arc_path,self.root)
-#-------
-
             
         if fake_skies or fake_skies_all:
             if fake_skies:
@@ -3186,7 +3222,7 @@ class Manager:
 
         # Define what the best choice is for a TLM:
         if (self.use_twilight_tlm_blue and (fits.ccd == 'ccd_1') and
-            (fits.plate_id_short is not 'Y14SAR4_P007')):
+            (fits.plate_id_short != 'Y14SAR4_P007')):
             best_tlm = 'tlmap_mfsky'
         else:
             best_tlm = 'tlmap'
@@ -3359,7 +3395,7 @@ class Manager:
                     # back to the normal tlmap route.
                     found = 0
                     if (self.use_twilight_tlm_blue and (fits.ccd == 'ccd_1') and 
-                        (fits.plate_id_short is not 'Y14SAR4_P007')):
+                        (fits.plate_id_short != 'Y14SAR4_P007')):
                         filename_match = self.match_link(fits, 'tlmap_mfsky')
                         if filename_match is None:
                             filename_match = self.match_link(fits, 'tlmap_mfsky_loose')
@@ -4391,6 +4427,7 @@ class Manager:
         """Perform required checks on the specified group."""
         try:
             key, fits_list = self.list_checks(*args, **kwargs)[index]
+            print(fits_list)
         except IndexError:
             print("Check group '{}' does not exist.\n"
                   + "Try mngr.print_checks() for a list of "
@@ -5658,11 +5695,6 @@ def create_dummy_combine(input_file, output_file, class_dummy):
     # Simply copy one of the reduced calibration files to combined one
     if class_dummy == 'BIAS' or class_dummy == 'DARK' or class_dummy == 'LFLAT':
         shutil.copy2(input_file, output_file)
-
-
-#def generate_dummy_thput()
-    # generate thput_dummy.fits with full of ones
-
 
 
 class MatchException(Exception):
