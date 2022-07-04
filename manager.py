@@ -1661,8 +1661,8 @@ class Manager:
 
     def check_tramline(self, overwrite=False, **kwargs):
         """Automatically detect tramline failure. It will properly work after running make_tlm(),reduce_arc(),and reduce_fflat()."""
-        #if os.path.exists(str(self.abs_root)+'/disable.txt'):  #disable files
-        #    id = np.loadtxt(str(self.abs_root)+'/disable.txt',dtype='U'); self.disable_files(id)
+        if os.path.exists(str(self.abs_root)+'/disable.txt'):  #disable files
+            id = np.loadtxt(str(self.abs_root)+'/disable.txt',dtype='U'); self.disable_files(id)
 
         file_iterable = self.files(ndf_class='MFFFF', do_not_use=False, reduced=True,**kwargs)
 
@@ -1687,13 +1687,16 @@ class Manager:
             tlmfail = np.ones(len(fib_spec_id))
             tlmfail[np.where((fib_type == 'N') | (fib_type == 'U'))] = 0 # ignore inactive fibres
             tlmfail[np.where(((fib_spec_id == 51) | (fib_spec_id == 181)) & ((fits.ccd == 'ccd_3') | (fits.ccd == 'ccd_4')))] = 0 #ignore known low thput fibres
+            tlmfail[np.where(((fib_spec_id == 1)) & ((fits.ccd == 'ccd_3') | (fits.ccd == 'ccd_4')))] = 0          
             tlmfail[np.where(thput > 0.1)] = 0 # failed tlm maps have at least one unexpected low thput fibres (<0.1) allocated in the wrong position
             tlmfile = pf.open(fits.reduced_path[0:-8]+'tlm.fits')
             tlm = tlmfile['PRIMARY'].data
             tlm_original = (tlm[:,0]) ; tlm_shift = np.insert(tlm_original[0:-1],0,0); tlm_diff = tlm_original - tlm_shift
             tlmfail[np.where(tlm_diff < 0)] = 2 #tlms not in numerical order in the starting point
+            tlmfail[np.where((tlm_original < 5.) | (tlm_original > len(tlm_original)-5))] = 3 #cut-off of tlms
             tlm_original = (tlm[:,-1]); tlm_shift = np.insert(tlm_original[0:-1],0,0); tlm_diff = tlm_original - tlm_shift
             tlmfail[np.where(tlm_diff < 0)] = 2 #tlms not in numerical order in the end point
+            tlmfail[np.where((tlm_original < 5.) | (tlm_original > len(tlm_original)-5))] = 3 #cut-off of tlms
 
             sub = np.where(tlmfail != 0)
             if len(fib_spec_id[sub]) > 0:
@@ -1703,10 +1706,12 @@ class Manager:
                         f.write('     Fibre '+str(fib_spec_id[i])+' is allocated wrong position.\n')
                     if tlmfail[i] == 2:
                         f.write('     Fibre '+str(fib_spec_id[i]-1)+' and '+str(fib_spec_id[i])+' are swapped.\n')
+                    if tlmfail[i] == 3:
+                        f.write('     Fibre '+str(fib_spec_id[i])+' has cut-off tlm. Ask site staff immediately to adjust the mounting of the slit on AAOmega.\n')
                 f.write('     tlm directory: '+fits.reduced_dir+'\n')
                 rawfile = pf.open(fits.reduced_path[0:-8]+'.fits'); raw = rawfile['PRIMARY'].data
          #       raw[0,:] = 65535.
-                f.write('     max count: '+str(np.max(raw))+'   number of pixel: '+str(len(raw[np.where(raw > 65534)]))+'\n')
+                f.write('     max count: '+str(np.max(raw))+'   number of saturated pixels: '+str(len(raw[np.where(raw > 65534)]))+'\n')
                 if(np.max(raw) > 65534.):
                     f.write('       Max count reaches to the saturation level. Is it saturated or just cosmic ray?\n')
                     f.write('       Open and check the frame:\n')
