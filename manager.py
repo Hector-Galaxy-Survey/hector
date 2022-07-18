@@ -1677,7 +1677,7 @@ class Manager:
 
         nfail = 0
         for fits in file_iterable:
-           
+
             exfile = pf.open(fits.reduced_path[0:-8]+'ex.fits')
             ex = exfile['PRIMARY'].data
             fibtab = pf.getdata(fits.reduced_path[0:-8]+'.fits', 'MORE.FIBRES_IFU')
@@ -1687,29 +1687,32 @@ class Manager:
             tlmfail = np.ones(len(fib_spec_id))
             tlmfail[np.where((fib_type == 'N') | (fib_type == 'U'))] = 0 # ignore inactive fibres
             tlmfail[np.where(((fib_spec_id == 51) | (fib_spec_id == 181)) & ((fits.ccd == 'ccd_3') | (fits.ccd == 'ccd_4')))] = 0 #ignore known low thput fibres
-            tlmfail[np.where(((fib_spec_id == 1)) & ((fits.ccd == 'ccd_3') | (fits.ccd == 'ccd_4')))] = 0          
+            tlmfail[np.where(((fib_spec_id == 1)) & ((fits.ccd == 'ccd_3') | (fits.ccd == 'ccd_4')))] = 0
             tlmfail[np.where(thput > 0.1)] = 0 # failed tlm maps have at least one unexpected low thput fibres (<0.1) allocated in the wrong position
             tlmfile = pf.open(fits.reduced_path[0:-8]+'tlm.fits')
             tlm = tlmfile['PRIMARY'].data
             tlm_original = (tlm[:,0]) ; tlm_shift = np.insert(tlm_original[0:-1],0,0); tlm_diff = tlm_original - tlm_shift
             tlmfail[np.where(tlm_diff < 0)] = 2 #tlms not in numerical order in the starting point
-            tlmfail[np.where((tlm_original < 5.) | (tlm_original > len(tlm_original)-5))] = 3 #cut-off of tlms
+            tlmfail[np.where((tlm_original < 1.) | (tlm_original > 4111))] = 3 #cut-off of tlms
             tlm_original = (tlm[:,-1]); tlm_shift = np.insert(tlm_original[0:-1],0,0); tlm_diff = tlm_original - tlm_shift
             tlmfail[np.where(tlm_diff < 0)] = 2 #tlms not in numerical order in the end point
-            tlmfail[np.where((tlm_original < 5.) | (tlm_original > len(tlm_original)-5))] = 3 #cut-off of tlms
+            tlmfail[np.where((tlm_original < 1.) | (tlm_original > 4111))] = 3 #cut-off of tlms
+            tlmfail[np.where(((fib_spec_id == 1)) & ((fits.ccd == 'ccd_1') | (fits.ccd == 'ccd_2')))] = 0 #blocked fibre
 
             sub = np.where(tlmfail != 0)
             if len(fib_spec_id[sub]) > 0:
+                rawfile = pf.open(fits.reduced_path[0:-8]+'.fits'); raw = rawfile['PRIMARY'].data
                 f.write('***********'+str(fits.filename)+': Failure detected!!! ***********\n')
                 for i in sub[0]:
                     if tlmfail[i] == 1:
-                        f.write('     Fibre '+str(fib_spec_id[i])+' is allocated wrong position.\n')
+                        f.write('     Fibre '+str(fib_spec_id[i])+' is allocated where there is no signal.\n')
+                        if (fib_type[i] == 'S') and (len(fib_spec_id[np.where(fib_type[sub] == 'P')]) == 0):
+                            f.write('     This is a sky fibre. Go to the top-end and check this sky fibre is correctly positioned. \n')
                     if tlmfail[i] == 2:
                         f.write('     Fibre '+str(fib_spec_id[i]-1)+' and '+str(fib_spec_id[i])+' are swapped.\n')
-                    if tlmfail[i] == 3:
+                    if (tlmfail[i] == 3) and (np.max(raw) < 65534) :
                         f.write('     Fibre '+str(fib_spec_id[i])+' has cut-off tlm. Ask site staff immediately to adjust the mounting of the slit on AAOmega.\n')
                 f.write('     tlm directory: '+fits.reduced_dir+'\n')
-                rawfile = pf.open(fits.reduced_path[0:-8]+'.fits'); raw = rawfile['PRIMARY'].data
          #       raw[0,:] = 65535.
                 f.write('     max count: '+str(np.max(raw))+'   number of saturated pixels: '+str(len(raw[np.where(raw > 65534)]))+'\n')
                 if(np.max(raw) > 65534.):
@@ -1733,7 +1736,7 @@ class Manager:
             f.write('    - when the drcontrol window pops up, click the triangle symbol for the right file, select the tlm file (*tlm.fits), and click 2D Plot\n')
             f.write('    - Zoom it and find the fibre listed above\n')
             f.write('  3. Take another flat frame with different exposure time, but make sure it is not saturated. Try this task again.\n')
-            print('\nUnfortunately tramline failures are detected. \nFind '+str(self.abs_root)+'/tlm_failure.txt and follow the steps.\n')
+            print('\nUnfortunately tramline failures are detected. \nOpen '+str(self.abs_root)+'/tlm_failure.txt and follow the steps.\n')
         else:
             print('\nCongratulations! No tramline failures are detected.\nFind list of frames checked: '+str(self.abs_root)+'/tlm_failure.txt\n')
             f.write('\n=======\nCongratulations! No tramline failures are detected.\n')
@@ -1741,11 +1744,6 @@ class Manager:
 
 
         f.close()
-
-
-
-
-            
 
 
         #self.next_step('make_tlm', print_message=True)
