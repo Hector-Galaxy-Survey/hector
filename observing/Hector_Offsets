@@ -1,0 +1,234 @@
+#! /usr/bin/env python3
+
+import pandas as pd
+from astropy.coordinates import SkyCoord
+import astropy.units as u
+from collections import namedtuple
+import numpy as np
+from astropy.coordinates import SkyCoord
+import astropy.units as u
+
+import argparse
+
+
+def get_polynomial_representation_of_alpha(deg=3):
+    """
+    Get a polynomial fit for alpha as a function of radius. Default is 3rd order.
+    """
+
+    # Numbers for the plate scale as a function of mm from the centre
+    # See document by Peter Gillingham on 26th August 2020
+    radius_mm = np.array([23.293, 46.624, 70.030, 93.553, 117.237, 141.132, 165.297, 189.799, 214.723, 240.173])
+    arcsec_per_mm = np.array([15.455, 15.443, 15.422, 15.392, 15.353, 15.305, 15.245, 15.174, 15.089, 14.989])
+
+    # Will be array([-5.73874781e-09, -6.48225817e-06, -7.53234475e-05,  1.54606998e+01]) if deg=3
+    return np.polyfit(radius_mm, arcsec_per_mm, deg=deg)
+
+def plate2sky(x, y, linear=False):
+    """
+    Convert position on plate to position on sky, relative to plate centre.
+    x and y are input as positions on the plate in microns, with (0, 0) at
+    the centre. Return a named tuple (xi, eta) with the angular coordinates in arcseconds,
+    relative to plate centre. If linear is set to True then a simple linear scaling is used.
+    Otherwise, we integrate the plate scale as a function of radius from the plate centre, using the values from Peter Gillingham's document dated 26th August 2020.
+
+    Use the plate scale as a function of radius in mm from the plate centre
+    The plate scale is well approximated by a third order polynomial. 
+    The distance in arcseconds from the plate centre is therefore given by integrating this as a function of radius
+    If the distance in arcsec is $D$, the plate scale is $alpha(r)$ and the distance in mm is $r$:
+    $\delta D = alpha(r) * \delta r$
+    so $D = \int_{0}^{R} alpha(r) dr$
+    We can do this analytically since $alpha(r)$ is just a polynomial; $alpha(r) = \Sigma_{n=0}^{N=N} a_n r^n$
+    $D = \Sigma_{n=0}^{N=N} a_n R^{n+1} / (n+1)$
+    We can now get x and y by converting from polar coordinates to cartesian
+
+    Args:
+        x (float): X coordinate of a hexabundle in microns from the plate centre
+        y (float): Y coordinate of a hexabundle in microns from the plate centre
+        linear (bool, optional): If True, use a constant value for the plate scale. If False, integrate the polynomial fit to the plate scale as a function of radius
+
+    Returns:
+        coords: The coordinates of the Hexabundle in arcseconds from the plate centre
+
+    """
+    
+    # Define the return named tuple type
+    AngularCoords = namedtuple('AngularCoords', ['xi', 'eta'])
+
+    # Make sure we're dealing with floats
+    x = np.array(x, dtype='d')
+    y = np.array(y, dtype='d')
+
+    if np.size(x) == 1 and np.size(y) == 1 and x == 0.0 and y == 0.0:
+        # Plate centre, return zeros before you get an error
+        return AngularCoords(0.0, 0.0)
+
+    if linear:
+        # Just do a really simple transformation
+        plate_scale = 15.44 / 1000.0   # arcseconds per micron
+        coords = AngularCoords(x * plate_scale, y * plate_scale)
+    else:
+        # Use the plate scale as a function of radius in mm from the plate centre, and integrate to get the radial distance in arcsec
+
+        # turn x to mm
+        X = x / 1000
+        Y = y / 1000
+        # Polar coords
+        R = np.sqrt(X**2 + Y**2)
+        theta = np.arctan2(Y, X)
+
+        # Get the polynomial coefficients
+        alpha_coefficients = get_polynomial_representation_of_alpha()
+        
+        # Get the power series in R
+        n_terms = len(alpha_coefficients)
+        R_terms= []
+        for n in np.arange(n_terms, 0, step=-1):
+            R_terms.append(1/n * R**n) 
+
+        # Make sure R_terms is a 1D array- otherwise numpy broadcasting makes alpha_coefficients * R_terms a 4x4 array and gives us crazy answers
+        R_terms = np.array(R_terms).squeeze()
+
+        # This is the radius of the point in arcseconds from the plate centre
+        r_coords_in_arcsec = np.sum(alpha_coefficients * R_terms)
+        
+        # Now these are the coordinates in x and y
+        x_coord = r_coords_in_arcsec * np.cos(theta)
+        y_coord = r_coords_in_arcsec * np.sin(theta)
+
+        coords = AngularCoords(x_coord, y_coord)
+
+    return coords
+
+
+# def plate2sky_old(x, y, linear=False):
+#     """
+#     Convert position on plate to position on sky, relative to plate centre.
+#     x and y are input as positions on the plate in microns, with (0, 0) at
+#     the centre. Return a named tuple (xi, eta) with the angular coordinates in arcseconds,
+#     relative to plate centre. If linear is set
+#     to True then a simple linear scaling is used, otherwise pincushion
+#     distortion model is applied.
+    
+#     """
+    
+#     # Define the return named tuple type
+#     AngularCoords = namedtuple('AngularCoords', ['xi', 'eta'])
+
+#     # Make sure we're dealing with floats
+#     x = np.array(x, dtype='d')
+#     y = np.array(y, dtype='d')
+
+#     if np.size(x) == 1 and np.size(y) == 1 and x == 0.0 and y == 0.0:
+#         # Plate centre, return zeros before you get an error
+#         return AngularCoords(0.0, 0.0)
+
+#     if linear:
+#         # Just do a really simple transformation
+#         plate_scale = 15.22 / 1000.0   # arcseconds per micron
+#         coords = AngularCoords(x * plate_scale, y * plate_scale)
+#     else:
+#         # Include pincushion distortion, found by inverting:
+#         #    x = xi * f * P(xi, eta)
+#         #    y = eta * f * P(xi, eta)
+#         # where:
+#         #    P(xi, eta) = 1 + p * (xi**2 + eta**2)
+#         #    p = 191.0
+#         #    f = 13.515e6 microns, the telescope focal length
+#         p = 191.0
+#         f = 13.515e6
+#         a = p * (x**2 + y**2) * f
+#         twentyseven_a_squared_d = 27.0 * a**2 * (-x**3)
+#         root = np.sqrt(twentyseven_a_squared_d**2 +
+#                        4 * (3 * a * (x**2 * f))**3)
+#         xi = - (1.0/(3.0*a)) * ((0.5*(twentyseven_a_squared_d +
+#                                       root))**(1.0/3.0) -
+#                                 (-0.5*(twentyseven_a_squared_d -
+#                                        root))**(1.0/3.0))
+#         # Convert to arcseconds
+#         xi *= (180.0 / np.pi) * 3600.0
+#         eta = y * xi / x
+#         if np.size(x) > 1 and np.size(y) > 1:
+#             # Check for (0,0) values in input arrays
+#             zeros = ((x == 0.0) & (y == 0.0))
+#             xi[zeros] = 0.0
+#             eta[zeros] = 0.0
+#         coords = AngularCoords(xi, eta)
+
+#     return coords
+
+def print_offsets(offset_x, offset_y, hexabundle_1, hexabundle_2):
+
+    if offset_y <= 0:
+        NS_direction = 'S'
+    else:
+        NS_direction = "N"
+
+    if offset_x <= 0:
+        EW_direction = 'E'
+    else:
+        EW_direction = 'W'
+
+    if hexabundle_1 == 'CENTRE':
+        print(f"\nMoving from the centre of the plate to Hexabundle {hexabundle_2}:")
+    elif hexabundle_2 == 'CENTRE':
+        print(f"\nMoving from Hexabundle {hexabundle_1} to the centre of the plate:")
+    else:
+        print(f"\nMoving from Hexabundle {hexabundle_1} to Hexabundle {hexabundle_2}:")
+
+    print(f"\t--> offset {np.abs(offset_y):.1f} arcseconds {NS_direction} and {np.abs(offset_x):.1f} arcseconds {EW_direction}\n")
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument('filename', help='A Hector Tile file, usually called Tile_FinalFormat_...',)
+    parser.add_argument('hexabundle_1', type=str, help='The name of the hexabundle to start from, or the string "centre" to use the plate centre')
+    parser.add_argument('hexabundle_2', type=str, help='The name of the hexabundle to finish at, or the string "centre" to use the plate centre')
+    parser.add_argument('--linear', action='store_true', help='Use the linear calculation, with a fixed plate scale')
+
+    args = parser.parse_args()
+
+    fname = args.filename
+    hexabundle_1 = args.hexabundle_1
+    hexabundle_2 = args.hexabundle_2
+    linear = args.linear
+
+    df = pd.read_csv(fname, skiprows=11)
+    df = df.loc[df["type"] >= 0]
+
+    # Capitalise each Hexabundle name
+    hexabundle_1 = hexabundle_1.upper()
+    hexabundle_2 = hexabundle_2.upper()
+
+
+    if len(df) >= 28:
+        raise ValueError(f"We seem to have {len(df)} bundles but Hector only has 27!")
+
+    if hexabundle_1 == 'CENTRE':
+        delta_x1 = 0
+        delta_y1 = 0
+    else:
+        try:
+            bundle_1 = df.loc[df.Hexabundle == f"{hexabundle_1}"]
+        except KeyError:
+            raise ValueError(f"The first Hexabundle is {index_1} but it doesn't appear in the file!")
+
+        delta_x1, delta_y1 = plate2sky(bundle_1['x'] * 1000, bundle_1['y'] * 1000, linear=linear)
+
+    if hexabundle_2 == "CENTRE":
+        delta_x2 = 0
+        delta_y2 = 0
+    else:
+        try:
+            bundle_2 = df.loc[df.Hexabundle == f"{hexabundle_2}"]
+        except KeyError:
+            raise ValueError(f"The second Hexabundle is {index_2} but it doesn't appear in the file!")
+
+
+        # Calculate the offsets
+        delta_x2, delta_y2  = plate2sky(bundle_2['x'] * 1000, bundle_2['y'] * 1000, linear=linear)
+
+    offset_x = delta_x2 - delta_x1
+    offset_y = delta_y2 - delta_y1
+
+    print_offsets(offset_x[0], offset_y[0], hexabundle_1, hexabundle_2)
+
