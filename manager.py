@@ -24,7 +24,7 @@ to the raw file and to the reduced file. The plate and field IDs are
 determined automatically from the FITS headers. A check is made to see if the
 telescope was pointing at the field listed in the MORE.FIBRES_IFU extension.
 If not, the user is asked to give a name for the pointing, which will
-generally be the name of whatever object was being observed. This name is then
+generallname of whatever object was being observed. This name is then
 added to an "extra" list in the Manager, so that subsequent observations at
 the same position will be automatically recognised.
 
@@ -1381,7 +1381,7 @@ class Manager:
                 date = sorted(date_options)[-1]
             if not os.path.exists(self.tmp_dir):
                 os.makedirs(self.tmp_dir)
-            for ccd in ['ccd_1', 'ccd_2']:
+            for ccd in ['ccd_1', 'ccd_2','ccd_3', 'ccd_4']:
                 dirname = os.path.join(path, date, ccd)
                 filename_list = sorted(srv.listdir(dirname))
                 for filename in filename_list:
@@ -1422,20 +1422,25 @@ class Manager:
         # Failed to find anything
         return False
 
-    def disable_files(self, file_iterable):
+    def disable_files(self, file_iterable=None):
         """Disable (delete links to) files in provided list (or iterable)."""
-        if isinstance(file_iterable, str):
-            raise ValueError("disable_files must be passed a list of files, e.g., ['07mar10032.fits']")
-        for fits in file_iterable:
-            if isinstance(fits, str):
-                fits = self.fits_file(fits)
-            fits.update_do_not_use(True)
-            # Delete the reduced directory if it's now empty
-            try:
-                os.removedirs(fits.reduced_dir)
-            except OSError:
-                # It wasn't empty - no harm done
-                pass
+        if file_iterable is None:
+            if os.path.exists(str(self.abs_root)+'/disable.txt'):  #disable files
+                id = np.loadtxt(str(self.abs_root)+'/disable.txt',dtype='U'); self.disable_files(id) 
+                print('disable files listed in '+str(self.abs_root)+'/disable.txt')
+        else:
+            if isinstance(file_iterable, str):
+                raise ValueError("disable_files must be passed a list of files, e.g., ['07mar10032.fits']")
+            for fits in file_iterable:
+                if isinstance(fits, str):
+                    fits = self.fits_file(fits)
+                fits.update_do_not_use(True)
+                # Delete the reduced directory if it's now empty
+                try:
+                    os.removedirs(fits.reduced_dir)
+                except OSError:
+                    # It wasn't empty - no harm done
+                    pass
         return
 
     def enable_files(self, file_iterable):
@@ -1613,6 +1618,7 @@ class Manager:
 
         # check if ccd keyword argument is set, as we need to account for the
         # fact that it is also set for the twilight reductions (ccd1 only).
+        self.disable_files() #do not use diabled file listed in disable.txt
         do_twilight = True
         if ('ccd' in kwargs):
             if (kwargs['ccd'] == 'ccd_1'):
@@ -1661,91 +1667,125 @@ class Manager:
 
     def check_tramline(self, overwrite=False, **kwargs):
         """Automatically detect tramline failure. It will properly work after running make_tlm(),reduce_arc(),and reduce_fflat()."""
-        if os.path.exists(str(self.abs_root)+'/disable.txt'):  #disable files
-            id = np.loadtxt(str(self.abs_root)+'/disable.txt',dtype='U'); self.disable_files(id)
-
+        self.disable_files() #do not use diabled file listed in disable.txt
         file_iterable = self.files(ndf_class='MFFFF', do_not_use=False, reduced=True,**kwargs)
 
-        f = open(self.abs_root+'/tlm_failure.txt', 'w')
-        f.write('This is an output of hector.manager.check_tramline() generated at {:%Y-%b-%d %H:%M:%S}'.format(datetime.datetime.now())+'\n\n')
+        f = open(self.abs_root+'/tlm_failure.txt', 'w') 
+        f.write('This is an output of hector.manager.check_tramline() generated on {:%Y-%b-%d %H:%M:%S}'.format(datetime.datetime.now())+'\n\n')
         f.write('Automatic detection of tramline failure using the following criteria:\n')
-        f.write('  1. failed tlm maps have at least one unexpected low thput fibres allocated in the wrong position\n')
-        f.write('  2. failed tlm maps sometimes show tlms not in numerical order\n\n')
-
-        f.write('Check the bottom of the page for the conclusion and the cure\n\n')
-
+        f.write('  1. failed tlm maps may have active fibres allocated where there is no signal\n')
+        f.write('  2. failed tlm maps may have inactive fibres allocated where there is a signal\n')
+        f.write('  3. failed tlm maps sometimes show tlms not in numerical order\n\n')
 
         nfail = 0
         for fits in file_iterable:
-
             exfile = pf.open(fits.reduced_path[0:-8]+'ex.fits')
             ex = exfile['PRIMARY'].data
             fibtab = pf.getdata(fits.reduced_path[0:-8]+'.fits', 'MORE.FIBRES_IFU')
-            fib_spec_id = fibtab.field('SPEC_ID'); fib_type = fibtab.field('TYPE')
-            thput = np.nanmedian(ex,1); thput = thput/np.nanmedian(thput)
+            fib_spec_id = fibtab.field('SPEC_ID'); fib_type = fibtab.field('TYPE'); fib_name = fibtab.field('SPAX_ID')
+            thput = np.nanmedian(ex,1); thput = thput/np.nanmedian(thput[np.where((fib_type == 'P') | (fib_type == 'S'))])
 
-            tlmfail = np.ones(len(fib_spec_id))
-            tlmfail[np.where((fib_type == 'N') | (fib_type == 'U'))] = 0 # ignore inactive fibres
-            tlmfail[np.where(((fib_spec_id == 51) | (fib_spec_id == 181)) & ((fits.ccd == 'ccd_3') | (fits.ccd == 'ccd_4')))] = 0 #ignore known low thput fibres
-            tlmfail[np.where(((fib_spec_id == 1)) & ((fits.ccd == 'ccd_3') | (fits.ccd == 'ccd_4')))] = 0
-            tlmfail[np.where(thput > 0.1)] = 0 # failed tlm maps have at least one unexpected low thput fibres (<0.1) allocated in the wrong position
-            tlmfile = pf.open(fits.reduced_path[0:-8]+'tlm.fits')
-            tlm = tlmfile['PRIMARY'].data
-            tlm_original = (tlm[:,0]) ; tlm_shift = np.insert(tlm_original[0:-1],0,0); tlm_diff = tlm_original - tlm_shift
-            tlmfail[np.where(tlm_diff < 0)] = 2 #tlms not in numerical order in the starting point
-            tlmfail[np.where((tlm_original < 1.) | (tlm_original > 4111))] = 3 #cut-off of tlms
-            tlm_original = (tlm[:,-1]); tlm_shift = np.insert(tlm_original[0:-1],0,0); tlm_diff = tlm_original - tlm_shift
-            tlmfail[np.where(tlm_diff < 0)] = 2 #tlms not in numerical order in the end point
-            tlmfail[np.where((tlm_original < 1.) | (tlm_original > 4111))] = 3 #cut-off of tlms
-            tlmfail[np.where(((fib_spec_id == 1)) & ((fits.ccd == 'ccd_1') | (fits.ccd == 'ccd_2')))] = 0 #blocked fibre
+            tlmfail = np.zeros(len(fib_spec_id))
+            tlmfail[np.where( ((fib_type == 'P') | (fib_type == 'S')) & (thput < 0.1) & (fib_spec_id != 51) & (fib_spec_id != 181) )] = 1 # active (P, S) fibres with no signal
+            tlmfail[np.where( ((fib_type == 'N') | (fib_type == 'U')) & (thput > 0.2))] = 2 # inactive (N, U) fibres with a signal
+
+            tlmfile = pf.open(fits.reduced_path[0:-8]+'tlm.fits'); tlm = tlmfile['PRIMARY'].data #tlm position
+        #    tlm[0,-1] = -10 # ****** only for testing cutoff detection
+            tlm_orig_left = (tlm[:,0]); tlm_orig_right= (tlm[:,-1]) # Y position of tlm at the left most and the right most pixel.
+            if (fits.ccd == 'ccd_1') | (fits.ccd == 'ccd_2'):
+                fib_start = 2; fib_end = 819; ysize=4098-2 # the first and the last active fibres of AAOmega. This info is used for checking tlm cutoff
+            else:
+                fib_start = 1; fib_end = 855; ysize=4112-2 # Spector
+            if(tlm_orig_left[fib_start-1] < 2):
+                tlmfail[np.where(fib_spec_id == fib_start)] = 41; cutoff_pos = 'bottom left'; cutoff_fib = str(fib_start) # tlm cutoff detected at the bottom left corner
+            if(tlm_orig_right[fib_start-1] < 2):
+                tlmfail[np.where(fib_spec_id == fib_start)] = 42; cutoff_pos = 'bottom right'; cutoff_fib = str(fib_start) # bottom right corner
+            if(tlm_orig_left[fib_end-1] > ysize-1):
+                tlmfail[np.where(fib_spec_id == fib_end)] = 43; cutoff_pos = 'top left'; cutoff_fib = str(fib_end) # top left corner
+            if(tlm_orig_right[fib_end-1] > ysize-1):
+                tlmfail[np.where(fib_spec_id == fib_end)] = 44; cutoff_pos = 'top right'; cutoff_fib = str(fib_end) # top right corner
+
+            tlm_shift_left  = np.insert(tlm_orig_left[0:-1],0,0) ; tlm_diff_left  = tlm_orig_left  - tlm_shift_left
+            tlm_shift_right = np.insert(tlm_orig_right[0:-1],0,0); tlm_diff_right = tlm_orig_right - tlm_shift_right
+            tlmfail[np.where((tlmfail < 40.) & (tlm_diff_left < 0)  & (fib_spec_id != 1))] = 31 #tlms not in numerical order in the left end
+            tlmfail[np.where((tlmfail < 40.) & (tlm_diff_right < 0) & (fib_spec_id != 1))] = 32 #tlms not in numerical order in the right end
+
+            otherfits = self.other_arm(fits); othername = ''
+            if otherfits is not None:
+                otherfilename=otherfits.filename #filename of the other arm
 
             sub = np.where(tlmfail != 0)
-            if len(fib_spec_id[sub]) > 0:
+            if len(fib_spec_id[sub]) > 0: #tlm failure is detected
                 rawfile = pf.open(fits.reduced_path[0:-8]+'.fits'); raw = rawfile['PRIMARY'].data
-                f.write('***********'+str(fits.filename)+': Failure detected!!! ***********\n')
-                for i in sub[0]:
-                    if tlmfail[i] == 1:
-                        f.write('     Fibre '+str(fib_spec_id[i])+' is allocated where there is no signal.\n')
-                        if (fib_type[i] == 'S') and (len(fib_spec_id[np.where(fib_type[sub] == 'P')]) == 0):
-                            f.write('     This is a sky fibre. Go to the top-end and check this sky fibre is correctly positioned. \n')
-                    if tlmfail[i] == 2:
-                        f.write('     Fibre '+str(fib_spec_id[i]-1)+' and '+str(fib_spec_id[i])+' are swapped.\n')
-                    if (tlmfail[i] == 3) and (np.max(raw) < 65534) :
-                        f.write('     Fibre '+str(fib_spec_id[i])+' has cut-off tlm. Ask site staff immediately to adjust the mounting of the slit on AAOmega.\n')
-                f.write('     tlm directory: '+fits.reduced_dir+'\n')
-         #       raw[0,:] = 65535.
-                f.write('     max count: '+str(np.max(raw))+'   number of saturated pixels: '+str(len(raw[np.where(raw > 65534)]))+'\n')
-                if(np.max(raw) > 65534.):
-                    f.write('       Max count reaches to the saturation level. Is it saturated or just cosmic ray?\n')
-                    f.write('       Open and check the frame:\n')
-                    f.write('       hector@aatlxe:~$ ds9 '+fits.reduced_dir+'/'+str(fits.filename)+' &\n')
+                f.write('\n========== '+str(fits.filename)+': Failure detected ==========\n')
+                if len(fib_spec_id[sub]) > 10:
+                    f.write('     * Catastrophic failure. Tramline fails for more than 10 fibres. \n')
                 else:
-                    f.write('       This frame is not saturated.\n')
+                    for i in sub[0]:
+                        if tlmfail[i] == 1:
+                            f.write('     * Fibre '+str(fib_spec_id[i])+' is allocated where there is no signal.\n')
+                        if tlmfail[i] == 2:
+                            f.write('     * Fibre '+str(fib_spec_id[i])+' is an inactive sky fibre (N) but allocated where there is a signal.\n')
+                        if ((fib_type[i] == 'S') | (fib_type[i] == 'N')) & ((tlmfail[i] == 1) | (tlmfail[i] == 2)) & (str(fib_name[i]) != ''): #check point: wrong sky position
+                            f.write('     Check point: This is a sky fibre '+str(fib_name[i])+'. Go to the top-end and check the sky fibre is correctly positioned. \n')
+                            f.write('       If the position was wrong, disable the frames adding '+str(fits.filename)[0:-5]+' and '+otherfilename[0:-5]+' on '+str(self.abs_root)+'/disable.txt\n')
+                            f.write('       Take new dome flat with corrected sky fibre position and repeat this analysis. \n')
+                            f.write('       If it is too late to take dome flat of the plate, do not add the file to the disable list but add a comment by following the command below. \n')
+                            f.write('       If you took arc and object frames with a wrong fibre position, add a comment to the frames: \n')
+                            f.write('       In the ipython shell    In [1]: mngr.add_comment(["filename"])         e.g. mngr.add_comment(["'+str(fits.filename)+'"])\n')
+                            f.write('         Please enter a comment (type n to abort): \n')
+                            f.write('         position error: sky fibre '+str(fib_name[i])+' SPEC_ID='+str(fib_spec_id[i])+' TYPE='+str(fib_type[i])+'\n')
+                            f.write('       If the sky fibre position was correct, continue to the next check point\n')
+                        if (str(tlmfail[i])[0] == '3'): # not in numerical order
+                            f.write('     * Fibre '+str(fib_spec_id[i]-1)+' and '+str(fib_spec_id[i])+' are not in numerical order.\n')
+                        if (str(tlmfail[i])[0] == '4'): # tlm cut off 
+                            f.write('     * Fibre '+str(fib_spec_id[i])+' shows cut off of tramline at the '+cutoff_pos+' corner. \n')
+                if(np.max(raw) > 65534.): #check point: saturation
+                    f.write('     Check point: Max count: '+str(np.max(raw))+'   Number of saturated pixels: '+str(len(raw[np.where(raw > 65534)]))+'\n')
+                    f.write('       Max count reaches to the saturation level. Is it saturated or just cosmic ray?\n')
+                    f.write('       Visually check the frame: hector@aatlxe:~$ ds9 '+fits.reduced_dir+'/'+str(fits.filename)+' -scale limits 65000 65100 -zoom to fit&\n')
+                    f.write('       If satureted, you should find white horizental line(s).\n')
+                    f.write('       If saturated, add it adding '+str(fits.filename)[0:-5]+' on '+str(self.abs_root)+'/disable.txt\n')
+                    f.write('       Take new dome flat with shorter exposure time. No need to continue to the next check point. \n')
+                else:
+                    f.write('     Check point: This frame is not saturated. Continue to the next check point.\n')
+                    if len(fib_spec_id[sub]) > 10: # check focus when not saturated but catastrophic failure
+                        f.write('     Check point: visually check the focus: hector@aatlxe:~$ ds9 '+fits.reduced_dir+'/'+str(fits.filename)+' -zoom 4&\n')
+                        f.write('       Do you clearly see a contrast (~ 10000 count) between the signal and gap? If not, it is out of focus.\n')
+                        f.write('       If it is out of focus, disable it adding '+str(fits.filename)[0:-5]+' on '+str(self.abs_root)+'/disable.txt\n')
+                        f.write('       You need to add all other (arc, object) frames that are out of focus. \n')
+                        f.write('       Do check the focus values. No need to continue to the next check point.\n')
+                f.write('     Check point: check how the other arm ('+otherfilename[0:-5]+') is doing. You may find a solution there. \n')
+                f.write('     Check point: visually check tlm:\n') # load drcontrol qui to visually check tlm
+                f.write('       In the ipython shell    In [1]: mngr.load_2dfdr_gui("'+fits.reduced_dir+'")\n')
+                f.write('       When the window pops up, click the triangle symbol by the filename ('+str(fits.filename)+')\n')
+                f.write('       Select '+str(fits.filename)[0:-5]+'tlm.fits, and click 2D Plot button on the middle column.\n')
+                f.write('       In the new window, place your cursor to any y-axis value, click and drag down to zoom in\n')
+                f.write('       Find the fibres listed above and confirm the failure.\n')
+                f.write('       Note that only active fibres (P, S) are supposed to have a signal except Fibre 51. Inactive fibres (N, U) should not have a signal.\n')
+                if(np.max(tlmfail) > 40.): #tlm cut-off issue
+                    f.write('       Also, visually check the '+cutoff_pos+' corner. The Y position of the tramline of Fibre '+cutoff_fib+' should be between 2 and '+str(ysize)+'. \n')
+                    f.write('       If this is not a result of tramline failure, and the cut-off of tramline is confirmed, ask site staff immediately to adjust the mounting of the slit on '+str(fits.instrument)[0:7]+' '+str(fits.ccd)+'. \n')
+                    f.write('       They stay until 4 pm. If it is too late, resolve this the next day and add a comment to the '+str(fits.ccd)+' frames of the day: \n')
+                    f.write('       In the ipython shell    In [1]: mngr.add_comment(["filename"])         e.g. mngr.add_comment(["'+str(fits.filename)+'"])\n')
+                    f.write('         Please enter a comment (type n to abort): \n')
+                    f.write('         tlm cutoff: fibre '+cutoff_fib+' at the '+cutoff_pos+' corner \n')
+                if (np.max(tlmfail) < 40.) | ((np.max(tlmfail) > 40.) & (len(sub[0]) != 1)): #not tlm cut-off issue
+                    f.write('       Once the failure is confirmed, you immediately report this to Sree Oh (sree.oh@anu.edu.au), Madusha Gunawardhana (madusha.gunawardhana@sydney.edu.au), and Scott Croom (scott.croom@sydney.edu.au) and also send the raw file ('+str(fits.filename)+') and this text file (flm_failure.txt).\n')
+                    f.write('       It may require a modification of 2dfdr, which takes some time. You may take another dome flat with different exposure time and telescope pointing. If failed again, try a flap flat.\n')
                 nfail = nfail + 1
             else:
                 f.write(str(fits.filename)+'  checked. No failure found.\n')
 
-        print('\nNote that this task properly works after running make_tlm(),reduce_arc(),and reduce_fflat()')
-
+        print('\nNote that this task properly works after running mngr.make_tlm(), mngr.reduce_arc(),and mngr.reduce_fflat()')
         if nfail > 0:
             f.write('\n=======\nUnfortunately tramline failures are detected. Follow the steps.\n')
-            f.write('  1. Make sure the frame is not saturated. Check max count above. If saturated, add them on '+str(self.abs_root)+'/disable.txt\n')
-            f.write('  2. Visually check the tramlines\n')
-            f.write('    - navigate to tlm directory: (base) hector@aatlxe:~$ cd [tlm directory]\n')
-            f.write('    - run drcontrol: (base) hector@aatlxe:~$ drcontrol hector'+str(fits.ccd)[4:5]+'_v1.idx &\n')
-            f.write('    - when the drcontrol window pops up, click the triangle symbol for the right file, select the tlm file (*tlm.fits), and click 2D Plot\n')
-            f.write('    - Zoom it and find the fibre listed above\n')
-            f.write('  3. Take another flat frame with different exposure time, but make sure it is not saturated. Try this task again.\n')
+            f.write('Once you go throught all the check points, you run mngr.check_tramline() again. \n')
             print('\nUnfortunately tramline failures are detected. \nOpen '+str(self.abs_root)+'/tlm_failure.txt and follow the steps.\n')
         else:
             print('\nCongratulations! No tramline failures are detected.\nFind list of frames checked: '+str(self.abs_root)+'/tlm_failure.txt\n')
             f.write('\n=======\nCongratulations! No tramline failures are detected.\n')
-
-
-
         f.close()
-
-
         #self.next_step('make_tlm', print_message=True)
         return
 
@@ -3816,6 +3856,10 @@ class Manager:
             other_number = '2'
         elif fits.ccd == 'ccd_2':
             other_number = '1'
+        elif fits.ccd == 'ccd_3':
+            other_number = '4'
+        elif fits.ccd == 'ccd_4':
+            other_number = '3'
         else:
             raise ValueError('Unrecognised CCD: ' + fits.ccd)
         other_filename = fits.filename[:5] + other_number + fits.filename[6:]
