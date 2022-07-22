@@ -119,11 +119,11 @@ def call_2dfdr_reduce(dirname, options=None, dummy=False):
             print('#####################')
             print()
         else:
-            print('### this printing will be removed from tdfdr.py after testing! by Sree')
+            print('### this printing will be removed from tdfdr.py after testing!')
             print('2dfdr call options:')
             print(' '.join(command_line))
-            print('#####################')
-            print()
+            #print('#####################')
+            #print()
 
             # Set up the environment:
             environment = dict(os.environ)
@@ -238,7 +238,9 @@ def run_2dfdr_single(fits, idx_file, options=None, dummy=False):
             shutil.move(file, os.path.join(out_dirname_full,file_name))
         shutil.rmtree(out_dirname_tmp)
 
-    print("-- running time %s seconds ---Sree will remove this from tdfdr.py" % (time.time() - start_time))  #sree will remove this after testing
+    print("-- running time %s seconds --- will remove this from tdfdr.py" % (time.time() - start_time))  #sree will remove this after testing
+    print('')
+    print()
 
     return '2dfdr Reduced file:' + fits.filename
 
