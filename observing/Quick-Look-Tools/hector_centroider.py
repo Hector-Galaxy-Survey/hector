@@ -385,7 +385,7 @@ def make_figures(centroid_statFinal, save_files, robot_centre_in_mm, plate_radiu
     ax_vec.add_patch(
         Circle(xy=(robot_centre_in_mm[1], robot_centre_in_mm[0]), radius=plate_radius * 1.0E3, facecolor="#cccccc",
                edgecolor='#000000', zorder=-1))
-    ax_vec.plot(robot_centre_in_mm[1], robot_centre_in_mm[0], 'rx', markerSize=12)
+    ax_vec.plot(robot_centre_in_mm[1], robot_centre_in_mm[0], 'rx', markersize=12)
 
     def add_vectors(datFrame, tail_length):
         """

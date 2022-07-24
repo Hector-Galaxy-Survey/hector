@@ -239,7 +239,7 @@ if __name__ == "__main__":
     plate_radius = constants.HECTOR_plate_radius
 
     ax.add_patch(Circle(xy=(robot_centre_in_mm[1], robot_centre_in_mm[0]), radius=plate_radius * 1.0E3, facecolor="#cccccc", edgecolor='#000000', zorder=-1))
-    ax.plot(robot_centre_in_mm[1], robot_centre_in_mm[0], 'rx', markerSize=12)
+    ax.plot(robot_centre_in_mm[1], robot_centre_in_mm[0], 'rx', markersize=12)
     scat_plt = []
 
 

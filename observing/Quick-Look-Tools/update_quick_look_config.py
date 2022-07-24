@@ -10,6 +10,7 @@ def update_yaml(key, value):
         doc[key] = value
 
     with open('hector_display_config.yaml', 'w') as f:
+        yaml.preserve_quotes = True
         f.write(ruamel.yaml.dump(doc, Dumper=ruamel.yaml.RoundTripDumper))
 
 
