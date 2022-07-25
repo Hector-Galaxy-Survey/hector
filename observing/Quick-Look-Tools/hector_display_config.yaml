@@ -3,7 +3,7 @@ robot_file_name: Robot_FinalFormat_tile_220_m22_GC_OM_AprilPos_CONFIGURED_correc
 
 # Load the data files
 # Absolute path to the data directory
-data_dir: /data/hector/reduction/220627_220706
+data_dir: /data/hector/reduction/220725_220731
 
 # The prefix of every file- probably the date, e.g. 12jan
 file_prefix: 02jun
