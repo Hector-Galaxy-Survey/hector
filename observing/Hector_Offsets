@@ -176,7 +176,7 @@ def print_offsets(offset_x, offset_y, hexabundle_1, hexabundle_2):
     else:
         print(f"\nMoving from Hexabundle {hexabundle_1} to Hexabundle {hexabundle_2}:")
 
-    print(f"\t--> offset {np.abs(offset_y):.1f} arcseconds {NS_direction} and {np.abs(offset_x):.1f} arcseconds {EW_direction}\n")
+    print(f"\t-->Offset the telescope {np.abs(offset_y):.1f} arcseconds {NS_direction} and {np.abs(offset_x):.1f} arcseconds {EW_direction}\n")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
