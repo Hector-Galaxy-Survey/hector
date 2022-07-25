@@ -1,0 +1,38 @@
+# Robot file name
+robot_file_name: Robot_FinalFormat_tile_220_m22_GC_OM_AprilPos_CONFIGURED_correct_header.csv
+
+# Load the data files
+# Absolute path to the data directory
+data_dir: /data/hector/reduction/220725_220731
+
+# The prefix of every file- probably the date, e.g. 12jan
+file_prefix: 02jun
+
+# Specify the data type. The options are "raw", "reduced", or "tramline_map"
+data_type: tramline_map
+
+
+# --------------THE DEFAULT OPTIONS BELOW ARE PROBABLY THE BEST ONES TO USE FOR THE COMMISSIONING RUNS ------------------
+
+# Are we looking at the blue arms or the red arms or both arms? e.g., CCDs 1 and 3 and/or CCDs 2 and 4
+red_or_blue: both     # By default, we consider both arms
+
+# Note that these options can be overwritten from the command line
+sigma_clip: true    # use --sigma-clip or -s on the command line
+
+# Keywords related to fitting centroids
+centroid: true           # Indicate whether the centroid should be fitted
+#
+centroider: false         # Indicate which fitting routine to use -- use GCAM CPP fitter from Tony Farrell
+sami_centroider: true     # Indicate which fitting routine to use -- use SAMI/Hector fitting module
+
+# Specify whether to save the centroiding data
+savestatdata: true
+
+# Specify a coordinate system -- DO NOT CHANGE
+robot_coordinates: true    # redundant - always assumes robot coordinate system
+
+# Turn-on to make plots
+make_plots: false
+
+
