@@ -1,21 +1,30 @@
+#! /usr/bin/env python3
+
 import sys
 import os
 import ruamel.yaml
 
 
 def update_yaml(key, value):
-    with open('hector_display_config.yaml') as f:
-        yaml.preserve_quotes = True
-        doc = ruamel.yaml.load(f, Loader=ruamel.yaml.RoundTripLoader)
-        doc[key] = value
+    file_name = 'hector_display_config.yaml'
+    yaml = ruamel.yaml.YAML()  # defaults to round-trip if no parameters given
+    doc = yaml.load(open(file_name))
+    doc[key] = value
 
-    with open('hector_display_config.yaml', 'w') as f:
-        yaml.preserve_quotes = True
-        f.write(ruamel.yaml.dump(doc, Dumper=ruamel.yaml.RoundTripDumper))
+    # doc['robot_file_name'] = robot_file_name
+    with open(file_name, 'w') as f:
+        yaml.dump(doc, stream=f)
+
+    # with open('hector_display_config.yaml') as f:
+    #     yaml.preserve_quotes = True
+    #     doc = ruamel.yaml.load(f, Loader=ruamel.yaml.RoundTripLoader)
+    #     doc[key] = value
+    #
+    # with open('hector_display_config.yaml', 'w') as f:
+    #     f.write(ruamel.yaml.dump(doc, Dumper=ruamel.yaml.RoundTripDumper))
 
 
 if __name__ == "__main__":
-    import yaml
     import argparse
 
     parser = argparse.ArgumentParser()
@@ -49,7 +58,7 @@ if __name__ == "__main__":
         print('---> File prefix keyword updated to {}.'.format(file_prefix))
 
     elif robot_file_name is not None:
-        update_yaml('robot_file_name', file_prefix)
+        update_yaml('robot_file_name', robot_file_name)
         print('---> Robot file name keyword updated to {}.'.format(robot_file_name))
 
     elif data_type is not None:

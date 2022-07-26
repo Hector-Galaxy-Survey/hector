@@ -25,9 +25,9 @@ import astropy.io.fits as pf
 from astropy.io import fits
 
 import pandas as pd
-# import string
-# import itertools
-# from collections import Counter
+import string
+import itertools
+from collections import Counter
 
 import math as Math
 
@@ -35,20 +35,20 @@ import math as Math
 from matplotlib import pyplot as plt
 from matplotlib.patches import Circle, Arrow, Wedge
 from matplotlib.collections import PatchCollection
-# from matplotlib.patches import Arc
-# from matplotlib.transforms import IdentityTransform, TransformedBbox, Bbox
+from matplotlib.patches import Arc
+from matplotlib.transforms import IdentityTransform, TransformedBbox, Bbox
 
 import hector_display_utils as utils
 import hector_centroid_fitting_utils as fitting_tools
 import hector_centroider as hector_centroider
-# import gcam_utils as utils_tf
+import gcam_utils as utils_tf
 
 from hop.hexabundle_allocation.hector import constants
 
 from importlib import reload
 utils = reload(utils)
 fitting_tools = reload(fitting_tools)
-# utils_tf = reload(utils_tf)
+utils_tf = reload(utils_tf)
 
 
 from termcolor import colored, cprint
@@ -80,11 +80,12 @@ if __name__ == "__main__":
     parser.add_argument("flat_number", type=int, help='The flat frame number corresponding TLM file')
     parser.add_argument("--file_prefix", default=None, type=str, help='The date stamp on the file, e.g. 28jun')
     parser.add_argument("--robot_file_name", default=None, type=str, help='The robot file name')
+    parser.add_argument("--spectrograph_not_used", default=None, type=str, help='Specify if you are NOT using one of the two spectrographs')
 
     parser.add_argument("--config-file", default=None, help="A .yaml file which contains parameters and filenames for the code. See hector_display_config.yaml for an example")
-    parser.add_argument("--outfile", help='Filename to save the plot to. If not given, display the plot instead')
-    parser.add_argument("-sigma", "--sigma_clip", action='store_true', help='Turn on sigma clipping. Can also be set in the config file')
-    parser.add_argument("-data", "--data_type", type=str, help='The type of the data frame to be processed (options "raw" or "reduced")')
+    # parser.add_argument("--outfile", help='Filename to save the plot to. If not given, display the plot instead')
+    # parser.add_argument("-sigma", "--sigma_clip", action='store_true', help='Turn on sigma clipping. Can also be set in the config file')
+    # parser.add_argument("-data", "--data_type", type=str, help='The type of the data frame to be processed (options "raw" or "reduced")')
 
     args = parser.parse_args()
 
@@ -114,6 +115,11 @@ if __name__ == "__main__":
     # Get the robot file name
     if args.robot_file_name is not None:
         config['robot_file_name'] = args.robot_file_name
+
+    # Check to see if both spectrographs are being used.
+    if args.spectrograph_not_used is not None:
+        config['spectrograph_not_used'] = args.spectrograph_not_used
+
 
     # Do we need to make plots looking at individual fits
     make_plots = config['make_plots']
@@ -176,6 +182,7 @@ if __name__ == "__main__":
         flat_file_Hector = Path(config['data_dir']) / f"reduced/{datestamp}/1/1_F0/calibrators" / f"ccd_{hector_ccd[i]}" / f"{config['file_prefix']}{hector_ccd[i]}{flat_obs_number:04}.fits"
         flat_file_AAOmega = Path(config['data_dir']) / f"reduced/{datestamp}/1/1_F0/calibrators" / f"ccd_{aaomega_ccd[i]}" / f"{config['file_prefix']}{aaomega_ccd[i]}{flat_obs_number:04}.fits"
 
+        if config['spectrograph_not_used'] != 'None': locals()['flat_file_' + config['spectrograph_not_used']] = 'None'
         flats = flats + f"{str(flat_file_AAOmega)[-15:-5]} {str(flat_file_Hector)[-15:-5]} "
 
         if data_type == "reduced":
@@ -191,8 +198,17 @@ if __name__ == "__main__":
             raise FileNotFoundError(f"The AAomega file seems to not exist: {object_file_AAOmega} not found")
 
         # Get the fibre tables and find the tramlines:
-        object_header_A, object_fibtab_A, object_guidetab_A, object_robottab_A, object_spec_A, spec_id_alive_A = method_to_call(flat_file_AAOmega, object_file_AAOmega, robot_file, sigma_clip=sigma_clip, IFU="unknown", log=True, pix_waveband=100, pix_start="unknown", plot_fibre_trace = False)
-        object_header_H, object_fibtab_H, object_guidetab_H, object_robottab_H, object_spec_H, spec_id_alive_H = method_to_call(flat_file_Hector, object_file_Hector, robot_file, sigma_clip=sigma_clip, IFU="unknown", log=True, pix_waveband=100, pix_start="unknown", plot_fibre_trace = False)
+        if config['spectrograph_not_used'] != 'None':
+            for var_key in ['object_header_', 'object_fibtab_', 'object_guidetab_', 'object_robottab_', 'object_spec_', 'spec_id_alive_']:
+                locals()[var_key + config['spectrograph_not_used'][0]] = 'None'
+
+            if config['spectrograph_not_used'][0] == 'A':
+                object_header_H, object_fibtab_H, object_guidetab_H, object_robottab_H, object_spec_H, spec_id_alive_H = method_to_call(flat_file_Hector, object_file_Hector, robot_file, sigma_clip=sigma_clip, IFU="unknown", log=True,pix_waveband=100, pix_start="unknown", plot_fibre_trace=False)
+            else:
+                object_header_A, object_fibtab_A, object_guidetab_A, object_robottab_A, object_spec_A, spec_id_alive_A = method_to_call(flat_file_AAOmega, object_file_AAOmega, robot_file, sigma_clip=sigma_clip, IFU="unknown", log=True,pix_waveband=100, pix_start="unknown", plot_fibre_trace=False)
+        else:
+            object_header_A, object_fibtab_A, object_guidetab_A, object_robottab_A, object_spec_A, spec_id_alive_A = method_to_call(flat_file_AAOmega, object_file_AAOmega, robot_file, sigma_clip=sigma_clip, IFU="unknown", log=True, pix_waveband=100, pix_start="unknown", plot_fibre_trace = False)
+            object_header_H, object_fibtab_H, object_guidetab_H, object_robottab_H, object_spec_H, spec_id_alive_H = method_to_call(flat_file_Hector, object_file_Hector, robot_file, sigma_clip=sigma_clip, IFU="unknown", log=True, pix_waveband=100, pix_start="unknown", plot_fibre_trace = False)
 
         object_spec_Asum.append(object_spec_A)
         object_spec_Hsum.append(object_spec_H)
@@ -224,10 +240,26 @@ if __name__ == "__main__":
     scale_factor = 18
     hexabundle_tail_length = scale_factor * 1000
 
+    # Get the hexabundle probe lists
+    if config['spectrograph_not_used'] == 'AAOmega':
+        prRed('Using Hector spectrograph')
+        plist = list(string.ascii_uppercase[8:21].replace('M',''))
+        object_header = object_header_H
+
+    elif config['spectrograph_not_used'] == 'Hector':
+        plist = list(string.ascii_uppercase[:8])
+        prRed('Using AAOmega spectrograph')
+        object_header = object_header_A
+
+    else:
+        assert config['spectrograph_not_used'] == 'None', f"The spectrograph_not_used keyword is set to {config['spectrograph_not_used']}. It must be one of 'None', 'Hector' or 'AAOmega'"
+        plist = list(string.ascii_uppercase[:21].replace('M','')) # Hexa-M is not working
+        object_header = object_header_A
+
     fig = plt.figure(figsize=(10,9.8))
     supltitle = f"{config['file_prefix']} frame {obs_number} (flats: {flats}) \n" \
                 f"Robot file: {str(robot_fname)} \n" \
-                f"UTconfigured: {uttime_config}, UTobserved: {object_header_A['UTSTART']}, ZD: {object_header_A['ZDSTART']}" \
+                f"UTconfigured: {uttime_config}, UTobserved: {object_header['UTSTART']}, ZD: {object_header['ZDSTART']}" \
 
     if data_type == "tramline_map": fig.suptitle(f"Hector data (TLM): {supltitle}",fontsize=15)
     else: fig.suptitle(f"Hector data ({data_type}): {supltitle}",fontsize=15)
@@ -242,10 +274,7 @@ if __name__ == "__main__":
     ax.plot(robot_centre_in_mm[1], robot_centre_in_mm[0], 'rx', markersize=12)
     scat_plt = []
 
-
-    plist = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U']
-    for Probe in plist:  # list(string.ascii_uppercase[:21]):
-
+    for Probe in plist:
         if Probe in ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H']:
             object_header, object_fibtab, object_guidetab, object_robottab, object_spec, spec_id_alive = object_header_A, object_fibtab_A, object_guidetab_A, object_robottab_A, np.mean(object_spec_Asum, axis=0), spec_id_alive_A
         else:
@@ -352,15 +381,11 @@ if __name__ == "__main__":
 
     print("---> END")
 
-    if args.outfile is not None:
-        fig.savefig(Path(args.outfile), bbox_inches='tight')
-    else:
-        # plt.show()
-        if make_plots: os.system('mv Probe_* ' + str(save_files))
-        figfile = save_files / f"plateViewAll_{config['file_prefix']}_Run{obs_number:04}"
-        plt.savefig(figfile, bbox_inches='tight', pad_inches=0.3)
-        plt.show(block=False) # This bit of the code should have shown the plot before, asking for user input, but had to add 'pause' to get it to show
-        plt.pause(0.1)
+    if make_plots: os.system('mv Probe_* ' + str(save_files))
+    figfile = save_files / f"plateViewAll_{config['file_prefix']}_Run{obs_number:04}"
+    plt.savefig(figfile, bbox_inches='tight', pad_inches=0.3)
+    plt.show(block=False) # This bit of the code should have shown the plot before, asking for user input, but had to add 'pause' to get it to show
+    plt.pause(0.1)
 
 
     # Create separate set of figures to show the centroiding statistics
@@ -398,7 +423,7 @@ if __name__ == "__main__":
                 scat_plt[iremove].set_offsets(xy)
                 plt.draw()
 
-            figfile = save_files + f"plateView_{config['file_prefix']}_Run{obs_number:04}"
+            figfile = save_files / f"plateView_{config['file_prefix']}_Run{obs_number:04}"
             plt.savefig(figfile, bbox_inches='tight', pad_inches=0.3)
 
         centroid_statFinal = centroid_stat.drop(exclude_indx)
