@@ -1,43 +1,42 @@
-
 # Robot file name
-robot_file_name : "Robot_FinalFormat_tile_220_m22_GC_OM_AprilPos_CONFIGURED_correct_header.csv"
+robot_file_name: Robot_FinalFormat_tile_220_m22_GC_OM_AprilPos_CONFIGURED_correct_header.csv
 
 # Load the data files
 # Absolute path to the data directory
-data_dir : "/Users/madusha/Documents/PycharmProjects/DATA_REDUCTION/Hector/Hector_Data/"
+data_dir: /data/hector/reduction/220817_220904
 
 # The prefix of every file- probably the date, e.g. 12jan
-file_prefix : "01jun"
+file_prefix: 01jun
 
 # Specify the data type. The options are "raw", "reduced", or "tramline_map"
-data_type: "tramline_map"
+data_type: tramline_map
 
 
 # --------------THE DEFAULT OPTIONS BELOW ARE PROBABLY THE BEST ONES TO USE FOR THE COMMISSIONING RUNS ------------------
 
 # Are we looking at the blue arms or the red arms or both arms? e.g., CCDs 1 and 3 and/or CCDs 2 and 4
-red_or_blue : 'both'  # By default, we consider both arms
+red_or_blue: both     # By default, we consider both arms
 
 # Specify the spectrograph "not used" - the options are 'None' (both used), 'AAOmega' (AAOmega not used) or Hector.
 # By default, we are using both spectrographs.
-spectrograph_not_used: 'None'
+spectrograph_not_used: None
 
 # Note that these options can be overwritten from the command line
-sigma_clip : True   # use --sigma-clip or -s on the command line
+sigma_clip: true    # use --sigma-clip or -s on the command line
 
 # Keywords related to fitting centroids
-centroid: True           # Indicate whether the centroid should be fitted
+centroid: true           # Indicate whether the centroid should be fitted
 #
-centroider: False         # Indicate which fitting routine to use -- use GCAM CPP fitter from Tony Farrell
-sami_centroider: True     # Indicate which fitting routine to use -- use SAMI/Hector fitting module
+centroider: false         # Indicate which fitting routine to use -- use GCAM CPP fitter from Tony Farrell
+sami_centroider: true     # Indicate which fitting routine to use -- use SAMI/Hector fitting module
 
 # Specify whether to save the centroiding data
-savestatdata: True
+savestatdata: true
 
 # Specify a coordinate system -- DO NOT CHANGE
-robot_coordinates: True    # redundant - always assumes robot coordinate system
+robot_coordinates: true    # redundant - always assumes robot coordinate system
 
 # Turn-on to make plots
-make_plots: False
+make_plots: false
 
 

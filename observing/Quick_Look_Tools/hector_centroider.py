@@ -10,8 +10,8 @@ import astropy.io.fits as pf
 from astropy.io import fits
 
 import pandas as pd
-# import string
-# import itertools
+import string
+import itertools
 from collections import Counter
 
 import math as Math
@@ -20,8 +20,8 @@ import math as Math
 from matplotlib import pyplot as plt
 from matplotlib.patches import Circle, Arrow, Wedge
 from matplotlib.collections import PatchCollection
-# from matplotlib.patches import Arc
-# from matplotlib.transforms import IdentityTransform, TransformedBbox, Bbox
+from matplotlib.patches import Arc
+from matplotlib.transforms import IdentityTransform, TransformedBbox, Bbox
 
 import hector_display_utils as utils
 import hector_centroid_fitting_utils as fitting_tools
@@ -66,7 +66,7 @@ def prepare_files(save_files, object_file):
     # print("# Probe RotatedX_microns RotatedY_microns FWHM MagX MagY", file=centroid_file2)
 
     colnames = ['Probe', 'MeanX', 'MeanY', 'RotationAngle', 'CentroidX_rotated', 'CentroidY_rotated',
-                'CentroidXErr_rotated', 'CentroidYErr_rotated',
+                'CentroidXErr_rotated', 'CentroidYErr_rotated', 'CentroidX_COM_rotated', 'CentroidY_COM_rotated',
                 'CentroidRMS_Err', 'RotationAngle_Centroid', 'RadialDist', 'RadialDistErr',
                 'PDist', 'QDist', 'PDistErr', 'QDistErr', 'NDist', 'EDist', 'NDistErr',
                 'EDistErr', 'RPerpenDist', 'RParallelDist', 'RPerpenDistErr',
@@ -139,9 +139,13 @@ def call_centroider(Probe, Probe_data, Probe_annulus, x, y, mean_x, mean_y, rota
 
         centroid_marker = py.scatter(centroidX_rotated * scale_factor + mean_x,
                                      centroidY_rotated * scale_factor + mean_y,
-                                     s=25, c='c', marker='x', zorder=300, linewidth=1)
-
+                                     s=15, c='c', marker='x', zorder=300, linewidth=0.5)
         scat_plt.append(ax.add_artist(centroid_marker))
+
+        centroid_marker = py.scatter(centroidXErr1_rotated * scale_factor + mean_x,
+                                     centroidYErr1_rotated * scale_factor + mean_y,
+                                     s=15, c='r', marker='x', zorder=300, linewidth=0.5)
+
 
         # -------------- DETERMINE VARIOUS OFFSETS
         # (1) RADIAL DISTANCE within the hexabundle
@@ -248,6 +252,7 @@ def call_centroider(Probe, Probe_data, Probe_annulus, x, y, mean_x, mean_y, rota
             {'Probe': Probe, 'MeanX': mean_x, 'MeanY': mean_y, 'RotationAngle': rotation_angle,
              'CentroidX_rotated': centroidX_rotated, 'CentroidY_rotated': centroidY_rotated,
              'CentroidXErr_rotated': centroidXErr_rotated, 'CentroidYErr_rotated': centroidYErr_rotated,
+             'CentroidX_COM_rotated': centroidXErr1_rotated, 'CentroidY_COM_rotated': centroidYErr1_rotated,
              'CentroidRMS_Err': rmsErr, 'RotationAngle_Centroid': centroid_angle,
              'RadialDist': radial_dist, 'RadialDistErr': radial_distErr,
              'PDist': P_dist, 'QDist': Q_dist, 'PDistErr': P_distErr, 'QDistErr': Q_distErr,
@@ -497,3 +502,30 @@ def make_figures(centroid_statFinal, save_files, robot_centre_in_mm, plate_radiu
     plt.savefig(figfile, bbox_inches='tight', pad_inches=0.3)
     plt.show()
 
+
+def individual_hexabundle_plots(x_rotated, y_rotated, mean_x, mean_y, scale_factor, Probe_data, Probe, save_files, obs_number):
+
+    fig_single_hexas = plt.figure()
+    fig_single_hexas.suptitle(f"Probe: {Probe}", fontsize=15)
+    #
+    ax_single_hexas = fig_single_hexas.add_subplot(1, 1, 1)
+    ax_single_hexas.set_aspect('equal')
+
+    ax_single_hexas.add_collection(utils.display_ifu(x_rotated, y_rotated, mean_x, mean_y, scale_factor, Probe_data), autolim=True)
+
+    x_shift = np.max(np.abs(x_rotated)) * scale_factor * 1.5
+    y_shift = np.max(np.abs(y_rotated)) * scale_factor * 1.5
+    ax_single_hexas.set_xlim([mean_x-x_shift, mean_x+x_shift])
+    ax_single_hexas.set_ylim([mean_y-y_shift, mean_y+y_shift])
+    ax_single_hexas.set_facecolor('#cccccc')
+
+    ax_single_hexas.invert_yaxis()
+    ax_single_hexas.set_ylabel("Robot $x$ coordinate")
+    ax_single_hexas.set_xlabel("Robot $y$ coordinate")
+
+    plt.tight_layout()
+    figfile = save_files / f"Run{obs_number:04}_Hexabundle_{Probe}.png"
+    plt.savefig(figfile, bbox_inches='tight', pad_inches=0.3)
+    plt.close()
+
+    return

@@ -41,14 +41,14 @@ from matplotlib.transforms import IdentityTransform, TransformedBbox, Bbox
 import hector_display_utils as utils
 import hector_centroid_fitting_utils as fitting_tools
 import hector_centroider as hector_centroider
-import gcam_utils as utils_tf
+# import gcam_utils as utils_tf
 
 from hop.hexabundle_allocation.hector import constants
 
 from importlib import reload
 utils = reload(utils)
 fitting_tools = reload(fitting_tools)
-utils_tf = reload(utils_tf)
+# utils_tf = reload(utils_tf)
 
 
 from termcolor import colored, cprint
@@ -81,6 +81,7 @@ if __name__ == "__main__":
     parser.add_argument("--file_prefix", default=None, type=str, help='The date stamp on the file, e.g. 28jun')
     parser.add_argument("--robot_file_name", default=None, type=str, help='The robot file name')
     parser.add_argument("--spectrograph_not_used", default=None, type=str, help='Specify if you are NOT using one of the two spectrographs')
+    parser.add_argument("--red_or_blue", default=None, type=str, help='Specify if you are only using red or blue or both arms. Default is both')
 
     parser.add_argument("--config-file", default=None, help="A .yaml file which contains parameters and filenames for the code. See hector_display_config.yaml for an example")
     # parser.add_argument("--outfile", help='Filename to save the plot to. If not given, display the plot instead')
@@ -119,6 +120,10 @@ if __name__ == "__main__":
     # Check to see if both spectrographs are being used.
     if args.spectrograph_not_used is not None:
         config['spectrograph_not_used'] = args.spectrograph_not_used
+
+    # Check to see if red or blue or both arms are used for the analysis
+    if args.red_or_blue is not None:
+        config['red_or_blue'] = args.red_or_blue
 
 
     # Do we need to make plots looking at individual fits
@@ -327,7 +332,6 @@ if __name__ == "__main__":
         x_rotated = 1 * (+np.cos(rotation_angle) * x + np.sin(rotation_angle) * y)
         y_rotated = 1 * (-np.sin(rotation_angle) * x + np.cos(rotation_angle) * y)
 
-
         # Hexabundle tail or ferral direction
         line_hexabundle_tail = [(mean_x, mean_y), (mean_x + hexabundle_tail_length * np.sin(rotation_angle),
                                                    mean_y + hexabundle_tail_length * np.cos(rotation_angle))]
@@ -342,6 +346,9 @@ if __name__ == "__main__":
                                                     mean_y + hexabundle_tail_length * np.cos(0.0))]
         ax.plot(*zip(*line_hexabundle_tail4), c='g', linewidth=2, zorder=1, alpha=0.1)
 
+        # Turn of to save individual hexabundles
+        # if Probe in ['E', 'D', 'I', 'G', 'F', 'U']:
+        #     hector_centroider.individual_hexabundle_plots(x_rotated, y_rotated, mean_x, mean_y, scale_factor, Probe_data, Probe, save_files, obs_number)
 
         # ------------------------------------- CENTROID - FITTING -----------------------------------------------------
         # Determine the centroid of the bundle (field plate coordinates relative to the bundle centre.)
@@ -383,10 +390,10 @@ if __name__ == "__main__":
 
     if make_plots: os.system('mv Probe_* ' + str(save_files))
     figfile = save_files / f"plateViewAll_{config['file_prefix']}_Run{obs_number:04}"
-    plt.savefig(figfile, bbox_inches='tight', pad_inches=0.3)
-    plt.show(block=False) # This bit of the code should have shown the plot before, asking for user input, but had to add 'pause' to get it to show
-    plt.pause(0.1)
-
+    plt.savefig(figfile, bbox_inches='tight', pad_inches=0.3, dpi=150)
+    # plt.show(block=False) # This bit of the code should have shown the plot before, asking for user input, but had to add 'pause' to get it to show
+    # plt.pause(0.1)
+    plt.show()
 
     # Create separate set of figures to show the centroiding statistics
     if centroid:

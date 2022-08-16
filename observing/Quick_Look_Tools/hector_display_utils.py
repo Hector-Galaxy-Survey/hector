@@ -849,35 +849,73 @@ def get_alive_fibres_from_tlm(flat_file, object_file, robot_file, IFU="unknown",
         fitlim = 0.075
 
     # Location of fibre peaks for linear tramline
-    tram_loc = []
-    cut_loc = 0.5
-    for i in range(np.shape(flat_tlm_data)[0]):
-        tram_pix = int(np.shape(object_data)[1] * cut_loc)
-        tram_loc.append(flat_tlm_data[i, tram_pix])
+    # tram_loc = []
+    # cut_loc = 0.5
+    # for i in range(np.shape(flat_tlm_data)[0]):
+    #     tram_pix = int(np.shape(object_data)[1] * cut_loc)
+    #     tram_loc.append(flat_tlm_data[i, tram_pix])
+    #
+    # tram_loc = np.array(np.round(tram_loc)).astype(int)
+    # # Perform cut along spatial direction at same position as cut_loc
+    # object_cut = object_data[:, int(np.shape(object_data)[1] * cut_loc) - int(pix_waveband / 2):
+    #                             int(np.shape(object_data)[1] * cut_loc) + int(pix_waveband / 2)]
 
-    tram_loc = np.array(tram_loc).astype(int)
 
-    # Perform cut along spatial direction at same position as cut_loc
-    object_cut = object_data[:, int(np.shape(object_data)[1] * cut_loc) - int(pix_waveband / 2):
-                                int(np.shape(object_data)[1] * cut_loc) + int(pix_waveband / 2)]
+    # # "Sigma clip" to get set bad pixels as row median value
+    # if sigma_clip:
+    #     object_cut = perform_sigma_clip(object_cut)
+    #     print("--->")
 
-    # "Sigma clip" to get set bad pixels as row median value
-    if sigma_clip:
-        object_cut = perform_sigma_clip(object_cut)
-        print("--->")
+    # # Collapse spectral dimension
+    # object_cut_sum = np.nansum(object_cut, axis=1)
 
-    # Collapse spectral dimension
-    object_cut_sum = np.nansum(object_cut, axis=1)
+    # # Extract intensities at fibre location and log
+    # object_spec = object_cut_sum[tram_loc]
+    # spec_id_alive = None
 
-    # Extract intensities at fibre location and log
-    object_spec = object_cut_sum[tram_loc]
+    cut_locs = [0.25, 0.5, 0.75]
+    object_spec = []
+    for cut_loc in cut_locs:
+
+        tram_loc = []
+        for i in range(np.shape(flat_tlm_data)[0]):
+            tram_pix = int(np.shape(object_data)[1] * cut_loc)
+            tram_loc.append(flat_tlm_data[i, tram_pix])
+
+
+        tram_loc = np.array(np.round(tram_loc)).astype(int)
+
+        # Perform cut along spatial direction at same position as cut_loc
+        object_cut = object_data[:, int(np.shape(object_data)[1] * cut_loc) - int(pix_waveband / 2):
+                                    int(np.shape(object_data)[1] * cut_loc) + int(pix_waveband / 2)]
+        if sigma_clip:
+            if cut_loc == cut_locs[0]:
+                prGreen(f"---> Performing 'Sigma-clip'... (~20s x {len(cut_locs)})")
+            object_cut = perform_sigma_clip(object_cut)
+            print("--->")
+
+        # Collapse spectral dimension
+        object_cut_sum = np.nansum(object_cut, axis=1)
+
+        # Extract intensities at fibre location and
+        object_spec.append(object_cut_sum[tram_loc])
+
+        del object_cut_sum, object_cut
+
+
+    object_spec = np.nansum(np.array(object_spec), axis=0)
+
+    # plt.figure()
+    # plt.imshow(object_cut, aspect='auto')
+    # plt.show()
+
     spec_id_alive = None
 
     return object_header, object_fibtab, object_guidetab, object_robottab, object_spec, spec_id_alive
 
 
 def perform_sigma_clip(object_cut):
-    prGreen("---> Performing 'Sigma-clip'... (~20s)")
+
     for i in np.arange(np.shape(object_cut)[0]):
         for j in np.arange(np.shape(object_cut)[1]):
             med = np.nanmedian(object_cut[i, :])

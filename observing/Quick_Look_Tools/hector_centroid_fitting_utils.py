@@ -18,6 +18,17 @@ except:
     print("Not Using bottleneck: Speed will be improved if you install bottleneck")
 
 
+# Print colours in python terminal --> https://www.geeksforgeeks.org/print-colors-python-terminal/
+def prRed(skk): print("\033[91m {}\033[00m" .format(skk))
+def prGreen(skk): print("\033[92m {}\033[00m" .format(skk))
+def prYellow(skk): print("\033[93m {}\033[00m" .format(skk))
+def prLightPurple(skk): print("\033[94m {}\033[00m" .format(skk))
+def prPurple(skk): print("\033[95m {}\033[00m" .format(skk))
+def prCyan(skk): print("\033[96m {}\033[00m" .format(skk))
+def prLightGray(skk): print("\033[97m {}\033[00m" .format(skk))
+def prBlack(skk): print("\033[98m {}\033[00m" .format(skk))
+
+
 def comxyz(x, y, z):
     """Centre of mass given x, y and z vectors (all same size). x,y give position which has value z."""
 
@@ -521,6 +532,22 @@ def centroid_gauss_fit_flux_weighted_main(x_main, y_main, flux_main, Probe_main,
         fibre_integrator(gf, core_diam)
         gf.fit()
 
+        # Refit using initial values from Gaussian fit
+        do_moffat = False
+        if do_moffat:
+            p0 = [gf.p[0], gf.p[1], gf.p[2], gf.p[3] * np.sqrt(2 * np.log(2)), 1.0, gf.p[4]]
+            mf = BundleFitter(p0, x, y, flux, model='moffat')
+            fibre_integrator(mf, core_diam)
+            mf.fit()
+            # print('moffat gf.p[1], gf.p[2]=', mf.p[1], mf.p[2])
+
+            if (np.min(x_mask) < mf.p[1] < np.max(x_mask)) & (np.min(y_mask) < mf.p[2] < np.max(y_mask)):
+                if not iterate:
+                    prLightPurple('Using Moffat Profile...')
+                    gf = mf
+            else:
+                if not iterate: prLightPurple('Moffat-fitting failed. Using Gaussian Profile...')
+
         if (np.min(x_mask) < gf.p[1] < np.max(x_mask)) & (np.min(y_mask) < gf.p[2] < np.max(y_mask)):
             if not iterate:
                 print('CentroidX = {}, CentroidY = {}, FWHM = {}, Offset = {}'.format(gf.p[1], gf.p[2], gf.p[3], gf.p[4]))
@@ -916,6 +943,7 @@ def calculate_Ps(points_axferral, rotation_angle, centroid_x, centroid_y, grad, 
 
     ## Method-I - using the angle that the centroid forms with the x-axis and Qdist
     rotation_angle2 = rotation_angle
+    # print('rotation')
     # print(np.rad2deg(rotation_angle))
     if np.abs(rotation_angle) > np.pi:
         if rotation_angle > 0: rotation_angle2 = -(2*np.pi) + rotation_angle
@@ -942,12 +970,12 @@ def calculate_Ps(points_axferral, rotation_angle, centroid_x, centroid_y, grad, 
             print('on the ferral axis. This is probably a rare occurence (rotation angle=-180 deg.). Needs to implement')
 
     else: # if the gradient of the ferral axis is infinite, that means the rotation_angle is either 0 or 180.
-        if (rotation_angle2 == 0.0 or np.abs(rotation_angle2) == np.pi) and centroid_x > 0.0:
-            phi = -1. * np.pi/2.   # np.pi
-        elif (rotation_angle2 == 0.0 or np.abs(rotation_angle2) == np.pi) and centroid_x < 0.0:
-            phi = np.pi/2. # 0.0
+        if (np.round(rotation_angle2,10) == 0.0 or np.abs(np.round(rotation_angle2,6)) == np.round(np.pi,6)) and centroid_x > 0.0:
+            phi = -1. * np.pi   # np.pi
+        elif (np.round(rotation_angle2,10) == 0.0 or np.abs(np.round(rotation_angle2,6)) == np.round(np.pi,6)) and centroid_x < 0.0:
+            phi = 0.0 # 0.0
         else:
-            print('unlikely to happen, but check @L561')
+            print('unlikely to happen, but check @L561. Report this to Madusha (madusha.gunawardhana@sydney.edu.au)')
 
     # phi = rotation_angle - np.pi # np.pi + rotation_angle
     # print(np.rad2deg(phi))
@@ -963,7 +991,7 @@ def calculate_Ps(points_axferral, rotation_angle, centroid_x, centroid_y, grad, 
     b = np.array([intercept, 1. * 1./grad * centroid_x + centroid_y])
     C = np.linalg.solve(coeffs,b)
     # print(X2, Y2)
-    # print(C[0], C[1])
+    # print(C[0], C[1], grad)
 
     assert np.round(X2) == np.round(C[0]) and np.round(Y2) == np.round(C[1]), \
         'P distance consistency check FAILED!: two coordinate calculations methods (I and II) must match!'
