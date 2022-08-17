@@ -5268,10 +5268,13 @@ class FITSFile:
     def has_sky_lines(self):
         """Return True if there are sky lines in the wavelength range."""
         # Coverage taken from http://ftp.aao.gov.au/2df/aaomega/aaomega_gratings.html
+        # add coverage for Spector (SMC 17/08/22) 
         coverage_dict = {
             '1500V': 750,
             '580V': 2100,
             '1000R': 1100,
+            'SPECTOR1': 2200,
+            'SPECTOR2': 2100,
         }
         coverage = coverage_dict[self.grating]
         wavelength_range = (
