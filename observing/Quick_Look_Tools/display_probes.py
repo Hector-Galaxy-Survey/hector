@@ -485,6 +485,9 @@ if __name__ == "__main__":
 
 
                 plt.draw()
+
+            figfile = save_files / f"plateView_{config['file_prefix']}_Run{obs_number:04}"
+            plt.savefig(figfile, bbox_inches='tight', pad_inches=0.3)
             plt.show()
 
             centroid_stat = centroid_stats_masked
