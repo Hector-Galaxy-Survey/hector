@@ -68,6 +68,58 @@ def month_to_num(month):
     return {'jan': '01', 'feb': '02', 'mar': '03', 'apr': '04', 'may': '05', 'jun': '06', 'jul': '07', 'aug': '08', 'sep': '09', 'oct': '10', 'nov': '11', 'dec': '12'}[month]
 
 
+def get_fibbundle_Xc_Yc_and_robotPos(Probename, fibrenum, object_robot_tab):
+    """
+    Extracts the x,y positions of fibres in a give hexabundle, and rectangular magnet x, y positions from the robot file.
+    The rotation of the positions based on the angle of rotation of the rectangular magnet is also returned
+
+    :param Probename:
+    :param fibrenum:
+    :param object_robot_tab:
+    :return:
+    """
+    # Read-in the fibre position information file from Julia Bryant.
+    fibre_pos = pd.read_csv('Fibre_slitInfo_final_updated03Mar2022for_swapped_fibres_BrokenHexaM.csv')
+
+    fibnum_from_file_probe = fibre_pos.loc[(fibre_pos["Bundle/plate"] == Probename)]
+    fibnum_from_file = fibnum_from_file_probe['Fibre_number'].to_numpy()
+    Bundle_Xc_from_file = fibnum_from_file_probe['Bundle_Xc'].to_numpy()
+    Bundle_Yc_from_file = fibnum_from_file_probe['Bundle_Yc'].to_numpy()
+    x_pos, y_pos, fiber_number = [], [], []
+    for num in fibrenum:
+        min_idx = np.array(np.where((fibnum_from_file - num) == 0.0)).squeeze()
+        assert np.size(min_idx) == 1, 'Error'
+
+        x_pos.append(Bundle_Xc_from_file[min_idx])
+        y_pos.append(Bundle_Yc_from_file[min_idx])
+        fiber_number.append(fibnum_from_file[min_idx])
+
+    del fibnum_from_file_probe, fibnum_from_file, Bundle_Xc_from_file, Bundle_Yc_from_file
+
+    x_pos = np.array(x_pos)
+    y_pos = np.array(y_pos)
+
+    # For each hexabundle, get its circular and rectangular magnet (comes directly from the robot file)
+    cm = object_robot_tab.loc[(object_robot_tab['Hexabundle'] == Probename) & (object_robot_tab['#Magnet'] == 'circular_magnet')]
+    rm = object_robot_tab.loc[(object_robot_tab['Hexabundle'] == Probename) & (object_robot_tab['#Magnet'] == 'rectangular_magnet')]
+
+    mean_magX = cm.Center_y
+    mean_magX = mean_magX[mean_magX.index[0]] * 1.0E3
+    mean_magY = cm.Center_x
+    mean_magY = mean_magY[mean_magY.index[0]] * 1.0E3
+
+    # The angle of the rectangular magnet- 270 minus the robot holding angle minus the robot placing angle
+    rotation_angle_magnet = np.radians(270.0 - rm.rot_holdingPosition - rm.rot_platePlacing)
+    rotation_angle_magnet = rotation_angle_magnet[rotation_angle_magnet.index[0]]
+
+    # Rotation of axes: see Evernote HECTOR/probe rotations for more information. The 'minus' sign, I think, accounts
+    # for the fact that North is down (and East to the right) on the plate
+    x_rotated_pos = 1 * (+np.cos(rotation_angle_magnet) * x_pos + np.sin(rotation_angle_magnet) * y_pos)
+    y_rotated_pos = 1 * (-np.sin(rotation_angle_magnet) * x_pos + np.cos(rotation_angle_magnet) * y_pos)
+
+    return x_pos, y_pos, mean_magX, mean_magY, rotation_angle_magnet, x_rotated_pos, y_rotated_pos
+
+
 if __name__ == "__main__":
     
 
@@ -163,8 +215,6 @@ if __name__ == "__main__":
     uttime_config = tile_file.readlines()[7].strip('UTTIME, #Target observing time\n') # Extract UT TIME from the header of the tile file.
     tile_file.close()
 
-    # Read-in the fibre position information file from Julia Bryant.
-    fibre_pos = pd.read_csv('Fibre_slitInfo_final_updated03Mar2022for_swapped_fibres_BrokenHexaM.csv')
 
     if config['red_or_blue'] == 'blue':
         hector_ccd, aaomega_ccd = [3], [1]
@@ -277,7 +327,7 @@ if __name__ == "__main__":
 
     ax.add_patch(Circle(xy=(robot_centre_in_mm[1], robot_centre_in_mm[0]), radius=plate_radius * 1.0E3, facecolor="#cccccc", edgecolor='#000000', zorder=-1))
     ax.plot(robot_centre_in_mm[1], robot_centre_in_mm[0], 'rx', markersize=12)
-    scat_plt = []
+    scat_plt, scat_plt1 = [], []
 
     for Probe in plist:
         if Probe in ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H']:
@@ -294,50 +344,15 @@ if __name__ == "__main__":
 
         fibnum = object_fibtab.field('FIBNUM')[mask]
 
-
-        fibnum_from_file_probe = fibre_pos.loc[(fibre_pos["Bundle/plate"] == Probe)]
-        fibnum_from_file = fibnum_from_file_probe['Fibre_number'].to_numpy()
-        Bundle_Xc_from_file = fibnum_from_file_probe['Bundle_Xc'].to_numpy()
-        Bundle_Yc_from_file = fibnum_from_file_probe['Bundle_Yc'].to_numpy()
-        x, y, fiber_number =[], [], []
-        for num in fibnum:
-            min_idx = np.array(np.where((fibnum_from_file - num) == 0.0)).squeeze()
-            assert np.size(min_idx) == 1, 'Error'
-
-            x.append(Bundle_Xc_from_file[min_idx])
-            y.append(Bundle_Yc_from_file[min_idx])
-            fiber_number.append(fibnum_from_file[min_idx])
-
-        del fibnum_from_file_probe, fibnum_from_file, Bundle_Xc_from_file, Bundle_Yc_from_file
-
-        x = np.array(x)
-        y = np.array(y)
-
-        # For each hexabundle, get its circular and rectangular magnet (comes directly from the robot file)
-        cm = object_robottab.loc[(object_robottab['Hexabundle'] == Probe) & (object_robottab['#Magnet'] == 'circular_magnet')]
-        rm = object_robottab.loc[(object_robottab['Hexabundle'] == Probe) & (object_robottab['#Magnet'] == 'rectangular_magnet')]
-
-        mean_x = cm.Center_y
-        mean_x = mean_x[mean_x.index[0]] * 1.0E3
-        mean_y = cm.Center_x
-        mean_y = mean_y[mean_y.index[0]] * 1.0E3
-
-
-        # The angle of the rectangular magnet- 270 minus the robot holding angle minus the robot placing angle
-        rotation_angle = np.radians(270.0 - rm.rot_holdingPosition - rm.rot_platePlacing)
-        rotation_angle = rotation_angle[rotation_angle.index[0]]
-
-        # Rotation of axes: see Evernote HECTOR/probe rotations for more information. The 'minus' sign, I think, accounts
-        # for the fact that North is down (and East to the right) on the plate
-        x_rotated = 1 * (+np.cos(rotation_angle) * x + np.sin(rotation_angle) * y)
-        y_rotated = 1 * (-np.sin(rotation_angle) * x + np.cos(rotation_angle) * y)
+        # Gets the x,y positions of the fibres, the rotation angle of the rectangular magnet, and the x,y rotated positions
+        x, y, mean_x, mean_y, rotation_angle, x_rotated, y_rotated = get_fibbundle_Xc_Yc_and_robotPos(Probe, fibnum, object_robottab)
 
         # Hexabundle tail or ferral direction
         line_hexabundle_tail = [(mean_x, mean_y), (mean_x + hexabundle_tail_length * np.sin(rotation_angle),
                                                    mean_y + hexabundle_tail_length * np.cos(rotation_angle))]
         ax.plot(*zip(*line_hexabundle_tail), c='k', linewidth=2, zorder=1, alpha=0.5)
 
-        ax.add_collection(utils.display_ifu(x_rotated, y_rotated, mean_x, mean_y, scale_factor, Probe_data))
+        scat_plt1.append(ax.add_collection(utils.display_ifu(x_rotated, y_rotated, mean_x, mean_y, scale_factor, Probe_data)))
         # for ix in range(len(x_rotated)):
         #     ax.plot(x_rotated[ix]*scale_factor+mean_x, y_rotated[ix]*scale_factor+mean_y, '.', c='k')
         #     ax.text(x_rotated[ix]*scale_factor+mean_x, y_rotated[ix]*scale_factor+mean_y, str(fibnum[ix]), color='k')
@@ -355,22 +370,22 @@ if __name__ == "__main__":
         if centroid:
             centroid_stat, scat_plt = hector_centroider.call_centroider(Probe, Probe_data, Probe_annulus, x, y, mean_x, mean_y, rotation_angle, robot_centre_in_mm, ax, centroid_stat, scat_plt, centroider=centroider, make_plots=make_plots)
 
-
-        # Add annuli information
-        magenta_radius = 226. * 1000.
-        yellow_radius = 196.05124 * 1000.
-        green_radius = 147.91658 * 1000.
-        blue_radius = 92.71721 * 1000.
-
-        ax.add_patch(Circle((robot_centre_in_mm[1], robot_centre_in_mm[0]), blue_radius, color='lightblue', alpha=0.3))
-        ax.add_patch(Wedge((robot_centre_in_mm[1], robot_centre_in_mm[0]), magenta_radius, 0, 360., width=10, color='indianred', alpha=0.3))
-        ax.add_patch(Wedge((robot_centre_in_mm[1], robot_centre_in_mm[0]), yellow_radius, 0, 360., width=10, color='gold', alpha=0.3))
-        ax.add_patch(Wedge((robot_centre_in_mm[1], robot_centre_in_mm[0]), green_radius, 0, 360., width=10, color='lightgreen', alpha=0.3))
-
         plt.setp(ax.get_xticklabels(), visible=True)
         plt.setp(ax.get_yticklabels(), visible=True)
-        ax.text(mean_x, mean_y + scale_factor*750*2, "Probe " + str(Probe),\
-                verticalalignment="bottom", horizontalalignment='center')
+        ax.text(mean_x, mean_y + scale_factor*750*2, "Probe " + str(Probe), verticalalignment="bottom", horizontalalignment='center')
+
+        del x, y, mean_x, mean_y, rotation_angle, Probe_data, Probe_annulus, mask, x_rotated, y_rotated
+
+    # Add annuli information
+    magenta_radius = 226. * 1000.
+    yellow_radius = 196.05124 * 1000.
+    green_radius = 147.91658 * 1000.
+    blue_radius = 92.71721 * 1000.
+
+    ax.add_patch(Circle((robot_centre_in_mm[1], robot_centre_in_mm[0]), blue_radius, color='lightblue', alpha=0.3))
+    ax.add_patch(Wedge((robot_centre_in_mm[1], robot_centre_in_mm[0]), magenta_radius, 0, 360., width=10, color='indianred', alpha=0.3))
+    ax.add_patch(Wedge((robot_centre_in_mm[1], robot_centre_in_mm[0]), yellow_radius, 0, 360., width=10, color='gold',alpha=0.3))
+    ax.add_patch(Wedge((robot_centre_in_mm[1], robot_centre_in_mm[0]), green_radius, 0, 360., width=10, color='lightgreen',alpha=0.3))
 
     # Add the guides
     # if object_guidetab is not None:
@@ -384,16 +399,17 @@ if __name__ == "__main__":
     ax.set_xlabel("Robot $y$ coordinate")
 
     plt.tight_layout()
+    figfile = save_files / f"plateViewAll_{config['file_prefix']}_Run{obs_number:04}"
+    plt.savefig(figfile, bbox_inches='tight', pad_inches=0.3, dpi=150)
     plt.show()
 
     print("---> END")
 
     if make_plots: os.system('mv Probe_* ' + str(save_files))
-    figfile = save_files / f"plateViewAll_{config['file_prefix']}_Run{obs_number:04}"
-    plt.savefig(figfile, bbox_inches='tight', pad_inches=0.3, dpi=150)
     # plt.show(block=False) # This bit of the code should have shown the plot before, asking for user input, but had to add 'pause' to get it to show
     # plt.pause(0.1)
-    plt.show()
+    # plt.show()
+    # plt.savefig(figfile, bbox_inches='tight', pad_inches=0.3, dpi=150)  # re-saving here.
 
     # Create separate set of figures to show the centroiding statistics
     if centroid:
@@ -416,6 +432,64 @@ if __name__ == "__main__":
         prLightPurple("\t NOTE: The RMS scatter is not always a good indicator of the quality of the fits. For example, under very good seeing conditions, the flux will be mostly concentrated on one fibre or so. In these cases, "
                       "the calculated centroid will be accurate, but the RMS from Gaussian fitting will be misleading. Also, the fits will be affected if there is more than one object in the bundle\n "
                       "So do check the figures produced up to this point to identify whether the data show evidence of smearing out due to bad seeing. \n \n")
+
+        userMask = str(input("Examine the figure, and specify names of the probes require masking: "))
+        mask_indx = []
+        if len(userMask) > 0:
+            for iexclude in range(len(userMask)):
+                mask_indx.append(np.squeeze(np.where(centroid_stat['Probe'] == userMask[iexclude])[0]))
+
+            centroid_stats_masked = centroid_stat.drop(mask_indx)
+
+            for iexclude in range(len(userMask)):
+                iremove = mask_indx[iexclude]
+                scat_plt1[iremove].remove()
+                xy = np.delete(scat_plt[iremove].get_offsets(), 0, axis=0)
+                scat_plt[iremove].set_offsets(xy)
+
+                # Re-do the centroid-fitting
+                if userMask[iexclude] in ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H']:
+                    object_header, object_fibtab, object_guidetab, object_robottab, object_spec, spec_id_alive = object_header_A, object_fibtab_A, object_guidetab_A, object_robottab_A, np.mean(object_spec_Asum, axis=0), spec_id_alive_A
+                else:
+                    object_header, object_fibtab, object_guidetab, object_robottab, object_spec, spec_id_alive = object_header_H, object_fibtab_H, object_guidetab_H, object_robottab_H, np.mean(object_spec_Hsum, axis=0), spec_id_alive_H
+
+                mask = (object_fibtab.field('TYPE') == "P") & (object_fibtab.field('SPAX_ID') == userMask[iexclude])
+
+                if (data_type == "reduced") or (data_type == "tramline_map"): Probe_data = object_spec[mask]
+                else: Probe_data = object_spec[spec_id_alive[mask]]
+
+                Probe_annulus = object_fibtab.field('CIRCMAG')[mask]  # telecentricity of the probe, given by the circmag colour
+
+                fibnum = object_fibtab.field('FIBNUM')[mask]
+
+                # Gets the x,y positions of the fibres, the rotation angle of the rectangular magnet, and the x,y rotated positions
+                x, y, mean_x, mean_y, rotation_angle, x_rotated, y_rotated = get_fibbundle_Xc_Yc_and_robotPos(userMask[iexclude], fibnum, object_robottab)
+
+                # Hexabundle tail or ferral direction
+                line_hexabundle_tail = [(mean_x, mean_y), (mean_x + hexabundle_tail_length * np.sin(rotation_angle),
+                                                           mean_y + hexabundle_tail_length * np.cos(rotation_angle))]
+
+                objto_mask = centroid_stat.loc[centroid_stat['Probe'] ==userMask[iexclude]]
+                CenX, CenY, FHWM = objto_mask['CentroidX'], objto_mask['CentroidY'], objto_mask['FHWM']
+
+                mask = ((x > (CenX[CenX.index[0]] - 2.0*FHWM[FHWM.index[0]])) & (x < (CenX[CenX.index[0]] + 2.0*FHWM[FHWM.index[0]])) &
+                        (y > (CenY[CenY.index[0]] - 2.0*FHWM[FHWM.index[0]])) & (y < (CenY[CenY.index[0]] + 2.0*FHWM[FHWM.index[0]])))
+
+                background = np.median(Probe_data[np.invert(mask)])  # Calculate the background level outside the mask (by inverting the mask)
+                Probe_data[mask] = background  # Assign the background to the masked cells
+                x_rotated_mask = 1 * (+np.cos(rotation_angle) * x + np.sin(rotation_angle) * y)
+                y_rotated_mask = 1 * (-np.sin(rotation_angle) * x + np.cos(rotation_angle) * y)
+
+                ax.add_collection(utils.display_ifu(x_rotated_mask, y_rotated_mask, mean_x, mean_y, scale_factor, Probe_data))
+                centroid_stats_masked, scat_plt = hector_centroider.call_centroider(userMask[iexclude], Probe_data, Probe_annulus, x, y, mean_x, mean_y, rotation_angle, robot_centre_in_mm, ax, centroid_stats_masked, scat_plt, centroider=centroider, make_plots=make_plots)
+
+
+                plt.draw()
+            plt.show()
+
+            centroid_stat = centroid_stats_masked
+
+
         userExclude = str(input("Examine the figure, and specify names of the probes with bad fits to be excluded in a single line (e.g. ABCD) and enter: "))
 
         ## Start by saving the dataFrame to a CSV file, after excluding the bad data

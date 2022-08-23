@@ -176,7 +176,7 @@ def display_ifu(x_coords, y_coords, xcen, ycen, scaling, values, zorder=10):
         bundle_patches.append(circle)
 
     pcol = PatchCollection(bundle_patches, cmap=plt.get_cmap('afmhot'), zorder=zorder)
-    pcol.set_array(values)
+    pcol.set_array(np.log10(values))
     pcol.set_edgecolors('none')
     return pcol
 
