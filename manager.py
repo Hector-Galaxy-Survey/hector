@@ -85,7 +85,9 @@ import astropy.io.fits as pf
 from astropy.table import Table
 from astropy import __version__ as ASTROPY_VERSION
 import numpy as np
-
+import hector
+hector_path = str(hector.__path__[0])+'/'
+#np.set_printoptions(threshold=np.inf)
 
 try:
     import pysftp
@@ -102,6 +104,9 @@ except ImportError:
 
 MF_BIN_DIR = '/suphys/nscott/molecfit_install/bin' # directory for molecfit binary files
 #MF_BIN_DIR = '/Users/scroom/code/molecfit/bin/' # directory for molecfit binary files
+#MF_BIN_DIR = '/priv/hector/software/install/bin/'
+#MF_BIN_DIR = '/priv/hector/software/install/esoreflex-2.11.5/esoreflex/bin'
+
 if not os.path.exists(os.path.join(MF_BIN_DIR,'molecfit')):
         warnings.warn('molecfit not found. Disabling improved telluric subtraction')
         MOLECFIT_AVAILABLE = False
@@ -152,10 +157,10 @@ else:
 #                  '1500V': 'sami1500V.idx',
 #                  '1000R': 'sami1000R.idx',
 
-IDX_FILES_SLOW = {'580V': 'hector1_v1.idx',
-                  '1000R': 'hector2_v1.idx',
-                  'SPECTOR1':'hector3_v1.idx',
-                  'SPECTOR2':'hector4_v1.idx'}
+IDX_FILES_SLOW = {'580V': 'hector1_v2.idx',
+                  '1000R': 'hector2_v2.idx',
+                  'SPECTOR1':'hector3_v2.idx',
+                  'SPECTOR2':'hector4_v2.idx'}
 
 IDX_FILES_FAST = {'580V': 'hector1_v1.idx',
                   '1000R': 'hector2_v1.idx',
@@ -288,23 +293,23 @@ CHECK_DATA = {
 PRIORITY_RECENT = 100
 
 STELLAR_MAGS_FILES = [
-    ('standards/secondary/APMCC_0917_STARS.txt', 'ATLAS',
+    (hector_path+'standards/secondary/APMCC_0917_STARS.txt', 'ATLAS',
      (0.076, 0.059, 0.041, 0.030, 0.023)),
-    ('standards/secondary/Abell_3880_STARS.txt', 'ATLAS',
+    (hector_path+'standards/secondary/Abell_3880_STARS.txt', 'ATLAS',
      (0.064, 0.050, 0.034, 0.025, 0.019)),
-    ('standards/secondary/Abell_4038_STARS.txt', 'ATLAS',
+    (hector_path+'standards/secondary/Abell_4038_STARS.txt', 'ATLAS',
      (0.081, 0.063, 0.044, 0.033, 0.024)),
-    ('standards/secondary/EDCC_0442_STARS.txt', 'ATLAS',
+    (hector_path+'standards/secondary/EDCC_0442_STARS.txt', 'ATLAS',
      (0.071, 0.052, 0.038, 0.029, 0.020)),
-    ('standards/secondary/Abell_0085.fstarcat.txt', 'SDSS_cluster',
+    (hector_path+'standards/secondary/Abell_0085.fstarcat.txt', 'SDSS_cluster',
      (0.0, 0.0, 0.0, 0.0, 0.0)),
-    ('standards/secondary/Abell_0119.fstarcat.txt', 'SDSS_cluster',
+    (hector_path+'standards/secondary/Abell_0119.fstarcat.txt', 'SDSS_cluster',
      (0.0, 0.0, 0.0, 0.0, 0.0)),
-    ('standards/secondary/Abell_0168.fstarcat.txt', 'SDSS_cluster',
+    (hector_path+'standards/secondary/Abell_0168.fstarcat.txt', 'SDSS_cluster',
      (0.0, 0.0, 0.0, 0.0, 0.0)),
-    ('standards/secondary/Abell_2399.fstarcat.txt', 'SDSS_cluster',
+    (hector_path+'standards/secondary/Abell_2399.fstarcat.txt', 'SDSS_cluster',
      (0.0, 0.0, 0.0, 0.0, 0.0)),
-    ('standards/secondary/sdss_stellar_mags.csv', 'SDSS_GAMA',
+    (hector_path+'standards/secondary/sdss_stellar_mags.csv', 'SDSS_GAMA',
      (0.0, 0.0, 0.0, 0.0, 0.0))]
 
 
@@ -313,7 +318,7 @@ def stellar_mags_files():
     for mags_file in STELLAR_MAGS_FILES:
         # The pre-determined ones listed above
         yield mags_file
-    for path in glob('standards/secondary/sdss_stellar_mags_*.csv'):
+    for path in glob(hector_path+'standards/secondary/sdss_stellar_mags_*.csv'):
         # Extra files that have been downloaded by the user
         yield (path, 'SDSS_GAMA', (0.0, 0.0, 0.0, 0.0, 0.0))
 
@@ -1684,10 +1689,11 @@ class Manager:
             fibtab = pf.getdata(fits.reduced_path[0:-8]+'.fits', 'MORE.FIBRES_IFU')
             fib_spec_id = fibtab.field('SPEC_ID'); fib_type = fibtab.field('TYPE'); fib_name = fibtab.field('SPAX_ID')
             thput = np.nanmedian(ex,1); thput = thput/np.nanmedian(thput[np.where((fib_type == 'P') | (fib_type == 'S'))])
+            thput_cut = 0.08
 
             tlmfail = np.zeros(len(fib_spec_id))
-            tlmfail[np.where( ((fib_type == 'P') | (fib_type == 'S')) & (thput < 0.1) & (fib_spec_id != 51) & (fib_spec_id != 181) )] = 1 # active (P, S) fibres with no signal
-            tlmfail[np.where( ((fib_type == 'N') | (fib_type == 'U')) & (thput > 0.2))] = 2 # inactive (N, U) fibres with a signal
+            tlmfail[np.where( ((fib_type == 'P') | (fib_type == 'S')) & (thput < thput_cut) & (fib_spec_id != 51) & (fib_spec_id != 181) )] = 1 # active (P, S) fibres with no signal
+            tlmfail[np.where( ((fib_type == 'N') | (fib_type == 'U')) & (thput > thput_cut))] = 2 # inactive (N, U) fibres with a signal
 
             tlmfile = pf.open(fits.reduced_path[0:-8]+'tlm.fits'); tlm = tlmfile['PRIMARY'].data #tlm position
         #    tlm[0,-1] = -10 # ****** only for testing cutoff detection
@@ -1723,9 +1729,9 @@ class Manager:
                 else:
                     for i in sub[0]:
                         if tlmfail[i] == 1:
-                            f.write('     * Fibre '+str(fib_spec_id[i])+' is allocated where there is no signal.\n')
+                            f.write('     * Fibre '+str(fib_spec_id[i])+' is allocated where there is no signal (thput='+str(thput[i])+').\n')
                         if tlmfail[i] == 2:
-                            f.write('     * Fibre '+str(fib_spec_id[i])+' is an inactive sky fibre (N) but allocated where there is a signal.\n')
+                            f.write('     * Fibre '+str(fib_spec_id[i])+' is an inactive sky fibre (N) but allocated where there is a signal (thput='+str(thput[i])+').\n')
                         if ((fib_type[i] == 'S') | (fib_type[i] == 'N')) & ((tlmfail[i] == 1) | (tlmfail[i] == 2)) & (str(fib_name[i]) != ''): #check point: wrong sky position
                             f.write('     Check point: This is a sky fibre '+str(fib_name[i])+'. Go to the top-end and check the sky fibre is correctly positioned. \n')
                             f.write('       If the position was wrong, disable the frames adding '+str(fits.filename)[0:-5]+' and '+otherfilename[0:-5]+' on '+str(self.abs_root)+'/disable.txt\n')
@@ -2208,32 +2214,32 @@ class Manager:
         # modified model name to be the version that takes ZD from header values, not
         # fitted.  This is because the fitting is not always robust for ZD.
         inputs_list = []
-        for fits in self.files(ndf_class='MFOBJECT', do_not_use=False,
-                               spectrophotometric=True, ccd='ccd_1', **kwargs):
-            if not overwrite:
-                hdulist = pf.open(fits.reduced_path)
-                try:
-                    hdu = hdulist['FLUX_CALIBRATION']
-                except KeyError:
-                    # Hasn't been done yet. Close the file and carry on.
-                    hdulist.close()
+        ccdname = ['ccd_1','ccd_3']
+        for nccd in ccdname:
+            for fits in self.files(ndf_class='MFOBJECT', do_not_use=False,
+                                   spectrophotometric=True, ccd=nccd, **kwargs):
+                if not overwrite:
+                    hdulist = pf.open(fits.reduced_path)
+                    try:
+                        hdu = hdulist['FLUX_CALIBRATION']
+                    except KeyError:
+                        # Hasn't been done yet. Close the file and carry on.
+                        hdulist.close()
+                    else:
+                        # Has been done. Close the file and skip to the next one.
+                        hdulist.close()
+                        continue
+                fits_2 = self.other_arm(fits)
+                path_pair = (fits.reduced_path, fits_2.reduced_path)
+                log.info(path_pair)
+                if fits.epoch < 2013.0:
+                    # SAMI v1 had awful throughput at blue end of blue, need to trim that data
+                    n_trim = 3 #how about ccd3?
                 else:
-                    # Has been done. Close the file and skip to the next one.
-                    hdulist.close()
-                    continue
-            fits_2 = self.other_arm(fits)
-            path_pair = (fits.reduced_path, fits_2.reduced_path)
-            log.info(path_pair)
-            if fits.epoch < 2013.0:
-                # SAMI v1 had awful throughput at blue end of blue, need to
-                # trim that data
-                n_trim = 3
-            else:
-                n_trim = 0
-            inputs_list.append({'path_pair': path_pair, 'n_trim': n_trim,
-                                'model_name': model_name, 'smooth': smooth,
-                                'speed':self.speed,'tellcorprim':self.telluric_correct_primary})
-
+                    n_trim = 0
+                inputs_list.append({'path_pair': path_pair, 'n_trim': n_trim,
+                                    'model_name': model_name, 'smooth': smooth,
+                                    'speed':self.speed,'tellcorprim':self.telluric_correct_primary})
         self.map(derive_transfer_function_pair, inputs_list)
         self.next_step('derive_transfer_function', print_message=True)
         return
@@ -2254,11 +2260,6 @@ class Manager:
         groups = self.group_files_by(('ccd'),
                                      ndf_class='MFOBJECT', do_not_use=False,
                                      spectrophotometric=True, **kwargs)
-
-
-
-        
-
         # Now combine the files within each group
         for fits_list in groups.values():
             path_list = [fits.reduced_path for fits in fits_list]
@@ -2268,12 +2269,21 @@ class Manager:
                 print('Combining files to create', path_out)
                 fluxcal2.combine_transfer_functions(path_list, path_out)
                 # Run the QC throughput measurement
-                self.qc_throughput_spectrum(path_out)
+                if os.path.exists(path_out):
+                    self.qc_throughput_spectrum(path_out)
 
                 # Since we've now changed the transfer functions, mark these as needing checks.
                 update_checks('FLX', fits_list, False)
 
-            # Copy the file into all required directories
+#maire I was planning to copy TRANSFERcombined.fits from the other instrument but they cannot share the file. I may remove this when cleaning. 
+#        for fits_list in groups.values():
+#            path_out = os.path.join(os.path.dirname(fits_list[0].reduced_path),'TRANSFERcombined.fits')
+#            if overwrite or not os.path.exists(path_out):
+#                path_other_spec = self.other_spec(fits_list[0]).reduced_path
+#                path_with_copy = os.path.join(os.path.dirname(path_other_spec),'TRANSFERcombined.fits')
+#                shutil.copy2(path_with_copy, path_out)
+
+            # Copy the file into all required directories for each standard stars (e.g. LTT1788)
             paths_with_copies = [os.path.dirname(path_list[0])]
             for path in path_list:
                 if os.path.dirname(path) not in paths_with_copies:
@@ -2282,7 +2292,6 @@ class Manager:
                     if overwrite or not os.path.exists(path_copy):
                         print('Copying combined file to', path_copy)
                         shutil.copy2(path_out, path_copy)
-
                     paths_with_copies.append(os.path.dirname(path_copy))
         self.next_step('combine_transfer_function', print_message=True)
         return
@@ -2317,65 +2326,67 @@ class Manager:
         """Apply telluric correction to object frames."""
         # First make the list of file pairs to correct
         inputs_list = []
-        for fits_2 in self.files(ndf_class='MFOBJECT', do_not_use=False,
-                                 spectrophotometric=False, ccd='ccd_2',
-                                 name=name, **kwargs):
-            if os.path.exists(fits_2.telluric_path) and not overwrite:
-                # Already been done; skip to the next file
-                continue
-            fits_1 = self.other_arm(fits_2)
-            if fits_2.epoch < 2013.0:
-                # SAMI v1 had awful throughput at blue end of blue, need to
-                # trim that data.
-                n_trim = 3
-                # Also get telluric shape from primary standard
-                use_PS = True
-                fits_spectrophotometric = self.matchmaker(fits_2, 'fcal')
-                if fits_spectrophotometric is None:
-                    # Try again with less strict criteria
-                    fits_spectrophotometric = self.matchmaker(
-                        fits_2, 'fcal_loose')
-                    if fits_spectrophotometric is None:
-                        raise MatchException('No matching flux calibrator ' +
-                                             'found for ' + fits_2.filename)
-                PS_spec_file = os.path.join(
-                    fits_spectrophotometric.reduced_dir,
-                    'TRANSFERcombined.fits')
-                # For September 2012, secondary stars were often not in the
-                # hexabundle at all, so use the theoretical airmass scaling
-                if fits_2.epoch < 2012.75:
-                    scale_PS_by_airmass = True
-                else:
-                    scale_PS_by_airmass = False
-                # Also constrain the zenith distance in fitting the star
-                if model_name is None:
-                    model_name_out = 'ref_centre_alpha_circ_hdratm'
-                else:
-                    model_name_out = model_name
-            else:
-                # These days everything is hunkydory
-                n_trim = 0
-                use_PS = False
-                PS_spec_file = None
-                scale_PS_by_airmass = False
-                if model_name is None:
-#                    model_name_out = 'ref_centre_alpha_dist_circ_hdratm'
-                    # in some case the fit of the model does not do a good job of
-                    # getting the zenith distance.  A more reliable fit is
-                    # obtained when we instead use the ZD based on the atmosphere
-                    # fully, not just the direction:
-                    model_name_out = 'ref_centre_alpha_circ_hdratm'
-                else:
-                    model_name_out = model_name
-            inputs_list.append({
-                'fits_1': fits_1,
-                'fits_2': fits_2,
-                'n_trim': n_trim,
-                'use_PS': use_PS,
-                'scale_PS_by_airmass': scale_PS_by_airmass,
-                'PS_spec_file': PS_spec_file,
-                'model_name': model_name_out,
-                'speed':self.speed})
+        ccdname = ['ccd_2','ccd_4']
+        for nccd in ccdname:
+             for fits_2 in self.files(ndf_class='MFOBJECT', do_not_use=False,
+                                      spectrophotometric=False, ccd=nccd,
+                                      name=name, **kwargs):
+                 if os.path.exists(fits_2.telluric_path) and not overwrite:
+                     # Already been done; skip to the next file
+                     continue
+                 fits_1 = self.other_arm(fits_2)
+                 if fits_2.epoch < 2013.0:
+                     # SAMI v1 had awful throughput at blue end of blue, need to
+                     # trim that data.
+                     n_trim = 3
+                     # Also get telluric shape from primary standard
+                     use_PS = True
+                     fits_spectrophotometric = self.matchmaker(fits_2, 'fcal')
+                     if fits_spectrophotometric is None:
+                         # Try again with less strict criteria
+                         fits_spectrophotometric = self.matchmaker(
+                             fits_2, 'fcal_loose')
+                         if fits_spectrophotometric is None:
+                             raise MatchException('No matching flux calibrator ' +
+                                                  'found for ' + fits_2.filename)
+                     PS_spec_file = os.path.join(
+                         fits_spectrophotometric.reduced_dir,
+                         'TRANSFERcombined.fits')
+                     # For September 2012, secondary stars were often not in the
+                     # hexabundle at all, so use the theoretical airmass scaling
+                     if fits_2.epoch < 2012.75:
+                         scale_PS_by_airmass = True
+                     else:
+                         scale_PS_by_airmass = False
+                     # Also constrain the zenith distance in fitting the star
+                     if model_name is None:
+                         model_name_out = 'ref_centre_alpha_circ_hdratm'
+                     else:
+                         model_name_out = model_name
+                 else:
+                     # These days everything is hunkydory. Haven't checked for Hector though. 
+                     n_trim = 0
+                     use_PS = False
+                     PS_spec_file = None
+                     scale_PS_by_airmass = False
+                     if model_name is None:
+#                         model_name_out = 'ref_centre_alpha_dist_circ_hdratm'
+                         # in some case the fit of the model does not do a good job of
+                         # getting the zenith distance.  A more reliable fit is
+                         # obtained when we instead use the ZD based on the atmosphere
+                         # fully, not just the direction:
+                         model_name_out = 'ref_centre_alpha_circ_hdratm'
+                     else:
+                         model_name_out = model_name
+                 inputs_list.append({
+                     'fits_1': fits_1,
+                     'fits_2': fits_2,
+                     'n_trim': n_trim,
+                     'use_PS': use_PS,
+                     'scale_PS_by_airmass': scale_PS_by_airmass,
+                     'PS_spec_file': PS_spec_file,
+                     'model_name': model_name_out,
+                     'speed':self.speed})
         # Now send this list to as many cores as we are using
         # Limit this to 10, because of semaphore issues I don't understand
         old_n_cpu = self.n_cpu
@@ -2433,11 +2444,11 @@ class Manager:
             # No new magnitudes were downloaded
             return
         idx = 1
-        path_out = 'standards/secondary/sdss_stellar_mags_{}.csv'.format(idx)
+        path_out = hector_path+'standards/secondary/sdss_stellar_mags_{}.csv'.format(idx)
         while os.path.exists(path_out):
             idx += 1
             path_out = (
-                'standards/secondary/sdss_stellar_mags_{}.csv'.format(idx))
+                hector_path+'standards/secondary/sdss_stellar_mags_{}.csv'.format(idx))
         if isinstance(new, bool) and new:
             # get_sdss_stellar_mags could not do an automatic retrieval.
             path_in = input('Enter the path to the downloaded file:\n')
@@ -3099,9 +3110,9 @@ class Manager:
         detector = pf.getval(path_input, 'DETECTOR')
         epoch = pf.getval(path_input, 'EPOCH')
         # Load mean throughput function for that CCD
-        path_list = (glob('standards/throughput/mean_throughput_' +
+        path_list = (glob(hector_path+'standards/throughput/mean_throughput_' +
                           detector + '.fits') +
-                     glob('standards/throughput/mean_throughput_' +
+                     glob(hector_path+'standards/throughput/mean_throughput_' +
                           detector + '_*.fits'))
         for path_mean in path_list:
             hdulist_mean = pf.open(path_mean)
@@ -3117,7 +3128,7 @@ class Manager:
                 break
             hdulist_mean.close()
         else:
-            print('Warning: No mean throughput file found for QC checks.')
+            print('  Warning: No mean throughput file found for QC checks.')
             found_mean = False
         if found_mean:
             relative_throughput = absolute_throughput / mean_throughput
@@ -3866,6 +3877,24 @@ class Manager:
         other_fits = self.fits_file(
             other_filename, include_linked_managers=include_linked_managers)
         return other_fits
+
+#marie do I really need this routine?
+#    def other_spec(self, fits, include_linked_managers=False):
+#        """Return the FITSFile from the other spectrograph of the same arm."""
+#        if fits.ccd == 'ccd_1':
+#            other_number = '3'
+#        elif fits.ccd == 'ccd_2':
+#            other_number = '4'
+#        elif fits.ccd == 'ccd_3':
+#            other_number = '1'
+#        elif fits.ccd == 'ccd_4':
+#            other_number = '2'
+#        else:
+#            raise ValueError('Unrecognised CCD: ' + fits.ccd)
+#        other_filename = fits.filename[:5] + other_number + fits.filename[6:]
+#        other_fits = self.fits_file(
+#            other_filename, include_linked_managers=include_linked_managers)
+#        return other_fits
 
     def cubed_path(self, name, arm, fits_list, field_id, gzipped=False,
                    exists=False, tag=None, **kwargs):
@@ -5324,6 +5353,7 @@ def derive_transfer_function_pair(inputs):
     n_trim = inputs['n_trim']
     model_name = inputs['model_name']
     smooth = inputs['smooth']
+
     print('Deriving transfer function for ' +
           os.path.basename(path_pair[0]) + ' and ' +
           os.path.basename(path_pair[1]))
@@ -5336,8 +5366,7 @@ def derive_transfer_function_pair(inputs):
         print('Warning: No star found in dataframe, skipping ' +
               os.path.basename(path_pair[0]))
         return
-    good_psf = pf.getval(path_pair[0], 'GOODPSF',
-                         'FLUX_CALIBRATION')
+    good_psf = pf.getval(path_pair[0], 'GOODPSF', 'FLUX_CALIBRATION')
     if not good_psf:
         print('Warning: Bad PSF fit in ' + os.path.basename(path_pair[0]) +
               '; will skip this one in combining.')
@@ -5354,6 +5383,7 @@ def telluric_correct_pair(inputs):
     scale_PS_by_airmass = inputs['scale_PS_by_airmass']
     PS_spec_file = inputs['PS_spec_file']
     model_name = inputs['model_name']
+
     if fits_1 is None or not os.path.exists(fits_1.fluxcal_path):
         print('Matching blue arm not found for ' + fits_2.filename +
               '; skipping this file.')

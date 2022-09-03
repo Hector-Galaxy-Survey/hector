@@ -99,13 +99,15 @@ from ppxf.ppxf_util import log_rebin
 #from ppxf import ppxf
 #from ppxf_util import log_rebin
 
+import hector
+
 
 # Get the astropy version as a tuple of integers
 ASTROPY_VERSION = tuple(int(x) for x in ASTROPY_VERSION.split('.'))
-
-STANDARD_CATALOGUES = ('./standards/ESO/ESOstandards.dat',
-                       './standards/Bessell/Bessellstandards.dat')
-SSO_EXTINCTION_TABLE = './standards/extinsso.tab'
+hector_path = str(hector.__path__[0])+'/'
+STANDARD_CATALOGUES = (hector_path+'standards/ESO/ESOstandards.dat',
+                       hector_path+'standards/Bessell/Bessellstandards.dat')
+SSO_EXTINCTION_TABLE = hector_path+'standards/extinsso.tab'
 
 REFERENCE_WAVELENGTH = 5000.0
 
@@ -214,14 +216,11 @@ def chunk_data(ifu, n_drop=None, n_chunk=None, sigma_clip=None):
         data[clip] = data_smooth[clip]
     else:
         data = ifu.data
-
     # Convert to integer for future compatibility.
     n_chunk = np.int(np.floor(n_chunk))
     chunk_size = np.int(np.floor(chunk_size))
-
     start = n_drop
     end = n_drop + n_chunk * chunk_size
-
     data = data[:, start:end].reshape(n_fibre, n_chunk, chunk_size)
     variance = ifu.var[:, start:end].reshape(n_fibre, n_chunk, chunk_size)
     wavelength = ifu.lambda_range[start:end].reshape(n_chunk, chunk_size)
@@ -306,7 +305,7 @@ def residual(parameters_vector, datatube, vartube, xfibre, yfibre,
 
 def fit_model_flux(datatube, vartube, xfibre, yfibre, wavelength, model_name,
                    fixed_parameters=None, secondary=False):
-    """Fit a model to the given datatube."""
+    """Fit a model to the given datatube. slow_task 100 sec """
     par_0_dict = first_guess_parameters(datatube, vartube, xfibre, yfibre, 
                                         wavelength, model_name)
     par_0_vector = parameters_dict_to_vector(par_0_dict, model_name)
@@ -641,7 +640,7 @@ def derive_transfer_function(path_list, max_sep_arcsec=60.0,
     if star_match is None:
         raise ValueError('No standard star found in the data.')
     standard_data = read_standard_data(star_match)
-    
+
     # Apply telluric correction to primary standards and write to new file, returning
     # the paths to those files.
     if molecfit_available & (speed == 'slow') & tell_corr_primary:
@@ -649,10 +648,10 @@ def derive_transfer_function(path_list, max_sep_arcsec=60.0,
                                             molecfit_dir=molecfit_dir)
     else:
         path_list_tel = path_list
-
     # Read the observed data, in chunks
     chunked_data = read_chunked_data(path_list_tel, star_match['probenum'])
     trim_chunked_data(chunked_data, n_trim)
+
     # Fit the PSF
     fixed_parameters = set_fixed_parameters(
         path_list_tel, model_name, probenum=star_match['probenum'])
@@ -697,20 +696,21 @@ def match_standard_star(filename, max_sep_arcsec=60.0,
     for probenum in probenum_list:
         this_probe = ((fibre_table['PROBENUM'] == probenum) &
                       (fibre_table['TYPE'] == 'P'))
-        ra = np.mean(fibre_table['FIB_MRA'][this_probe])
-        dec = np.mean(fibre_table['FIB_MDEC'][this_probe])
-        if primary_header['AXIS'] != 'REF':
-            # The observation has been taken in an axis other than REF,
-            # therefore the RA and DEC must be adjusted to get correct
-            # coordinates.
-            dec += primary_header['AXIS_X'] * 180/np.pi
-            ra += primary_header['AXIS_Y'] * 180/np.pi
-        star_match = match_star_coordinates(
-            ra, dec, max_sep_arcsec=max_sep_arcsec, catalogues=catalogues)
-        if star_match is not None:
-            # Let's assume there will only ever be one match
-            star_match['probenum'] = probenum
-            return star_match
+        if any(this_probe): #only when we find the probe in the instrument
+            ra = nanmean(fibre_table['FIB_MRA'][this_probe])
+            dec = nanmean(fibre_table['FIB_MDEC'][this_probe])
+            if primary_header['AXIS'] != 'REF':
+                # The observation has been taken in an axis other than REF,
+                # therefore the RA and DEC must be adjusted to get correct
+                # coordinates.
+                dec += primary_header['AXIS_X'] * 180/np.pi
+                ra += primary_header['AXIS_Y'] * 180/np.pi
+            star_match = match_star_coordinates(
+                ra, dec, max_sep_arcsec=max_sep_arcsec, catalogues=catalogues)
+            if star_match is not None:
+                # Let's assume there will only ever be one match
+                star_match['probenum'] = probenum
+                return star_match
     # Uh-oh, should have found a star by now. Return None and let the outer
     # code deal with it.
     return
@@ -835,11 +835,12 @@ def extract_total_flux(ifu, psf_parameters, model_name, clip=None):
             interp_over, interp_from, background[interp_from])
         sigma_background[interp_over] = np.interp(
             interp_over, interp_from, sigma_background[interp_from])
+
     return flux, background, sigma_flux, sigma_background
 
 def extract_flux_slice(data, variance, xpos, ypos, psf_parameters_slice):
     """Extract the flux from a single wavelength slice."""
-    good_data = np.where(np.isfinite(data))[0]
+    good_data = np.where((np.isfinite(data)) & (np.isfinite(variance)) & (variance > 0.))[0] 
     # Require at least half the fibres to perform a fit
     if len(good_data) > 30:
         data = data[good_data]
@@ -1308,14 +1309,9 @@ def calc_eff_airmass(header,return_zd=False):
     # not sure why, but putting this in utils.other is a solution that seems to work.
     
     # get all the relevant header keywords:
-    meanra = header['MEANRA']
-    meandec = header['MEANDEC']
-    utdate = header['UTDATE']
-    utstart = header['UTSTART']
-    utend = header['UTEND']
-    lat_obs = header['LAT_OBS']
-    long_obs = header['LONG_OBS']
-    alt_obs = header['ALT_OBS']
+    meanra = header['MEANRA']; meandec = header['MEANDEC']
+    utdate = header['UTDATE']; utstart = header['UTSTART']; utend = header['UTEND']
+    lat_obs = header['LAT_OBS']; long_obs = header['LONG_OBS']; alt_obs = header['ALT_OBS']
     zdstart = header['ZDSTART']
 
     # define observatory location:
@@ -1418,7 +1414,7 @@ def remove_atmosphere_rss(hdulist):
     extinction_mags = np.interp(wavelength, wavelength_extinction, 
                                 extinction_mags)
     # Scale for observed airmass
-    #airmass = calculate_airmass(header['ZDSTART'], header['ZDEND'])
+    # airmass = calculate_airmass(header['ZDSTART'], header['ZDEND'])
     # calculate effective airmass using header keywords, not just the
     # ZDSTART.  Note that the old code calculate_airmass() just sets
     # ZDSTART=ZDEND, which is not very good in some cases.
@@ -1431,16 +1427,17 @@ def remove_atmosphere_rss(hdulist):
     return
     
 
-def calculate_airmass( zdstart, zdend ):
-    # For now, ignoring zdend because it's wrong if the telescope slewed during
-    # readout
-    zdend = zdstart
-    # Is this right? Doesn't it move non-linearly? [JTA]
-    zdmid = ( zdstart + zdend ) / 2.
-    amstart, ammid, amend = zd2am( np.array( [zdstart, zdmid, zdend] ) )
-    airmass = ( amstart + 4. * ammid + amend ) / 6.
-    # Simpson integration across 3 steps
-    return airmass
+#Sree: may remove this when cleaning.
+#def calculate_airmass( zdstart, zdend ):
+#    # For now, ignoring zdend because it's wrong if the telescope slewed during
+#    # readout
+#    zdend = zdstart
+#    # Is this right? Doesn't it move non-linearly? [JTA]
+#    zdmid = ( zdstart + zdend ) / 2.
+#    amstart, ammid, amend = zd2am( np.array( [zdstart, zdmid, zdend] ) )
+#    airmass = ( amstart + 4. * ammid + amend ) / 6.
+#    # Simpson integration across 3 steps
+#    return airmass
 
 def zd2am( zenithdistance ):
     # fitting formula from Pickering (2002)
@@ -1478,48 +1475,52 @@ def combine_transfer_functions(path_list, path_out, use_all=False, sn_weight=Tru
                 continue
             if good_psf:
                 path_list_good.append(path)
+
     n_file = len(path_list_good)
-    n_pixel = pf.getval(path_list_good[0], 'NAXIS1')
-    tf_array = np.zeros((n_file, n_pixel))
-    med_sn = np.zeros(n_file)
-    # Read the individual transfer functions
-    for index, path in enumerate(path_list_good):
-        tf_array[index, :] = pf.getdata(path, 'FLUX_CALIBRATION')[-1, :]
-        # get the flux and sigma of spectrum and create a S/N spectrum:
-        sn_spec = pf.getdata(path, 'FLUX_CALIBRATION')[0, :]/pf.getdata(path, 'FLUX_CALIBRATION')[2, :]
-        # calculate a median S/N:
-        med_sn[index] = np.nanmedian(sn_spec)
-        # outout if needed:
-        # print(index,path,med_sn[index],percent10,percent90)
-
-    # print the S/N values so we have an idea of the range used:
-    print('median S/N values for different std observations:',med_sn)
-    # Make sure the overall scaling for each TF matches the others.
-    # the scale is chosen to be the midpoint of the TF array (at index npix/2):
-    scale = tf_array[:, n_pixel//2].copy()
-    # dividing scale of each TF by the median scale.  This gives a value
-    # to correct the TF to the median and align all the TFs vertically.
-    scale /= np.median(scale)
-    tf_array = (tf_array.T / scale).T
-    # Combine them.
-    # Here we take the mean, but we weight by (S/N)**2.  This assumes that
-    # the variance is well propagated to the extracted std spectrum.
-    # we could possibly place an upper limit on S/N, but looking at a
-    # representative sample, the range seems to be median S/N~100 to 500.
-    #  This is not a large dynamic range.
-    # Using inverse because it's more stable when observed flux is low
-    if (sn_weight):
-        for i in range(n_file):
-            tf_array[i,:] = med_sn[i]**2 * 1.0/tf_array[i,:]
-
-        wtsum = nanmean(med_sn**2)
-        tf_combined = 1.0 / (nanmean(tf_array, axis=0)/wtsum)
-
-        
+    if n_file == 0:
+        print('  No good calibration stars from the given frames:')
+        for path in path_list:        
+            print('    '+str(path[-18:-8]))
     else:
-        tf_combined = 1.0 / nanmean(1.0 / tf_array, axis=0)
+        n_pixel = pf.getval(path_list_good[0], 'NAXIS1')
+        tf_array = np.zeros((n_file, n_pixel))
+        med_sn = np.zeros(n_file)
+        # Read the individual transfer functions
+        for index, path in enumerate(path_list_good):
+            tf_array[index, :] = pf.getdata(path, 'FLUX_CALIBRATION')[-1, :]
+            # get the flux and sigma of spectrum and create a S/N spectrum:
+            sn_spec = pf.getdata(path, 'FLUX_CALIBRATION')[0, :]/pf.getdata(path, 'FLUX_CALIBRATION')[2, :]
+            # calculate a median S/N:
+            med_sn[index] = np.nanmedian(sn_spec)
+            # outout if needed:
+            # print(index,path,med_sn[index],percent10,percent90)
 
-    save_combined_transfer_function(path_out, tf_combined, path_list_good)
+        # print the S/N values so we have an idea of the range used:
+        print('  median S/N values for different std observations:',med_sn)
+        # Make sure the overall scaling for each TF matches the others.
+        # the scale is chosen to be the midpoint of the TF array (at index npix/2):
+        scale = tf_array[:, n_pixel//2].copy()
+        # dividing scale of each TF by the median scale.  This gives a value
+        # to correct the TF to the median and align all the TFs vertically.
+        scale /= np.median(scale)
+        tf_array = (tf_array.T / scale).T
+        # Combine them.
+        # Here we take the mean, but we weight by (S/N)**2.  This assumes that
+        # the variance is well propagated to the extracted std spectrum.
+        # we could possibly place an upper limit on S/N, but looking at a
+        # representative sample, the range seems to be median S/N~100 to 500.
+        #  This is not a large dynamic range.
+        # Using inverse because it's more stable when observed flux is low
+        if (sn_weight):
+            for i in range(n_file):
+                tf_array[i,:] = med_sn[i]**2 * 1.0/tf_array[i,:]
+
+            wtsum = nanmean(med_sn**2)
+            tf_combined = 1.0 / (nanmean(tf_array, axis=0)/wtsum)
+        else:
+            tf_combined = 1.0 / nanmean(1.0 / tf_array, axis=0)
+
+        save_combined_transfer_function(path_out, tf_combined, path_list_good)
     return
 
 def save_combined_transfer_function(path_out, tf_combined, path_list):
@@ -1644,7 +1645,7 @@ def median_filter_rotate(array, window):
     result[good[-1]+1:] = array[good[-1]+1:]
     return result
 
-def fit_sec_template_ppxf(path,doplot=False,verbose=False,tempfile='standards/kurucz_stds_raw_v5.fits',mdegree=8,lam1=3600.0,lam2=5700.0):
+def fit_sec_template_ppxf(path,doplot=False,verbose=False,tempfile=hector_path+'standards/kurucz_stds_raw_v5.fits',mdegree=8,lam1=3600.0,lam2=5700.0):
     """main routine that actually calls ppxf to do the fitting of the
     secondary flux calibration stars to model templates."""
 
@@ -1886,9 +1887,9 @@ def combine_template_weights(path_list,path_out,verbose=False):
         nf = nf + 1
 
     # find the average velocity and sigma:
-    vel = np.nanmean(temp_vel)
+    vel = nanmean(temp_vel)
     vel_err = np.nanstd(temp_vel)/np.sqrt(float(nf))
-    sig = np.nanmean(temp_sig)
+    sig = nanmean(temp_sig)
     sig_err = np.nanstd(temp_sig)/np.sqrt(float(nf))
     if (verbose):
         print('mean template velocity:',vel,'+-',vel_err)
@@ -1927,7 +1928,7 @@ def combine_template_weights(path_list,path_out,verbose=False):
       
     return 
 
-def derive_secondary_tf(path_list,path_list2,path_out,tempfile='standards/kurucz_stds_raw_v5.fits',verbose=False,doplot=False,minexp=600.0):
+def derive_secondary_tf(path_list,path_list2,path_out,tempfile=hector_path+'standards/kurucz_stds_raw_v5.fits',verbose=False,doplot=False,minexp=600.0):
     """Use the best fit weights from template fits to secondary flux 
     calibration stars to derive a transfer function for each frame and
     write that to an extension in the data.
@@ -2209,8 +2210,8 @@ def derive_secondary_tf(path_list,path_list2,path_out,tempfile='standards/kurucz
     # combine the different TFs together to get a mean TF for this field:
     # TODO: consider more robust combination.  e.g. scale before combine,
     # remove outliers etc.
-    tf_mean_b = np.nanmean(tf_b[0:nfiles,:],axis=0)
-    tf_mean_r = np.nanmean(tf_r[0:nfiles,:],axis=0)
+    tf_mean_b = nanmean(tf_b[0:nfiles,:],axis=0)
+    tf_mean_r = nanmean(tf_r[0:nfiles,:],axis=0)
 
     # copy the TRANSFER2combined.fits file to the CCD_2 directory.
     ccd2_path = os.path.dirname(path_list2[0])+'/'+os.path.basename(path_out)
@@ -2330,8 +2331,8 @@ def apply_secondary_tf(path1,path2,path_out1,path_out2,use_av_tf_sec=False,verbo
         # that can move around a little more:
         idx_b = np.where((lam_av_b>4500.0) & (lam_av_b<5500.0))  
         idx_r = np.where((lam_av_r>6500.0) & (lam_av_r<7200.0))  
-        scale_b = np.nanmean(ratio_b[idx_b]) 
-        scale_r = np.nanmean(ratio_b[idx_r])
+        scale_b = nanmean(ratio_b[idx_b]) 
+        scale_r = nanmean(ratio_b[idx_r])
 
         # have a single scaling for blue and red:
         scale = (scale_b+scale_r)/2.0

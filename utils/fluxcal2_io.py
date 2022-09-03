@@ -57,8 +57,10 @@ def save_extracted_flux(path, observed_flux, observed_background,
         ('MODEL', model_name, 'Name of model used in PSF fit'),
         ('GOODPSF', good_psf, 'Whether the PSF fit has good parameters')]
     if 'path' in star_match:
+        star_match_path = star_match['path']
+        star_match_path = star_match_path[star_match_path.find('hector'):]
         header_item_list.append(
-            ('STDFILE', star_match['path'], 'Filename of standard spectrum'))
+            ('STDFILE', star_match_path, 'Filename of standard spectrum'))
     if 'separation' in star_match:
         header_item_list.append(
             ('STDOFF', star_match['separation'], 'Offset (arcsec) to standard '
