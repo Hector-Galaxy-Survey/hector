@@ -1681,6 +1681,7 @@ class Manager:
         f.write('  1. failed tlm maps may have active fibres allocated where there is no signal\n')
         f.write('  2. failed tlm maps may have inactive fibres allocated where there is a signal\n')
         f.write('  3. failed tlm maps sometimes show tlms not in numerical order\n\n')
+        f.write('  Find '+hector_path+'/observing/check_tramline_example.pdf for examples.\n\n')
 
         nfail = 0
         for fits in file_iterable:
@@ -4415,10 +4416,13 @@ class Manager:
         else:
             # A directory name has been provided
             dirname = fits_or_dirname
-            # Let the GUI sort out what idx file to use
-            # TODO: Look in the directory for a suitable fits file to work out
-            # the idx file
-            idx_file = None
+            if dirname.find('ccd_') > 0:
+                # Specify what idx file to use using the given dirname
+                readccd = int(dirname[dirname.find('ccd_')+4:dirname.find('ccd_')+5])
+                ngrating = ['580V','1000R','SPECTOR1','SPECTOR2']
+                idx_file = IDX_FILES_FAST[ngrating[readccd]]
+            else: 
+                idx_file = None #Let the GUI sort out what idx file to use
         tdfdr.load_gui(dirname, idx_file=idx_file)
         return
 
