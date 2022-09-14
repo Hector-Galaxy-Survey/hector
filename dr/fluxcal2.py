@@ -90,10 +90,9 @@ try:
     from bottleneck import nansum, nanmean
 except ImportError:
     from numpy import nansum, nanmean
-    warnings.warn("Not Using bottleneck: Speed will be improved if you install bott    leneck")
+    warnings.warn("Not Using bottleneck: Speed will be improved if you install bottleneck")
 
 # import of ppxf for fitting of secondary stds:
-#import ppxf as ppxf_package
 from ppxf.ppxf import ppxf
 from ppxf.ppxf_util import log_rebin
 #from ppxf import ppxf

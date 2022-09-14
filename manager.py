@@ -1787,7 +1787,7 @@ class Manager:
         print('\nNote that this task properly works after running mngr.make_tlm(), mngr.reduce_arc(),and mngr.reduce_fflat()')
         if nfail > 0:
             f.write('\n=======\nUnfortunately tramline failures are detected. Follow the steps.\n')
-            f.write('Once you go throught all the check points, you run mngr.check_tramline() again. \n')
+            f.write('Once you go through all the check points, you run mngr.check_tramline() again. \n')
             print('\nUnfortunately tramline failures are detected. \nOpen '+str(self.abs_root)+'/tlm_failure.txt and follow the steps.\n')
         else:
             print('\nCongratulations! No tramline failures are detected.\nFind list of frames checked: '+str(self.abs_root)+'/tlm_failure.txt\n')
@@ -2336,7 +2336,8 @@ class Manager:
                      # Already been done; skip to the next file
                      continue
                  fits_1 = self.other_arm(fits_2)
-                 if fits_2.epoch < 2013.0:
+
+                 if (fits_2.epoch < 2013.0) | (fits_2.epoch > 2021.0):
                      # SAMI v1 had awful throughput at blue end of blue, need to
                      # trim that data.
                      n_trim = 3
@@ -2355,7 +2356,7 @@ class Manager:
                          'TRANSFERcombined.fits')
                      # For September 2012, secondary stars were often not in the
                      # hexabundle at all, so use the theoretical airmass scaling
-                     if fits_2.epoch < 2012.75:
+                     if (fits_2.epoch < 2012.75) | (fits_2.epoch > 2021.0):
                          scale_PS_by_airmass = True
                      else:
                          scale_PS_by_airmass = False
@@ -2393,7 +2394,6 @@ class Manager:
         old_n_cpu = self.n_cpu
         if old_n_cpu > 10:
             self.n_cpu = 10
-
         done_list = self.map(telluric_correct_pair, inputs_list)
 
         # Mark files as needing visual checks:
@@ -3056,6 +3056,7 @@ class Manager:
 
     def qc_seeing(self, fits):
         """Copy the FWHM over the QC header."""
+        print(fits.telluric_path)
         self.ensure_qc_hdu(fits.telluric_path)
         hdulist = pf.open(fits.telluric_path, 'update')
         source_header = hdulist['FLUX_CALIBRATION'].header
@@ -5367,12 +5368,12 @@ def derive_transfer_function_pair(inputs):
             molecfit_available = MOLECFIT_AVAILABLE, molecfit_dir = MF_BIN_DIR,
             speed=inputs['speed'],tell_corr_primary=inputs['tellcorprim'])
     except ValueError:
-        print('Warning: No star found in dataframe, skipping ' +
+        print('  Warning: No star found in dataframe, skipping ' +
               os.path.basename(path_pair[0]))
         return
     good_psf = pf.getval(path_pair[0], 'GOODPSF', 'FLUX_CALIBRATION')
     if not good_psf:
-        print('Warning: Bad PSF fit in ' + os.path.basename(path_pair[0]) +
+        print('  Warning: Bad PSF fit in ' + os.path.basename(path_pair[0]) +
               '; will skip this one in combining.')
     return
 

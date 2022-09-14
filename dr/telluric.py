@@ -52,7 +52,8 @@ def derive_transfer_function(frame_list, PS_spec_file=None, use_PS=False,
     # NB: when use_PS is True and scale_PS_by_airmass is False, we don't
     # actually need to extract it, but we do still need to create the
     # extension and copy atmospheric parameters across
-    extract_secondary_standard(frame_list, model_name=model_name, n_trim=n_trim, use_probe=use_probe, hdu_name=hdu_name)
+#Sree: I turn this off at the moment because ss is not ready to use
+#    extract_secondary_standard(frame_list, model_name=model_name, n_trim=n_trim, use_probe=use_probe, hdu_name=hdu_name)
 
     # if user defines, use a scaled primary standard telluric correction
     if use_PS:
@@ -77,6 +78,9 @@ def derive_transfer_function(frame_list, PS_spec_file=None, use_PS=False,
     
     else:
         # Get data
+        #Sree: add this here for now for PS
+        extract_secondary_standard(frame_list, model_name=model_name, n_trim=n_trim, use_probe=use_probe, hdu_name=hdu_name)
+
         hdulist = pf.open(frame_list[1])
         hdu = hdulist[hdu_name]
        
@@ -106,6 +110,7 @@ def derive_transfer_function(frame_list, PS_spec_file=None, use_PS=False,
         transfer_function = SS_transfer_function
         sigma_transfer = SS_sigma_transfer
 
+
     # Require that all corrections are > 1, as expected for absorption
     transfer_function = np.maximum(transfer_function, 1.0)
     
@@ -116,14 +121,27 @@ def derive_transfer_function(frame_list, PS_spec_file=None, use_PS=False,
     data_1 = np.vstack((np.zeros(n_pix), np.ones(n_pix), np.zeros(n_pix)))
     data_2 = np.vstack((model_flux, transfer_function, sigma_transfer))
     for path, data_new in zip(frame_list, (data_1, data_2)):
+        # Sree: when using PS, there is no 'FLUX_CALIBRATION' extension on *fcal.fits. it is stil required to call extract_secondary_standard()
+        # However, extract_secondary_standard() is not ready to use and I copy 'FLUX_CALIBRATION' extension from TRANSFERcombined.fits for PS
+
         hdulist = pf.open(path, 'update', do_not_scale_image_data=True)
-        hdu = hdulist[hdu_name]
-        # Arrange the data into a single array
-        data = np.vstack((hdu.data[:4, :], data_new))
-        # Save the data back into the FITS file
-        hdu.data = data
-        hdulist.close()
-    
+        try: #Check if there is hdu_name extension, and pass if not (for PS)
+            existing_index = hdulist.index_of(hdu_name)
+        except KeyError: #for PS, without calling extract_secondary_standard(). may remove this later when it is possible to call extract_secoondary_standard
+            tfhdulist = pf.open(PS_spec_file); tfhdu = tfhdulist[hdu_name]
+            new_hdu = pf.ImageHDU(tfhdu.data, name=hdu_name)
+            data = np.vstack((new_hdu.data[:4, :], data_new))
+            new_hdu.header = tfhdu.header
+            new_hdu.header['FWHM'] = (0, 'We cannot derive FWHM from Primary Standard')
+            hdulist.append(new_hdu)
+            hdulist.close()
+        else:
+            hdu = hdulist[hdu_name]
+            # Arrange the data into a single array
+            data = np.vstack((hdu.data[:4, :], data_new))
+            # Save the data back into the FITS file
+            hdu.data = data
+            hdulist.close()
     return
 
 def residual(A, SS_transfer_function, PS_transfer_function, PS_wave_axis):
@@ -149,7 +167,8 @@ def primary_standard_transfer_function(PS_spec_file):
     PS_spec_list = []
     PS_noise_list = []
     for i in range(len(PS_spec_data)):
-        if i == 0:
+#        if i == 0: #Sree: this line is replaced by the below not to consider throughput extension.. but why throughput extension is there from the beginning?
+        if (i == 0) | ((i != 0) and (PS_spec_data[i].header['EXTNAME'] == 'THROUGHPUT')):
             pass
         else:
             shape = PS_spec_data[i].data[-1]
@@ -295,6 +314,7 @@ def is_star(name):
     abell_star = '(Abell[0-9]+_SS[0-9]+)'
     cluster_star = '(((999)|(888))[0-9]{9})'
     star_re = '|'.join((pilot_star, gama_star, abell_star, cluster_star))
+    print(star_re)
     return bool(re.match(star_re, name))
 
 def apply_correction(path_in, path_out):
