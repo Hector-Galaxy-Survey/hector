@@ -163,7 +163,6 @@ def call_2dfdr_gui(dirname, options=None):
     """Call 2dfdr in GUI mode using `drcontrol`"""
     # Make a temporary directory with a unique name for use as IMP_SCRATCH
     with TemporaryDirectory() as imp_scratch:
-
         command_line = [COMMAND_GUI]
         if options is not None:
             command_line.extend(options)
@@ -178,11 +177,25 @@ def call_2dfdr_gui(dirname, options=None):
 
 def load_gui(dirname, idx_file=None):
     """Load the 2dfdr GUI in the specified directory."""
+    # TODO: combine call_2dfdr_gui and load_gui
     if idx_file is not None:
         options = [idx_file]
     else:
         options = None
-    call_2dfdr_gui(dirname, options)
+    with TemporaryDirectory() as imp_scratch:
+        command_line = [COMMAND_GUI]
+        if options is not None:
+            command_line.extend(options)
+
+        # Set up the environment:
+        environment = dict(os.environ)
+        environment["IMP_SCRATCH"] = imp_scratch
+
+        with directory_lock(dirname):
+            subprocess.run(command_line, cwd=dirname, check=True, env=environment)
+
+
+#    call_2dfdr_gui(dirname, options)
     return
 
 
