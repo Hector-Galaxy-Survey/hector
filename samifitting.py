@@ -54,7 +54,6 @@ TODO: Rename this module to fitting, rather than samifitting.
 from __future__ import absolute_import, division, print_function, unicode_literals
 
 from scipy.optimize import leastsq
-import scipy as sp
 import numpy as np
 
 class FittingException(Exception):
@@ -70,7 +69,7 @@ class GaussFitter:
         self.x = x
         self.y = y
         if weights == None:
-            self.weights = sp.ones(len(self.y))
+            self.weights = np.ones(len(self.y))
         else:
             self.weights = weights
 
@@ -87,13 +86,13 @@ class GaussFitter:
             self.fitfunc = self.f3
     
     def f1(self, p, x): 
-        return p[0]*sp.exp(-(p[1]-x)**2/(2*p[2]**2)) + p[3]
+        return p[0]*np.exp(-(p[1]-x)**2/(2*p[2]**2)) + p[3]
     
     def f2(self, p, x): 
-        return p[0]*sp.exp(-(p[1]-x)**2/(2*p[2]**2)) + 0.
+        return p[0]*np.exp(-(p[1]-x)**2/(2*p[2]**2)) + 0.
     
     def f3(self, p, x): 
-        return -p[0]*sp.exp(-(p[1]-x)**2/(2*p[2]**2)) + p[3]
+        return -p[0]*np.exp(-(p[1]-x)**2/(2*p[2]**2)) + p[3]
 
     def errfunc(self, p, x, y, weights):
         # if width < 0 return input
@@ -120,13 +119,13 @@ class GaussFitter:
         self.var_fit = var_fit
 
         if self.cov_x is not None:
-            self.perr = sp.sqrt(self.cov_x.diagonal())*self.var_fit
+            self.perr = np.sqrt(self.cov_x.diagonal())*self.var_fit
 
         if not self.success in [1,2,3,4]:
             print("Fit Failed")
             #raise FittingException("Fit failed") # This does nothing.
             
-        self.linestr=self.p[0]*self.p[2]*sp.sqrt(2*sp.pi)
+        self.linestr=self.p[0]*self.p[2]*np.sqrt(2*np.pi)
         #self.line_err=S.sqrt(self.linestr*self.linestr*((self.perr[0]/self.p[0])**2+(self.perr[2]/self.p[2])**2))
 
     def __call__(self, x):
@@ -160,18 +159,18 @@ class GaussHermiteFitter:
     
     def f1(self, p, x):
         w=(p[1]-x)/(p[2])
-        H3=(p[3]*sp.sqrt(2)/sp.sqrt(6))*((2*w**3)-(3*w))
-        H4=(p[4]/sp.sqrt(24))*(4*w**4-12*w**2+3)
-        gauss=p[0]*sp.exp(-w**2/2)
+        H3=(p[3]*np.sqrt(2)/np.sqrt(6))*((2*w**3)-(3*w))
+        H4=(p[4]/np.sqrt(24))*(4*w**4-12*w**2+3)
+        gauss=p[0]*np.exp(-w**2/2)
         
         gh=gauss*(1+H3+H4)
         return gh
 
     def f2(self, p, x):
         w=(p[1]-x)/(p[2])
-        H3=(p[3]*sp.sqrt(2)/sp.sqrt(6))*((2*w**3)-(3*w))
-        H4=(p[4]/sp.sqrt(24))*(4*w**4-12*w**2+3)
-        gauss=p[0]*sp.exp(-w**2/2)
+        H3=(p[3]*np.sqrt(2)/np.sqrt(6))*((2*w**3)-(3*w))
+        H4=(p[4]/np.sqrt(24))*(4*w**4-12*w**2+3)
+        gauss=p[0]*np.exp(-w**2/2)
         
         gh2=gauss*(1+H3+H4)+p[5]
         return gh2
@@ -224,7 +223,7 @@ class TwoDGaussFitter:
         self.z = z
         
         if weights == None:
-            self.weights = sp.ones(len(self.z))
+            self.weights = np.ones(len(self.z))
         else:
             self.weights = weights
 
@@ -256,32 +255,32 @@ class TwoDGaussFitter:
     def f1(self, p, x, y):
         # f1 is an elliptical Gaussian with PA and a bias level.
 
-        rot_rad=p[5]*sp.pi/180 # convert rotation into radians.
+        rot_rad=p[5]*np.pi/180 # convert rotation into radians.
 
-        rc_x=p[1]*sp.cos(rot_rad)-p[2]*sp.sin(rot_rad)
-        rc_y=p[1]*sp.sin(rot_rad)+p[2]*sp.cos(rot_rad)
+        rc_x=p[1]*np.cos(rot_rad)-p[2]*np.sin(rot_rad)
+        rc_y=p[1]*np.sin(rot_rad)+p[2]*np.cos(rot_rad)
     
-        return p[0]*sp.exp(-(((rc_x-(x*sp.cos(rot_rad)-y*sp.sin(rot_rad)))/p[3])**2\
-                                    +((rc_y-(x*sp.sin(rot_rad)+y*sp.cos(rot_rad)))/p[4])**2)/2)+p[6]
+        return p[0]*np.exp(-(((rc_x-(x*np.cos(rot_rad)-y*np.sin(rot_rad)))/p[3])**2\
+                                    +((rc_y-(x*np.sin(rot_rad)+y*np.cos(rot_rad)))/p[4])**2)/2)+p[6]
 
     def f2(self, p, x, y):
         # f2 is an elliptical Gaussian with PA and no bias level.
 
-        rot_rad=p[5]*sp.pi/180 # convert rotation into radians.
+        rot_rad=p[5]*np.pi/180 # convert rotation into radians.
 
-        rc_x=p[1]*sp.cos(rot_rad)-p[2]*sp.sin(rot_rad)
-        rc_y=p[1]*sp.sin(rot_rad)+p[2]*sp.cos(rot_rad)
+        rc_x=p[1]*np.cos(rot_rad)-p[2]*np.sin(rot_rad)
+        rc_y=p[1]*np.sin(rot_rad)+p[2]*np.cos(rot_rad)
     
-        return p[0]*sp.exp(-(((rc_x-(x*sp.cos(rot_rad)-y*sp.sin(rot_rad)))/p[3])**2\
-                                    +((rc_y-(x*sp.sin(rot_rad)+y*sp.cos(rot_rad)))/p[4])**2)/2)
+        return p[0]*np.exp(-(((rc_x-(x*np.cos(rot_rad)-y*np.sin(rot_rad)))/p[3])**2\
+                                    +((rc_y-(x*np.sin(rot_rad)+y*np.cos(rot_rad)))/p[4])**2)/2)
 
     def f3(self, p, x, y):
         # f3 is a circular Gaussian, p in form (amplitude, mean_x, mean_y, sigma, offset).
-        return p[0]*sp.exp(-(((p[1]-x)/p[3])**2+((p[2]-y)/p[3])**2)/2)+p[4]
+        return p[0]*np.exp(-(((p[1]-x)/p[3])**2+((p[2]-y)/p[3])**2)/2)+p[4]
 
     def f4(self, p, x, y):
         # f4 is a circular Gaussian as f3 but without an offset
-        return p[0]*sp.exp(-(((p[1]-x)/p[3])**2+((p[2]-y)/p[3])**2)/2)
+        return p[0]*np.exp(-(((p[1]-x)/p[3])**2+((p[2]-y)/p[3])**2)/2)
 
     def errfunc(self, p, x, y, z, weights):
         # if width < 0 return input
@@ -306,7 +305,7 @@ class TwoDGaussFitter:
         self.var_fit = var_fit
 
         if self.cov_x is not None:
-            self.perr = sp.sqrt(self.cov_x.diagonal())*self.var_fit
+            self.perr = np.sqrt(self.cov_x.diagonal())*self.var_fit
 
         if not self.success in [1,2,3,4]:
             print("Fit Failed...")
