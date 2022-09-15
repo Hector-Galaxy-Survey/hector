@@ -28,6 +28,8 @@ import numpy as np
 from scipy.ndimage.filters import median_filter
 from scipy.optimize import leastsq
 
+import hector
+sdss_path = str(hector.__path__[0])+'/sdss/'
 
 BANDS = 'ugriz'
 
@@ -903,12 +905,12 @@ def read_stellar_models(path_root='./ck04models/'):
     models['flux'] = models['flux'][:, keep]
     return models
 
-def measure_colour(flux, wavelength, sdss_dir='./sdss/'):
+def measure_colour(flux, wavelength, sdss_dir=sdss_path):
     """Return synthetic SDSS g-r colour for a given spectrum."""
     return (measure_band('g', flux, wavelength, sdss_dir=sdss_dir) -
             measure_band('r', flux, wavelength, sdss_dir=sdss_dir))
 
-def read_filter(band, sdss_dir='./sdss/'):
+def read_filter(band, sdss_dir=sdss_path):
     """Return filter response and wavelength for an SDSS filter."""
     data = np.loadtxt(os.path.join(sdss_dir, band + '.dat'))
     wavelength = data[:, 0]
@@ -916,7 +918,7 @@ def read_filter(band, sdss_dir='./sdss/'):
     response = data[:, 3]
     return response, wavelength
 
-def measure_band(band, flux, wavelength, sdss_dir='./sdss/'):
+def measure_band(band, flux, wavelength, sdss_dir=sdss_path):
     """Return the synthetic magnitude of a spectrum in an SDSS band."""
     filter_response, filter_wavelength = read_filter(band, sdss_dir=sdss_dir)
     filter_interpolated = np.interp(
