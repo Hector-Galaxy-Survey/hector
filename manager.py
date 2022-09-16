@@ -1115,7 +1115,7 @@ class Manager:
                 print('Warning! Adding', filename, 'in unexpected location')
                 fits.raw_path = fits.source_path
         else:
-            print('Adding file: ', filename, fits.ndf_class)
+            print('Adding file: ', filename, fits.ndf_class,fits.plate_id, fits.field_id)
             f = open(self.abs_root+'/filelist.txt', 'a')
             f.write(filename+' '+fits.ndf_class+'\n')
             f.close()
@@ -1694,7 +1694,7 @@ class Manager:
 
             tlmfail = np.zeros(len(fib_spec_id))
             tlmfail[np.where( ((fib_type == 'P') | (fib_type == 'S')) & (thput < thput_cut) & (fib_spec_id != 51) & (fib_spec_id != 181) )] = 1 # active (P, S) fibres with no signal
-            tlmfail[np.where( ((fib_type == 'N') | (fib_type == 'U')) & (thput > thput_cut))] = 2 # inactive (N, U) fibres with a signal
+            tlmfail[np.where( ((fib_type == 'N') | (fib_type == 'U')) & (thput > (thput_cut+0.1)))] = 2 # inactive (N, U) fibres with a signal
 
             tlmfile = pf.open(fits.reduced_path[0:-8]+'tlm.fits'); tlm = tlmfile['PRIMARY'].data #tlm position
         #    tlm[0,-1] = -10 # ****** only for testing cutoff detection
