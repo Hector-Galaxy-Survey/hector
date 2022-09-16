@@ -1681,7 +1681,7 @@ class Manager:
         f.write('  1. failed tlm maps may have active fibres allocated where there is no signal\n')
         f.write('  2. failed tlm maps may have inactive fibres allocated where there is a signal\n')
         f.write('  3. failed tlm maps sometimes show tlms not in numerical order\n\n')
-        f.write('  Find '+hector_path+'/observing/check_tramline_example.pdf for examples.\n\n')
+        f.write('  Find '+hector_path+'observing/check_tramline_example.pdf for examples.\n\n')
 
         nfail = 0
         for fits in file_iterable:
@@ -1690,12 +1690,13 @@ class Manager:
             fibtab = pf.getdata(fits.reduced_path[0:-8]+'.fits', 'MORE.FIBRES_IFU')
             fib_spec_id = fibtab.field('SPEC_ID'); fib_type = fibtab.field('TYPE'); fib_name = fibtab.field('SPAX_ID')
             thput = np.nanmedian(ex,1); thput = thput/np.nanmedian(thput[np.where((fib_type == 'P') | (fib_type == 'S'))])
-            thput_cut = 0.08
+            thput_active = 0.08; thput_inactive=thput_active
+            if self.speed == 'fast':
+                thput_inactive = thput_inactive + 0.1  
 
             tlmfail = np.zeros(len(fib_spec_id))
-            tlmfail[np.where( ((fib_type == 'P') | (fib_type == 'S')) & (thput < thput_cut) & (fib_spec_id != 51) & (fib_spec_id != 181) )] = 1 # active (P, S) fibres with no signal
-            tlmfail[np.where( ((fib_type == 'N') | (fib_type == 'U')) & (thput > (thput_cut+0.1)))] = 2 # inactive (N, U) fibres with a signal
-
+            tlmfail[np.where( ((fib_type == 'P') | (fib_type == 'S')) & (thput < thput_active) & (fib_spec_id != 51) & (fib_spec_id != 181) )] = 1 # active (P, S) fibres with no signal
+            tlmfail[np.where( ((fib_type == 'N') | (fib_type == 'U')) & (thput > thput_inactive))] = 2 # inactive (N, U) fibres with a signal
             tlmfile = pf.open(fits.reduced_path[0:-8]+'tlm.fits'); tlm = tlmfile['PRIMARY'].data #tlm position
         #    tlm[0,-1] = -10 # ****** only for testing cutoff detection
             tlm_orig_left = (tlm[:,0]); tlm_orig_right= (tlm[:,-1]) # Y position of tlm at the left most and the right most pixel.
