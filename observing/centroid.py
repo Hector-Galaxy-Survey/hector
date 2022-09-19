@@ -663,14 +663,11 @@ def centroid_fit(x,y,data,reference=None,rssframe=None,galaxyid=None,microns=Tru
     mean, median, std = sigma_clipped_stats(img1, sigma=3.0)
     threshold = median + std
     tbl = find_peaks(img1, threshold, box_size=105)
-
    # Case1: If no peaks are found, masking is not applied. Actually I don't find any.
-    if tbl == None:
+    if tbl[0] == None:
         checkind = 'nopeak'
-
     elif(len(tbl) < 1): 
         checkind = 'nopeak'
-
    # Case2: A single peak is found
     elif(len(tbl) == 1): 
         checkind = 'single'
@@ -678,6 +675,7 @@ def centroid_fit(x,y,data,reference=None,rssframe=None,galaxyid=None,microns=Tru
         if(dist < (310)**2): # Single peak near the centre
             tx,ty,trad = tbl['y_peak']+np.min(x), tbl['x_peak']+np.min(y),105*2  # y_peak is x. yes. it's right.
         else:  # When a peak is near the edge. High possibility that our target is not detected due to low brightness
+
             for k in range(1,100):  # repeat until it finds multiple peaks with reduced filtering box
                 width = width*0.98
                 img3 = gaussian_filter(img, sigma=(width, width), order=0, mode='constant',cval=np.min(img)) # width = diameter of a core in degrees/microns
@@ -696,7 +694,7 @@ def centroid_fit(x,y,data,reference=None,rssframe=None,galaxyid=None,microns=Tru
 
     # Case3: When there are multiple peaks
     elif(len(tbl) > 1):
-        if checkind is not 'multi_faint':
+        if checkind != 'multi_faint':
             checkind = 'multi'
         xx,yy = tbl['y_peak']+np.min(x), tbl['x_peak']+np.min(y) # y_peak is x. yes. it's right.
 
