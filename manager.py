@@ -1115,7 +1115,7 @@ class Manager:
                 print('Warning! Adding', filename, 'in unexpected location')
                 fits.raw_path = fits.source_path
         else:
-            print('Adding file: ', filename, fits.ndf_class,fits.plate_id, fits.field_id)
+            print('Adding file: ', filename, fits.ndf_class,fits.plate_id)
             f = open(self.abs_root+'/filelist.txt', 'a')
             f.write(filename+' '+fits.ndf_class+'\n')
             f.close()
@@ -2654,7 +2654,6 @@ class Manager:
                     # Also mark this group as requiring visual checks:
                     update_checks('ALI', fits_list, False)
                     break
-
         self.map(measure_offsets_group, complete_groups)
 
         self.next_step('measure_offsets', print_message=True)
@@ -4749,7 +4748,7 @@ class FITSFile:
 
         self.set_lamp()
         self.set_central_wavelength()
-#        self.set_do_not_use() #marie: this should be activated when SPECTOR has the keyword of 'SPEED' in their header
+#        self.set_do_not_use() #TODO: marie: this should be activated when SPECTOR has the keyword of 'SPEED' in their header
         self.do_not_use = False #marie: this should be removed when SPECTOR has the keyword of 'SPEED' in their header
 
         self.set_coords_flags()
@@ -4863,6 +4862,21 @@ class FITSFile:
         try:
             # First look in the primary header
             self.plate_id = self.header['PLATEID']
+            # Hector commissioning data have PLATEID=1 everyware. 
+            # TODO: adjust epoch when the primary header has a proper PLATEID
+            if(self.header['EPOCH'] > 2021.):
+                tile = self.hdulist[self.fibres_extno].header['FILENAME'] # the tile name is truncated in the primary header and get it from fibre table
+                start = tile.find('Tile_FinalFormat_')+17
+                end = tile.find('_CONFIGURED_correct_header.csv')
+                if (start < 0) | (end < 0):
+                    self.plate_id = tile[0:-4]
+                else:
+                    self.plate_id = tile[start:end]
+                try: # Save this to the primary header
+                    self.add_header_item('PLATEID', self.plate_id, 'Plate ID (edited by manager)',
+                                         source=True)
+                except IOError:
+                    pass
         except KeyError:
             # Check in the fibre table instead
             header = self.hdulist[self.fibres_extno].header
@@ -4887,7 +4901,7 @@ class FITSFile:
         return
 
     def set_plate_id_short(self):
-        """Save the shortened plate ID."""
+        """Save the shortened plate ID. For Hector, plate_id_short = plate_id"""
         finish = self.plate_id.find('_', self.plate_id.find('_') + 1)
         first_sections = self.plate_id[:finish]
         if self.plate_id == 'none':
@@ -4900,7 +4914,7 @@ class FITSFile:
         return
 
     def set_field_no(self):
-        """Save the field number."""
+        """Save the field number. For Hector, plate id is unique and therefore field id is not required and set to be 0"""
         if int(self.date) < 130101:
             # SAMIv1. Can only get the field number by cross-checking the
             # config file RA and Dec.
@@ -4982,7 +4996,7 @@ class FITSFile:
                     field_id = self.plate_id[start:finish]
                 self.field_id = field_id
             else:
-                # Unrecognised form for the plate ID.
+                # Unrecognised form for the plate ID. That is for Hector
                 self.field_id = self.plate_id + '_F' + str(self.field_no)
         return
 
@@ -5718,6 +5732,7 @@ def read_stellar_mags():
 def create_dummy_output(reduced_files, tlm=False, overwrite=False):
     # Loop over all reduced files and create mock
     # output for the appropriate file type and size
+    #TODO: remove this
 
     for reduced_file in reduced_files:
         if reduced_file.ndf_class == 'BIAS' or reduced_file.ndf_class == 'DARK' or reduced_file.ndf_class == 'LFLAT' or reduced_file.ndf_class == 'MFFFF' or reduced_file.ndf_class == 'MFARC' or reduced_file.ndf_class == 'MFOBJECT':
@@ -5779,6 +5794,7 @@ def create_dummy_output(reduced_files, tlm=False, overwrite=False):
 
 def create_dummy_combine(input_file, output_file, class_dummy):
     # Simply copy one of the reduced calibration files to combined one
+    #TODO: remove this
     if class_dummy == 'BIAS' or class_dummy == 'DARK' or class_dummy == 'LFLAT':
         shutil.copy2(input_file, output_file)
 
