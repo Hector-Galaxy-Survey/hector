@@ -2623,38 +2623,50 @@ class Manager:
                         ccd='both', **kwargs):
         """Measure the offsets between dithered observations."""
         if ccd == 'both':
-            ccd_measure = 'ccd_2'
+            ccd_measure = ['ccd_2','ccd_4']
             copy_to_other_arm = True
         else:
             ccd_measure = ccd
             copy_to_other_arm = False
-        groups = self.group_files_by(
-            'field_id', ndf_class='MFOBJECT', do_not_use=False,
-            reduced=True, min_exposure=min_exposure, name=name, ccd=ccd_measure,
-            include_linked_managers=True, **kwargs)
-        complete_groups = []
-        for key, fits_list in groups.items():
-            fits_list_other_arm = [self.other_arm(fits, include_linked_managers=True)
-                                   for fits in fits_list]
-            if overwrite:
-                complete_groups.append(
-                    (key, fits_list, copy_to_other_arm, fits_list_other_arm))
-                continue
-            for fits in fits_list:
-                # This loop checks each fits file and adds the group to the
-                # complete list if *any* of them are missing the ALIGNMENT HDU
-                try:
-                    pf.getheader(best_path(fits), 'ALIGNMENT')
-                except KeyError:
-                    # No previous measurement, so we need to do this group
-                    complete_groups.append(
-                        (key, fits_list, copy_to_other_arm,
-                         fits_list_other_arm))
 
-                    # Also mark this group as requiring visual checks:
-                    update_checks('ALI', fits_list, False)
-                    break
-        self.map(measure_offsets_group, complete_groups)
+        for nccd in ccd_measure:
+            groups = self.group_files_by(
+                'field_id', ndf_class='MFOBJECT', do_not_use=False,
+                reduced=True, min_exposure=min_exposure, name=name, ccd=nccd,
+                include_linked_managers=True, **kwargs)
+            complete_groups = []
+            for key, fits_list in groups.items():
+                fits_list_other_arm = [self.other_arm(fits, include_linked_managers=True)
+                                       for fits in fits_list]
+                if overwrite:
+                    complete_groups.append(
+                        (key, fits_list, copy_to_other_arm, fits_list_other_arm))
+                    for fits in fits_list:
+                        hdulist_this_arm = pf.open(best_path(fits),'update')
+                        try:
+                            del hdulist_this_arm['ALIGNMENT']
+                            print(hdulist_this_arm)
+                        except KeyError:
+                        # Nothing to delete; no worries
+                            pass
+                        hdulist_this_arm.flush()
+                        hdulist_this_arm.close()
+                    continue
+                for fits in fits_list:
+                    # This loop checks each fits file and adds the group to the
+                    # complete list if *any* of them are missing the ALIGNMENT HDU
+                    try:
+                        pf.getheader(best_path(fits), 'ALIGNMENT')
+                    except KeyError:
+                        # No previous measurement, so we need to do this group
+                        complete_groups.append(
+                            (key, fits_list, copy_to_other_arm,
+                             fits_list_other_arm))
+
+                        # Also mark this group as requiring visual checks:
+                        update_checks('ALI', fits_list, False)
+                        break
+            self.map(measure_offsets_group, complete_groups)
 
         self.next_step('measure_offsets', print_message=True)
         return

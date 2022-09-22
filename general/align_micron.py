@@ -139,7 +139,7 @@ from scipy.optimize import leastsq
 ARCSEC_TO_MICRON = 1000.0 / 15.2
 
 
-ifus=[1,2,3,4,5,6,7,8,9,10,11,12,13]
+ifus=[1,2,3,4,5,6,7,8,9,10,11,12,13 ,14,15,16,17,18,19,20,21]
 
 def find_dither(RSSname,reference,centroid=True,inter=False,plot=False,remove_files=True,
                 do_dar_correct=True,max_shift=350.0,use_iraf=False):
@@ -273,6 +273,7 @@ def find_dither(RSSname,reference,centroid=True,inter=False,plot=False,remove_fi
                  cols=line.split()
                  # xin.append(float(cols[2]))
                  # yin.append(float(cols[3]))
+                 print(cols[0])
                  index = object_order[cols[0]]
                  ifu_good[index] = int(cols[1])
                  xin[index] = float(cols[2])
@@ -474,7 +475,6 @@ def plate_scale_model(p,ref):
     ref (N x 2 array): coordinate pairs of galaxy positions in reference observation.
     
     """
-    
     scale = 1.0 + p[3] / 1e5
     x_offset = p[1]
     y_offset = p[2]
@@ -545,10 +545,7 @@ def get_centroid(infile,reference=None, do_dar_correct=True): #** reference adde
                 # Probably a broken hexabundle
                 continue
 
-
             p_mic, data_mic, xlin_mic, ylin_mic, model_mic=centroid.centroid_fit(ifu_data.x_microns, ifu_data.y_microns, ifu_data.data, reference,infile,ifu_data.name, circular=True) #**reference,infile,ifu_data.name added
-
-
             amplitude_mic, xout_mic, yout_mic, sig_mic, bias_mic=p_mic
             ##Get coordinates in micron. 
             ##Since centroid_fit currently inverts the x coordinates to have 'on-sky' coordinates, here 
