@@ -679,11 +679,10 @@ def centroid_fit(x,y,data,reference=None,rssframe=None,galaxyid=None,microns=Tru
             #TODO: the above assumption may not be applicable to Hector. this takes long time. may make it go through big steps or limit the min of threshold?
             for k in range(1,100):  # repeat until it finds multiple peaks with reduced filtering box
                 width = width*0.98
-                img2 = gaussian_filter(img, sigma=(width, width), order=0, mode='constant',cval=np.min(img)) # width = diameter of a core in degrees/microns
-                mean, median, std = sigma_clipped_stats(img3, sigma=3.0)
+                img2 = gaussian_filter(img, sigma=(width, width), order=0, mode='constant')
+                mean, median, std = sigma_clipped_stats(img2, sigma=3.0)
                 threshold = median + std*0.1
                 tbl = find_peaks(img2, threshold, box_size=width) #find peaks
-                print(tbl,threshold,width)
                 if tbl is None:
                     continue
                 if(len(tbl)==1): # only a single peak is found until maximum iteration (=100)
@@ -723,7 +722,6 @@ def centroid_fit(x,y,data,reference=None,rssframe=None,galaxyid=None,microns=Tru
         inds = np.argsort(tdist)
         gsub = inds[:5]
     x_good, y_good, data_sum_good = x[gsub], y[gsub], data_sum[gsub]
-#    print('centroid_fit:',len(tbl),checkind,len(gsub[0]),len(data_sum),galaxyid, trad)
 
     # Save the target centre of reference frame
     if reference is not None and rssframe == reference:
@@ -759,7 +757,6 @@ def centroid_fit(x,y,data,reference=None,rssframe=None,galaxyid=None,microns=Tru
         p0=[data_sum[np.sum(np.where(dist==np.min(dist)))], com[0], com[1], sigx, sigx, 45.0, 0.0]
         #print "Guess Parameters:", p0
 
-    print(len(p0),len(x_good),len(y_good),len(data_sum_good))
     # Fit two circular 2D Gaussians.
     gf=fitting.TwoDGaussFitter(p0,x_good,y_good,data_sum_good)     #** use good data within masking
     amplitude_mic, xout_mic, yout_mic, sig_mic, bias_mic = gf.p    
