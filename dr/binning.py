@@ -444,7 +444,7 @@ def bin_and_save(hdulist, bin_mask, bin_params, name=None, **kwargs):
         del hdulist[ext]
 
     hdu_mask = pf.ImageHDU(bin_mask, name='BIN_MASK'+suffix)
-    if len(bin_params == 2):
+    if len(bin_params) == 2:
         hdu_mask.header['BIN_EPS'] = (bin_params[0],'Ellipticity of bins')
         hdu_mask.header['BIN_PA'] = (bin_params[1],'Position angle of bins')
     hdu_flux = pf.ImageHDU(binned_cube, name='BINNED_FLUX'+suffix)
