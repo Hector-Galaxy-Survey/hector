@@ -2673,7 +2673,7 @@ class Manager:
 
     def cube(self, overwrite=False, min_exposure=599.0, name='main',
              star_only=False, drop_factor=None, tag='', update_tol=0.02,
-             size_of_grid=50, output_pix_size_arcsec=0.5,
+             size_of_grid=80, output_pix_size_arcsec=0.5,
              min_transmission=0.333, max_seeing=4.0, min_frames=6, **kwargs):
         """Make datacubes from the given RSS files."""
         groups = self.group_files_by(
@@ -2711,9 +2711,9 @@ class Manager:
                     else:
                         drop_factor = 0.5
 
-                for name in objects:
+                for objname in objects:
                     inputs_list.append(
-                        (field_id, ccd, path_list, name, cubed_root, drop_factor,
+                        (field_id, ccd, path_list, objname, cubed_root, drop_factor,
                          tag, update_tol, size_of_grid, output_pix_size_arcsec,
                          overwrite))
 
@@ -2775,51 +2775,54 @@ class Manager:
                     min_transmission=0.333, max_seeing=4.0, tag=None,
                     **kwargs):
         """Scale datacubes based on the stellar g magnitudes."""
-        groups = self.group_files_by(
-            'field_id', ccd='ccd_1', ndf_class='MFOBJECT', do_not_use=False,
-            reduced=True, name=name, include_linked_managers=True, **kwargs)
-        input_list = []
-        for (field_id,), fits_list in groups.items():
-            table = pf.getdata(fits_list[0].reduced_path, 'FIBRES_IFU')
-            objects = table['NAME'][table['TYPE'] == 'P']
-            objects = np.unique(objects).tolist()
-            objects = [obj.strip() for obj in objects]  # Stripping whitespace from object names
-            for name in objects:
-                if telluric.is_star(name):
-                    break
-            else:
-                print('No star found in field, skipping: ' + field_id)
-                continue
-            star = name
-            objects.remove(star)
-            star_path_pair = [
-                self.cubed_path(star, arm, fits_list, field_id,
-                                exists=True, min_exposure=min_exposure,
-                                min_transmission=min_transmission,
-                                max_seeing=max_seeing, tag=tag)
-                for arm in ('blue', 'red')]
-            if ((star_path_pair[0] is None) or (star_path_pair[1] is None) or 
-                ('.gz' in star_path_pair[0]) or ('.gz' in star_path_pair[1])):
-                continue
-            if not overwrite:
-                # Need to check if the scaling has already been done
-                try:
-                    [pf.getval(path, 'RESCALE') for path in star_path_pair]
-                except KeyError:
-                    pass
-                else:
-                    continue
-            object_path_pair_list = [
-                [self.cubed_path(name, arm, fits_list, field_id,
-                                 exists=True, min_exposure=min_exposure,
-                                 min_transmission=min_transmission,
-                                 max_seeing=max_seeing, tag=tag, gzipped=False)
-                 for arm in ('blue', 'red')]
-                for name in objects]
-            object_path_pair_list = [
-                pair for pair in object_path_pair_list if None not in pair]
-            input_list.append((star_path_pair, object_path_pair_list, star))
-        self.map(scale_cubes_field, input_list)
+
+        ccdname = ['ccd_1','ccd_3']
+        for nccd in ccdname:
+             groups = self.group_files_by(
+                 'field_id', ccd=nccd, ndf_class='MFOBJECT', do_not_use=False,
+                 reduced=True, name=name, include_linked_managers=True, **kwargs)
+             input_list = []
+             for (field_id,), fits_list in groups.items():
+                 table = pf.getdata(fits_list[0].reduced_path, 'FIBRES_IFU')
+                 objects = table['NAME'][table['TYPE'] == 'P']
+                 objects = np.unique(objects).tolist()
+                 objects = [obj.strip() for obj in objects]  # Stripping whitespace from object names
+                 for objname in objects:
+                     if telluric.is_star(objname):
+                         break
+                 else:
+                     print('No star found in field, skipping: ' + field_id)
+                     continue
+                 star = objname
+                 objects.remove(star)
+                 star_path_pair = [
+                     self.cubed_path(star, arm, fits_list, field_id,
+                                     exists=True, min_exposure=min_exposure,
+                                     min_transmission=min_transmission,
+                                     max_seeing=max_seeing, tag=tag)
+                     for arm in ('blue', 'red')]
+                 if ((star_path_pair[0] is None) or (star_path_pair[1] is None) or 
+                     ('.gz' in star_path_pair[0]) or ('.gz' in star_path_pair[1])):
+                     continue
+                 if not overwrite:
+                     # Need to check if the scaling has already been done
+                     try:
+                         [pf.getval(path, 'RESCALE') for path in star_path_pair]
+                     except KeyError:
+                         pass
+                     else:
+                         continue
+                 object_path_pair_list = [
+                     [self.cubed_path(objname, arm, fits_list, field_id,
+                                      exists=True, min_exposure=min_exposure,
+                                      min_transmission=min_transmission,
+                                      max_seeing=max_seeing, tag=tag, gzipped=False)
+                      for arm in ('blue', 'red')]
+                     for objname in objects]
+                 object_path_pair_list = [
+                     pair for pair in object_path_pair_list if None not in pair]
+                 input_list.append((star_path_pair, object_path_pair_list, star))
+             self.map(scale_cubes_field, input_list)
         self.next_step('scale_cubes', print_message=True)
         return
 
@@ -2827,35 +2830,37 @@ class Manager:
                   min_transmission=0.333, max_seeing=4.0, tag=None, **kwargs):
         """Apply default binning schemes to datacubes."""
         path_pair_list = []
-        groups = self.group_files_by(
-            'field_id', ccd='ccd_1', ndf_class='MFOBJECT', do_not_use=False,
-            reduced=True, name=name, include_linked_managers=True, **kwargs)
-        for (field_id,), fits_list in groups.items():
-            table = pf.getdata(fits_list[0].reduced_path, 'FIBRES_IFU')
-            objects = table['NAME'][table['TYPE'] == 'P']
-            objects = np.unique(objects).tolist()
-            objects = [obj.strip() for obj in objects]  # Strip whitespace from object names
-            for name in objects:
-                path_pair = [
-                    self.cubed_path(name, arm, fits_list, field_id,
-                                    exists=True, min_exposure=min_exposure,
-                                    min_transmission=min_transmission,
-                                    max_seeing=max_seeing, tag=tag,gzipped=False)
-                    for arm in ('blue', 'red')]
-                if path_pair[0] and path_pair[1]:
-                    if ('.gz' in path_pair[0]) or ('.gz' in path_pair[1]):
-                        skip = True
-                        continue
-                    skip = False
-                    if not overwrite:
-                        hdulist = pf.open(path_pair[0])
-                        for hdu in hdulist:
-                            if hdu.name.startswith('BINNED_FLUX'):
-                                skip = True
-                                break
-                    if not skip:
-                        path_pair_list.append(path_pair)
-        self.map(bin_cubes_pair, path_pair_list)
+        ccdname = ['ccd_1','ccd_3']
+        for nccd in ccdname:
+            groups = self.group_files_by(
+                'field_id', ccd=nccd, ndf_class='MFOBJECT', do_not_use=False,
+                reduced=True, name=name, include_linked_managers=True, **kwargs)
+            for (field_id,), fits_list in groups.items():
+                table = pf.getdata(fits_list[0].reduced_path, 'FIBRES_IFU')
+                objects = table['NAME'][table['TYPE'] == 'P']
+                objects = np.unique(objects).tolist()
+                objects = [obj.strip() for obj in objects]  # Strip whitespace from object names
+                for objname in objects:
+                    path_pair = [
+                        self.cubed_path(objname, arm, fits_list, field_id,
+                                        exists=True, min_exposure=min_exposure,
+                                        min_transmission=min_transmission,
+                                        max_seeing=max_seeing, tag=tag,gzipped=False)
+                        for arm in ('blue', 'red')]
+                    if path_pair[0] and path_pair[1]:
+                        if ('.gz' in path_pair[0]) or ('.gz' in path_pair[1]):
+                            skip = True
+                            continue
+                        skip = False
+                        if not overwrite:
+                            hdulist = pf.open(path_pair[0])
+                            for hdu in hdulist:
+                                if hdu.name.startswith('BINNED_FLUX'):
+                                    skip = True
+                                    break
+                        if not skip:
+                            path_pair_list.append(path_pair)
+            self.map(bin_cubes_pair, path_pair_list)
         self.next_step('bin_cubes', print_message=True)
         return
 
@@ -2873,9 +2878,9 @@ class Manager:
             objects = table['NAME'][table['TYPE'] == 'P']
             objects = np.unique(objects)
             objects = [obj.strip() for obj in objects]
-            for name in objects:
+            for objname in objects:
                 path_pair = [
-                    self.cubed_path(name.strip(), arm, fits_list, field_id,
+                    self.cubed_path(objname.strip(), arm, fits_list, field_id,
                                     exists=True, min_exposure=min_exposure,
                                     min_transmission=min_transmission,
                                     max_seeing=max_seeing, tag=tag, gzipped=include_gzipped)
@@ -2905,10 +2910,10 @@ class Manager:
             objects = table['NAME'][table['TYPE'] == 'P']
             objects = np.unique(objects).tolist()
             objects = [obj.strip() for obj in objects]
-            for name in objects:
+            for objname in objects:
                 for arm in ('blue', 'red'):
                     path = self.cubed_path(
-                        name, arm, fits_list, field_id,
+                        objname, arm, fits_list, field_id,
                         exists=True, min_exposure=min_exposure,
                         min_transmission=min_transmission,
                         max_seeing=max_seeing, tag=tag, gzipped=False)
@@ -3722,6 +3727,7 @@ class Manager:
                 *[mngr.file_list for mngr in self.linked_managers])
         else:
             file_list = self.file_list  # type: List[FITSFile]
+
         for fits in file_list:
             if fits.ndf_class is None:
                 continue
