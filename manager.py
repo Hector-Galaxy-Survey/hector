@@ -1117,7 +1117,7 @@ class Manager:
         else:
             print('Adding file: ', filename, fits.ndf_class,fits.plate_id)
             f = open(self.abs_root+'/filelist.txt', 'a')
-            f.write(filename+' '+fits.ndf_class+' '+fits.plate_id+'\n')
+            f.write(filename+' '+fits.ndf_class+' '+(fits.plate_id or 'None')+'\n')
             f.close()
             
         self.set_name(fits, trust_header=trust_header)
