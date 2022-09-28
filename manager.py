@@ -1057,7 +1057,7 @@ class Manager:
 
         if os.path.exists(self.abs_root):
             f = open(self.abs_root+'/filelist.txt', 'w')
-            f.write('#filename  ndfclass \n')
+            f.write('#filename  ndfclass  field \n')
             f.close()
 
         for fits in fits_list:
@@ -1117,7 +1117,7 @@ class Manager:
         else:
             print('Adding file: ', filename, fits.ndf_class,fits.plate_id)
             f = open(self.abs_root+'/filelist.txt', 'a')
-            f.write(filename+' '+fits.ndf_class+'\n')
+            f.write(filename+' '+fits.ndf_class+' '+fits.plate_id+'\n')
             f.close()
             
         self.set_name(fits, trust_header=trust_header)
