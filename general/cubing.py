@@ -276,7 +276,7 @@ def _get_probe_single(infile, object_name, verbose=True):
     table_short=fibre_table[mask_name]
 
     # Now find the ifu the galaxy was observed with in this file
-    ifu_array=table_short.field('PROBENUM')
+    ifu_array=table_short.field('PROBENAME')
 
     # The ifu
     ifu=ifu_array[0]
@@ -286,7 +286,7 @@ def _get_probe_single(infile, object_name, verbose=True):
 
     hdulist.close()
 
-    # Return the probe number
+    # Return the probe name
     return ifu
 
 def dar_correct(ifu_list, xfibre_all, yfibre_all, method='simple',update_rss=False):
@@ -506,7 +506,7 @@ def dithered_cube_from_rss_wrapper(files, name, size_of_grid=50,
         hdr_new['CBINGMET'] = (cubing_method, 'Method adopted for cubing')
 
         hdr_new['IFUPROBE'] = (_get_probe_all(files, name, verbose=False),
-                               'Id number(s) of the SAMI IFU probe(s)')
+                               'Name(s) of the Hector IFU probe(s)')
 
         # Create HDUs for each cube.
         
