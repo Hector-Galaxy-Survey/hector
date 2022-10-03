@@ -1044,6 +1044,7 @@ class Manager:
                 if self.file_filter(filename):
                     full_path = os.path.join(dirname, filename)
                     files_to_add.append(full_path)
+        files_to_add = sorted(files_to_add)
 
         assert len(set(files_to_add)) == len(files_to_add), "Some files would be duplicated on manager startup."
 
@@ -1057,7 +1058,7 @@ class Manager:
 
         if os.path.exists(self.abs_root):
             f = open(self.abs_root+'/filelist.txt', 'w')
-            f.write('#filename  ndfclass  field \n')
+            f.write('#filename  ndfclass  field  object\n')
             f.close()
 
         for fits in fits_list:
@@ -1102,7 +1103,7 @@ class Manager:
                 self.dark_exposure_str_list.append(fits.exposure_str)
                 self.dark_exposure_list.append(fits.exposure)
         self.set_raw_path(fits)
-#        self.set_name(fits, trust_header=trust_header)
+        self.set_name(fits, trust_header=trust_header)
 
         if os.path.abspath(fits.source_path) != os.path.abspath(fits.raw_path):
             if copy_files:
@@ -1115,12 +1116,12 @@ class Manager:
                 print('Warning! Adding', filename, 'in unexpected location')
                 fits.raw_path = fits.source_path
         else:
-            print('Adding file: ', filename, fits.ndf_class,fits.plate_id)
+            print('Adding file: ', filename, fits.ndf_class, fits.plate_id, fits.name)
             f = open(self.abs_root+'/filelist.txt', 'a')
-            f.write(filename+' '+fits.ndf_class+' '+(fits.plate_id or 'None')+'\n')
+            f.write(filename+' '+fits.ndf_class+' '+(fits.plate_id or 'None')+' '+(fits.name or 'None')+'\n')
             f.close()
             
-        self.set_name(fits, trust_header=trust_header)
+#        self.set_name(fits, trust_header=trust_header)
         fits.set_check_data()
         self.set_reduced_path(fits)
         if not fits.do_not_use:
@@ -2150,6 +2151,7 @@ class Manager:
         for fits in self.files(
                 ndf_class='MFOBJECT', do_not_use=False, reduced=True):
             try:
+        #        print(fits.reduced_path) #to check the file has a problematic header. remove this file. 
                 residual = pf.getval(fits.reduced_path, 'SKYMNCOF', 'QC')
             except KeyError:
                 # The QC measurement hasn't been done
@@ -2673,7 +2675,7 @@ class Manager:
 
     def cube(self, overwrite=False, min_exposure=599.0, name='main',
              star_only=False, drop_factor=None, tag='', update_tol=0.02,
-             size_of_grid=80, output_pix_size_arcsec=0.5,
+             size_of_grid=50, output_pix_size_arcsec=0.5,
              min_transmission=0.333, max_seeing=4.0, min_frames=6, **kwargs):
         """Make datacubes from the given RSS files."""
         groups = self.group_files_by(
@@ -2933,7 +2935,7 @@ class Manager:
             reduced=True, name=name, include_linked_managers = True, **kwargs)
         input_list = []
         for (field_id, ccd), fits_list in groups.items():
-            if ccd == 'ccd_1':
+            if (ccd == 'ccd_1') | (ccd == 'ccd_3'):
                 arm = 'blue'
             else:
                 arm = 'red'
