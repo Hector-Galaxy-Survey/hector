@@ -261,6 +261,7 @@ def _get_probe_all(files, name, verbose=True):
     #    raise IOError(message)
 
     probes_string = np.array2string(probes,separator=',')[1:-1]
+    probes_string = probes_string.replace("'","")
 
     return probes_string
 
