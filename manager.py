@@ -171,7 +171,7 @@ IDX_FILES_FAST = {'580V': 'hector1_v1.idx',
 IDX_FILES = {'fast': IDX_FILES_FAST,
              'slow': IDX_FILES_SLOW}
 
-GRATLPMM = {'580V': 581.0,
+GRATLPMM = {'580V': 582.0,
             '1500V': 1500.0,
             '1000R': 1001.0,
             'SPECTOR1': 1099.0,
@@ -1103,7 +1103,6 @@ class Manager:
                 self.dark_exposure_str_list.append(fits.exposure_str)
                 self.dark_exposure_list.append(fits.exposure)
         self.set_raw_path(fits)
-        self.set_name(fits, trust_header=trust_header)
 
         if os.path.abspath(fits.source_path) != os.path.abspath(fits.raw_path):
             if copy_files:
@@ -1115,7 +1114,9 @@ class Manager:
             if not copy_files and not move_files:
                 print('Warning! Adding', filename, 'in unexpected location')
                 fits.raw_path = fits.source_path
+            self.set_name(fits, trust_header=trust_header)
         else:
+            self.set_name(fits, trust_header=trust_header)
             print('Adding file: ', filename, fits.ndf_class, fits.plate_id, fits.name)
             f = open(self.abs_root+'/filelist.txt', 'a')
             f.write(filename+' '+fits.ndf_class+' '+(fits.plate_id or 'None')+' '+(fits.name or 'None')+'\n')
