@@ -70,11 +70,11 @@ def correct_bad_fibres(path_list,debug=False):
     # Replace all bad fibres with the average for that fibre
 
     bad_fibres_index = np.squeeze(bad_fibres_index)
-    fflats_fixed[bad_fibres_index[:,0],bad_fibres_index[:,1],:] = avg_fixed[bad_fibres_index[:,1],:]
+    fflats_fixed[bad_fibres_index[0,:],bad_fibres_index[1,:],:] = avg_fixed[bad_fibres_index[1,:],:]
 
     # Write new fibre flat field values to file
 
-    edited_files = np.unique(bad_fibres_index[:,0])
+    edited_files = np.unique(bad_fibres_index[0,:])
     for index in range(len(edited_files)):
         hdulist = pf.open(path_list[index],mode='update')
         hdulist['PRIMARY'].data = fflats_fixed[index,:,:]
@@ -83,7 +83,7 @@ def correct_bad_fibres(path_list,debug=False):
 
     if debug:
         for val in edited_files:
-            ww = np.where(bad_fibres_index[:,0] == val)
+            ww = np.where(bad_fibres_index[0,:] == val)
             print(path_list[val])
             print(np.array(bad_fibres_index)[ww,1])
             print('--------')
