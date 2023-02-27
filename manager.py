@@ -1439,6 +1439,7 @@ class Manager:
             if isinstance(file_iterable, str):
                 raise ValueError("disable_files must be passed a list of files, e.g., ['07mar10032.fits']")
             for fits in file_iterable:
+                print(fits)
                 if isinstance(fits, str):
                     fits = self.fits_file(fits)
                 fits.update_do_not_use(True)
@@ -5223,6 +5224,7 @@ class FITSFile:
         """Return a dictionary of options used to reduce the file."""
         if not os.path.exists(self.reduced_path):
             return None
+#        print(self.reduced_path) #activate this for the error, KeyError: "Extension ('REDUCTION_ARGS', 1) not found."
         return dict(pf.getdata(self.reduced_path, 'REDUCTION_ARGS'))
 
     def update_name(self, name):
@@ -5433,6 +5435,7 @@ def telluric_correct_pair(inputs):
     print('Deriving telluric correction for ' + fits_1.filename +
           ' and ' + fits_2.filename)
     try:
+        print(path_pair,PS_spec_file,use_PS,n_trim,scale_PS_by_airmass,model_name,MOLECFIT_AVAILABLE, MF_BIN_DIR)
         telluric.derive_transfer_function(
             path_pair, PS_spec_file=PS_spec_file, use_PS=use_PS, n_trim=n_trim,
             scale_PS_by_airmass=scale_PS_by_airmass, model_name=model_name,
