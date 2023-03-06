@@ -1347,7 +1347,6 @@ class Manager:
         """Import the contents of a directory and all subdirectories."""
         for dirname, subdirname_list, filename_list in os.walk(source_dir):
             for filename in filename_list:
-                print(filename)
                 if self.file_filter(filename):
                     tmp_path = os.path.join(self.tmp_dir, filename)
                     self.update_copy(os.path.join(dirname, filename),
@@ -4884,21 +4883,6 @@ class FITSFile:
         try:
             # First look in the primary header
             self.plate_id = self.header['PLATEID']
-            # Hector commissioning data have PLATEID=1 everyware. 
-            # TODO: adjust epoch when the primary header has a proper PLATEID
-            if(self.header['EPOCH'] > 2021.):
-                tile = self.hdulist[self.fibres_extno].header['FILENAME'] # the tile name is truncated in the primary header and get it from fibre table
-                start = tile.find('Tile_FinalFormat_')+17
-                end = tile.find('_CONFIGURED_correct_header.csv')
-                if (start < 0) | (end < 0):
-                    self.plate_id = tile[0:-4]
-                else:
-                    self.plate_id = tile[start:end]
-                try: # Save this to the primary header
-                    self.add_header_item('PLATEID', self.plate_id, 'Plate ID (edited by manager)',
-                                         source=True)
-                except IOError:
-                    pass
         except KeyError:
             # Check in the fibre table instead
             header = self.hdulist[self.fibres_extno].header
@@ -4918,6 +4902,21 @@ class FITSFile:
                 # source file. Ideally we would still edit the copied file,
                 # but that doesn't actually exist yet.
                 pass
+        if self.header['EPOCH'] > 2021. and self.plate_id == '1': # Hector commissioning data have PLATEID=1 
+            # TODO: adjust epoch when the primary header has a proper PLATEID
+            tile = self.hdulist[self.fibres_extno].header['FILENAME'] # the tile name is truncated in the primary header and get it from fibre table
+            start = tile.find('Tile_FinalFormat_')+17
+            end = tile.find('_CONFIGURED_correct_header.csv')
+            if (start < 0) | (end < 0):
+                self.plate_id = tile[0:-4]
+            else:
+                self.plate_id = tile[start:end]
+            try: # Save this to the primary header
+                self.add_header_item('PLATEID', self.plate_id, 'Plate ID (edited by manager)',
+                                     source=True)
+            except IOError:
+                pass
+
         if self.plate_id == '':
             self.plate_id = 'none'
         return
