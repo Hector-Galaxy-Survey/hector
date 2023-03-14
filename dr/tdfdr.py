@@ -87,34 +87,6 @@ def subprocess_call(command_line, t_max=480, **kwargs):
         log.debug("CWD: %s", subprocess.check_output("pwd", shell=False, stderr=None, **kwargs))
         log.debug(subprocess.check_output("ls", shell=True, stderr=None, **kwargs))
 
-    #////////////////////////////////////////////////////////
-    # Create subprocess
-    # # NOTE: this will not work if you run with shell=True!!! 
-    
-    # stdout = subprocess.check_output(command_line, shell=False, stderr=None, **kwargs)
-    # # Tracer()()
-    # with open(f"/priv/hector/reduction/reduced_v1/hz_tests/check_output_output_{command_line[2]}.txt", "wb") as f:
-    #     f.write(stdout)
-    # log.debug("Async process finished: %s", formatted_command)
-
-    #////////////////////////////////////////////////////////
-    # # NEW APPROACH: using communicate() - THIS WORKS!!!
-    # with open(f"/priv/hector/reduction/reduced_v1/hz_tests/popen_output_{command_line[2]}.txt", "wb") as f:
-    #     p = subprocess.Popen(command_line, shell=False, stdout=f, stderr=None, **kwargs)
-    #     try: 
-    #         print("Waiting for timeout...")
-    #         _, _ = p.communicate(timeout=t_max)
-    #     except subprocess.TimeoutExpired as e:
-    #         print("Timeout has occurred!")
-    #         p.terminate()
-
-    # # Open the file we just made to retrieve the output so we can put it in stdout 
-    # lines = open(os.path.join(kwargs["env"]["TMPDIR"], "popen_output_{command_line[2]}.txt")).readlines()
-    # stdout = "".join(lines)
-   
-    #////////////////////////////////////////////////////////
-    # NEW APPROACH: using communicate() - THIS WORKS!!!
-
     # Create a temporary file to store the output 
     f = tempfile.NamedTemporaryFile()
     # Run the command 
@@ -131,77 +103,6 @@ def subprocess_call(command_line, t_max=480, **kwargs):
     lines = open(f.name).readlines()
     stdout = "".join(lines)
     f.close()
-
-    #////////////////////////////////////////////////////////
-    # # #////////////////////////////////////////////////////////
-    # # # Using Popen instead
-    # # # Write to file 
-    # # 
-    #     # p = subprocess.Popen(command_line, stdout=f, shell=False, stderr=None, **kwargs)
-    # # stdout = "Hello world!"
-
-    # p = subprocess.Popen(command_line, shell=False, stdout=subprocess.PIPE, stderr=None, **kwargs)
-    # # Poll the output to check for the process to finish
-    # lines = []
-
-    # f = open(f"/priv/hector/reduction/reduced_v1/hz_tests/popen_output_{command_line[2]}.txt", "w")
-    # t = time.time()
-    # dt = 0
-    # t_max = 8 * 60
-    # while dt < t_max:
-    #     time.sleep(3)
-    #     dt = time.time() - t
-    #     print(f"dt={dt}")
-    #     # NOTE: for some unknown reason, when I put a Tracer()() in here, it goes through the loop 2x and then exits even if the process hasn't finished... but it works properly if there is no Tracer()().
-    #     # TODO check this behaviour with the debugger?
-    #     # NOTE OKAY SO you CANNOT use readlines() inside this loop - it seems to wait until the whole program is finished before returning so it just hangs. Use readline() instead!!! 
-
-    #     """
-    #     NOTE: the below code appears to work - when it finds the substring "error" in the code it breaks out of the loop.
-    #     - don't use Tracer()() in here, I think it breaks it?
-    #     - don't use readlines() in here - it seems to wait until the whole program is finished before returning so it just hangs. Use readline() instead.
-    #     - readline() ALWAYS returns the next line in the output even if you put a bit fat pause in the loop - so it should be safe to monitor for some key phrase 
-    #     - best approach for now is to just poll every single line.
-    #     - currently the code breaks because it gets to line 208 below where it searches for a specific string to check that aaorun has completed. Need to figure out what specific substring to look for so that it halts only when necessary.
-    #     TODO: run with the file that breaks & find the line that says it breaks 
-    #     NOTE: 14 Mar 9:05am - below code runs aaorun without any errors but raises an exception at line 217
-    #     """
-    #     # Poll process
-    #     retcode = p.poll()
-
-    #     # Check output
-    #     line = p.stdout.readline().decode("utf-8")
-    #     lines.append(line)
-    #     f.write(line)
-        
-    #     # if "error" in line:
-    #     #     print("ERROR FOUND!!!")
-    #     #     p.terminate()
-    #     #     break
-
-    #     if retcode is not None:
-    #         # Tracer()()
-    #         f.close()
-    #         break
-    #     # except:
-    #     #     Tracer()()
-    #     #     f.close()
-    #     #     p.terminate()
-    #     #     return None
-
-    # # Tracer()()
-    # # p.terminate()
-    # if p.poll() is None:
-    #     # Termine the process because it's taken too long
-    #     Tracer()()
-    #     p.terminate()
-    #     f.close()
-
-    # NOTE: readlines() times out!!!! DO NOT USE!!! 
-    # stdout = "".join(lines)
-    # # stdout = stdout.decode("utf-8")
-    # # Note: stderr is not currently captured, so this will return None.
-    # # stderr = stderr.decode("utf-8") if stderr else None
 
     log.debug("Output from command '%s'", formatted_command)
     if log.isEnabledFor(slogging.DEBUG):
