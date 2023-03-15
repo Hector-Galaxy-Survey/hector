@@ -76,7 +76,7 @@ else:
     TemporaryDirectory = tempfile.TemporaryDirectory
 
 
-def subprocess_call(command_line, **kwargs):
+def subprocess_call(command_line, t_max=480, **kwargs):
     """Generic function to run a command in an asynchronous way, capturing STDOUT and returning it."""
     formatted_command = " ".join(command_line)
     log.info("async call: {}".format(formatted_command))
@@ -87,14 +87,22 @@ def subprocess_call(command_line, **kwargs):
         log.debug("CWD: %s", subprocess.check_output("pwd", shell=False, stderr=None, **kwargs))
         log.debug(subprocess.check_output("ls", shell=True, stderr=None, **kwargs))
 
-    # Create subprocess
-    stdout = subprocess.check_output(command_line, shell=False, stderr=None, **kwargs)
-    log.debug("Async process finished: %s", formatted_command)
+    # Create a temporary file to store the output 
+    f = tempfile.NamedTemporaryFile()
+    # Run the command 
+    p = subprocess.Popen(command_line, shell=False, stdout=f, stderr=None, **kwargs)
+    try: 
+        print("Waiting for timeout...")
+        # Cause the command to time out after t_max seconds 
+        _, _ = p.communicate(timeout=t_max)
+    except subprocess.TimeoutExpired as e:
+        print("Timeout has occurred!")
+        p.terminate()
 
-
-    stdout = stdout.decode("utf-8")
-    # Note: stderr is not currently captured, so this will return None.
-    # stderr = stderr.decode("utf-8") if stderr else None
+    # Open the file we just made to retrieve the output so we can put it in stdout 
+    lines = open(f.name).readlines()
+    stdout = "".join(lines)
+    f.close()
 
     log.debug("Output from command '%s'", formatted_command)
     if log.isEnabledFor(slogging.DEBUG):
