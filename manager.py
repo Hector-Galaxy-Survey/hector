@@ -1936,11 +1936,18 @@ class Manager:
                         ndf_class='MFFFF', do_not_use=False, lamp='Dome',
                         field_id=field_id, plate_id=plate_id, date=date,
                         ccd=ccd, **kwargs):
-                    print(fits)
+                    print('Fake list:',fits)
                     fits_sky_list.append(
                         self.copy_as(fits, 'MFSKY', overwrite=overwrite))
             # Now reduce the fake sky files from all fields
-            self.reduce_file_iterable(fits_sky_list, overwrite=overwrite, check='SKY')
+            reduced_files = self.reduce_file_iterable(fits_sky_list, overwrite=overwrite, check='SKY')
+
+            # Average the throughput values in each group. 
+            for fits in reduced_files:
+                path_list = [fits.reduced_path]
+                make_clipped_thput_files(
+                    path_list, overwrite=overwrite, edit_all=True, median=True)
+
         self.next_step('reduce_sky', print_message=True)
         return
 
@@ -5223,7 +5230,7 @@ class FITSFile:
         """Return a dictionary of options used to reduce the file."""
         if not os.path.exists(self.reduced_path):
             return None
-#        print(self.reduced_path) #activate this for the error, KeyError: "Extension ('REDUCTION_ARGS', 1) not found."
+        print(self.reduced_path) #activate this for the error, KeyError: "Extension ('REDUCTION_ARGS', 1) not found."
         return dict(pf.getdata(self.reduced_path, 'REDUCTION_ARGS'))
 
     def update_name(self, name):
