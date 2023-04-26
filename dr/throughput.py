@@ -57,7 +57,10 @@ def make_clipped_thput_files(path_list, overwrite=True, edit_all=False,
     n_fibre = pf.getval(path_list[0], 'NAXIS1', 'THPUT')
     thput = np.zeros((n_file, n_fibre))
     for index in range(n_file):
-        thput[index, :] = pf.getdata(path_list[index], 'THPUT')
+        try:
+            thput[index, :] = pf.getdata(path_list[index], 'THPUT')
+        except KeyError:
+            print('Lack of THPUT extension. Skipping thput from :', path_list[index])
     new_thput = np.zeros((n_file, n_fibre))
     # 2dfdr Gauss extraction now replaces dodgy throughput values with 0
     good = (thput > 0) & np.isfinite(thput)
