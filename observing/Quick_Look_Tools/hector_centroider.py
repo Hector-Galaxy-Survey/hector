@@ -121,8 +121,8 @@ def call_centroider(Probe, Probe_data, Probe_annulus, x, y, mean_x, mean_y, rota
         # centroidX_rotated = -1 * (np.cos(rotation_angle) * float(centroidX) - np.sin(rotation_angle) * float(centroidY))
         # centroidY_rotated = -1 * (np.sin(rotation_angle) * float(centroidX) + np.cos(rotation_angle) * float(centroidY))
         def rotate_centroids(angle_rotation, Xcentroid, Ycentroid):
-            Xcentroid_rotated = 1. * (+np.cos(angle_rotation) * float(Xcentroid) + np.sin(angle_rotation) * float(Ycentroid))
-            Ycentroid_rotated = 1. * (-np.sin(angle_rotation) * float(Xcentroid) + np.cos(angle_rotation) * float(Ycentroid))
+            Xcentroid_rotated = -1. * (+np.cos(angle_rotation) * float(Xcentroid) - np.sin(angle_rotation) * float(Ycentroid))
+            Ycentroid_rotated = -1. * (-np.sin(angle_rotation) * float(Xcentroid) - np.cos(angle_rotation) * float(Ycentroid))
             return Xcentroid_rotated, Ycentroid_rotated
 
         centroidX_rotated, centroidY_rotated = rotate_centroids(rotation_angle, centroidX, centroidY)

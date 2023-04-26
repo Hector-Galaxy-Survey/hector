@@ -114,10 +114,53 @@ def get_fibbundle_Xc_Yc_and_robotPos(Probename, fibrenum, object_robot_tab):
 
     # Rotation of axes: see Evernote HECTOR/probe rotations for more information. The 'minus' sign, I think, accounts
     # for the fact that North is down (and East to the right) on the plate
-    x_rotated_pos = 1 * (+np.cos(rotation_angle_magnet) * x_pos + np.sin(rotation_angle_magnet) * y_pos)
-    y_rotated_pos = 1 * (-np.sin(rotation_angle_magnet) * x_pos + np.cos(rotation_angle_magnet) * y_pos)
+    # x_rotated_pos = 1 * (+np.cos(rotation_angle_magnet) * x_pos + np.sin(rotation_angle_magnet) * y_pos)
+    # y_rotated_pos = 1 * (-np.sin(rotation_angle_magnet) * x_pos + np.cos(rotation_angle_magnet) * y_pos)
 
-    return x_pos, y_pos, mean_magX, mean_magY, rotation_angle_magnet, x_rotated_pos, y_rotated_pos
+    # Works for Q in R21-25 (25092022)
+    # Works for A in R26-- (25092022), For both Q and A Ferule direction appear to be the same
+    x_rotated_pos = -1 * (+np.cos(rotation_angle_magnet) * x_pos - np.sin(rotation_angle_magnet) * y_pos)   # MLPG - this looks correct
+    y_rotated_pos = -1 * (-np.sin(rotation_angle_magnet) * x_pos - np.cos(rotation_angle_magnet) * y_pos)
+
+    return x_pos, y_pos, fiber_number, mean_magX, mean_magY, rotation_angle_magnet, x_rotated_pos, y_rotated_pos
+
+
+def is_ferule_aligned_to_fibres(Probename, rotated_xpos, rotated_ypos, fiber_num, x_mean, y_mean, hexabundle_line, scaling, ferule_orientation):
+    # Get the ferule orientation information dictionary
+    if type(ferule_orientation) == str:
+        with open(ferule_orientation, 'r') as g:
+            orientation = yaml.safe_load(g)
+    orientation = orientation['orientation']
+
+    def determine_left_or_right(fibre, fibre_side):
+        arg_idx = np.argmin(np.abs(np.array(fibre) - fibre_side))
+        assert np.array(fibre)[arg_idx] - fibre_side == 0, 'Minimum must be zero (check L139 in is_ferule_aligned_to_fibres)'
+        point_x, point_y = rotated_xpos[arg_idx] * scaling + x_mean, rotated_ypos[arg_idx] * scaling + y_mean
+
+        x1, y1 = np.array(hexabundle_line[0])
+        x2, y2 = np.array(hexabundle_line[1])
+        x0, y0 = np.array([point_x, point_y])
+        cross_product = ((x2 - x1) * (y1 - y0) - (x1 - x0) * (y2 - y1))
+
+        threshold = 1e-9
+        if cross_product >= threshold: return  "left"
+        elif cross_product <= -threshold: return "right"
+        else: return "Something has gone wrong. Check L153 in is_ferule_aligned_to_fibres"
+
+    # P1 = np.array(line_hexabundle_tail[0])
+    # P2 = np.array(line_hexabundle_tail[1])
+    # P3 = np.array([point_x, point_y])
+    # # Perpendicular distance (or Q values) from P3 (or centroid position) to the line between P1 and P2 (or ferral axis).
+    # # The magnitude of this cross product gives the area of the parallelogram with sides given by the vector P1/P3 and P1/P2.
+    # # Divide Area/side-length to get height (or in our case, the distance)
+    # dist = np.cross(P2 - P1, P1 - P3) / np.linalg.norm(P2 - P1)
+
+    # The cross product is +ve for the left-fibre, and -ve for the right-fibre
+    if Probename is not "T":
+        assert determine_left_or_right(fiber_num, orientation[Probename][0]) is "left", f"Fiber {orientation[Probename][0]} is NOT to the LEFT of the ferule in Probe-{Probename}"
+        assert determine_left_or_right(fiber_num, orientation[Probename][1]) is "right", f"Fiber {orientation[Probename][0]} is NOT to the RIGHT of the ferule in Probe-{Probename}"
+
+    return
 
 
 if __name__ == "__main__":
@@ -163,7 +206,7 @@ if __name__ == "__main__":
         config['file_prefix'] = args.file_prefix
 
     # Use file_prefix to extract the year-month-day information to append to the data_dir
-    datestamp = str(datetime.date.today().year)[-2::] + str(month_to_num(config['file_prefix'][-3::])) + config['file_prefix'][0:2]
+    datestamp = str(datetime.date.today().year)[-2::] + str(month_to_num(config['file_prefix'][-3::])) + config['file_prefix'][0:2]  # TURN-ON
 
     # Get the robot file name
     if args.robot_file_name is not None:
@@ -345,7 +388,7 @@ if __name__ == "__main__":
         fibnum = object_fibtab.field('FIBNUM')[mask]
 
         # Gets the x,y positions of the fibres, the rotation angle of the rectangular magnet, and the x,y rotated positions
-        x, y, mean_x, mean_y, rotation_angle, x_rotated, y_rotated = get_fibbundle_Xc_Yc_and_robotPos(Probe, fibnum, object_robottab)
+        x, y, fnum, mean_x, mean_y, rotation_angle, x_rotated, y_rotated = get_fibbundle_Xc_Yc_and_robotPos(Probe, fibnum, object_robottab)
 
         # Hexabundle tail or ferral direction
         line_hexabundle_tail = [(mean_x, mean_y), (mean_x + hexabundle_tail_length * np.sin(rotation_angle),
@@ -356,6 +399,9 @@ if __name__ == "__main__":
         # for ix in range(len(x_rotated)):
         #     ax.plot(x_rotated[ix]*scale_factor+mean_x, y_rotated[ix]*scale_factor+mean_y, '.', c='k')
         #     ax.text(x_rotated[ix]*scale_factor+mean_x, y_rotated[ix]*scale_factor+mean_y, str(fibnum[ix]), color='k')
+
+        is_ferule_aligned_to_fibres(Probe, x_rotated, y_rotated, fibnum, mean_x, mean_y,
+                                    line_hexabundle_tail, scale_factor, config['ferule_orientation_dictionary'])
 
         line_hexabundle_tail4 = [(mean_x, mean_y), (mean_x + hexabundle_tail_length * np.sin(0.0),
                                                     mean_y + hexabundle_tail_length * np.cos(0.0))]
@@ -463,7 +509,7 @@ if __name__ == "__main__":
                 fibnum = object_fibtab.field('FIBNUM')[mask]
 
                 # Gets the x,y positions of the fibres, the rotation angle of the rectangular magnet, and the x,y rotated positions
-                x, y, mean_x, mean_y, rotation_angle, x_rotated, y_rotated = get_fibbundle_Xc_Yc_and_robotPos(userMask[iexclude], fibnum, object_robottab)
+                x, y, fnum, mean_x, mean_y, rotation_angle, x_rotated, y_rotated = get_fibbundle_Xc_Yc_and_robotPos(Probe, fibnum, object_robottab)
 
                 # Hexabundle tail or ferral direction
                 line_hexabundle_tail = [(mean_x, mean_y), (mean_x + hexabundle_tail_length * np.sin(rotation_angle),
