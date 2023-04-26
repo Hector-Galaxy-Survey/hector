@@ -1058,7 +1058,7 @@ class Manager:
 
         if os.path.exists(self.abs_root):
             f = open(self.abs_root+'/filelist.txt', 'w')
-            f.write('#filename  ndfclass  field  object\n')
+            f.write('#filename  ndfclass  field  object  standrad\n')
             f.close()
 
         for fits in fits_list:
@@ -1119,7 +1119,7 @@ class Manager:
             self.set_name(fits, trust_header=trust_header)
             print('Adding file: ', filename, fits.ndf_class, fits.plate_id, fits.name)
             f = open(self.abs_root+'/filelist.txt', 'a')
-            f.write(filename+' '+fits.ndf_class+' '+(fits.plate_id or 'None')+' '+(fits.name or 'None')+'\n')
+            f.write(filename+' '+fits.ndf_class+' '+(fits.plate_id or 'None')+' '+(fits.name or 'None')+' '+(str(fits.spectrophotometric) or 'None')+'\n')
             f.close()
             
 #        self.set_name(fits, trust_header=trust_header)
@@ -1129,7 +1129,7 @@ class Manager:
             fits.make_reduced_link()
         if fits.grating in self.gratlpmm:
             try:
-                fits.add_header_item('GRATLPMM', self.gratlpmm[fits.grating])
+                fits.add_header_item('GRATLPMM', self.gratlpmm[fits.grating],'Grating Lines per mm, set by Hector manager')
             except IOError:
                 pass
         if fits.grating not in self.idx_files:
@@ -4909,11 +4909,15 @@ class FITSFile:
                 # source file. Ideally we would still edit the copied file,
                 # but that doesn't actually exist yet.
                 pass
-        if self.header['EPOCH'] > 2021. and self.plate_id == '1': # Hector commissioning data have PLATEID=1 
+        if self.header['EPOCH'] > 2021. and self.plate_id == '1': # Hector commissioning data (Dec 2021 - Apr 2023) have PLATEID=1 
             # TODO: adjust epoch when the primary header has a proper PLATEID
             tile = self.hdulist[self.fibres_extno].header['FILENAME'] # the tile name is truncated in the primary header and get it from fibre table
             start = tile.find('Tile_FinalFormat_')+17
             end = tile.find('_CONFIGURED_correct_header.csv')
+            if (start < 0): # Apr 2023 tile file has the new format of the name 
+                start = tile.find('Tile_')+5
+            if (end < 0):
+                end = tile.find('.csv')
             if (start < 0) | (end < 0):
                 self.plate_id = tile[0:-4]
             else:
@@ -5100,9 +5104,9 @@ class FITSFile:
             self.grating = self.header['GRATID']
         else:
             self.grating = None
-        if self.grating == 3:
+        if self.grating == 3 or 'VPH-1099-484':
             self.grating = 'SPECTOR1'
-        if self.grating == 4:
+        if self.grating == 4 or 'VPH-1178-679':
             self.grating = 'SPECTOR2'
 
         return
