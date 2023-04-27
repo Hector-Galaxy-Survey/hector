@@ -37,6 +37,8 @@ import shutil, shlex
 import warnings
 import socket
 import glob
+import datetime
+import numpy as np
 
 # Set up logging
 from .. import slogging
@@ -108,11 +110,10 @@ def subprocess_call(command_line, t_max=480, **kwargs):
     if log.isEnabledFor(slogging.DEBUG):
         for line in stdout.splitlines():
             log.debug("   " + line)
-
     return stdout
 
 
-def call_2dfdr_reduce(dirname, options=None, dummy=False):
+def call_2dfdr_reduce(dirname, root=None, options=None, dummy=False):
     """Call 2dfdr in pipeline reduction mode using `aaorun`"""
     # Make a temporary directory with a unique name for use as IMP_SCRATCH
     with TemporaryDirectory() as imp_scratch:
@@ -127,9 +128,8 @@ def call_2dfdr_reduce(dirname, options=None, dummy=False):
             print('#####################')
             print()
         else:
-            print('### this printing will be removed from tdfdr.py after testing!')
-            print('2dfdr call options:')
-            print(' '.join(command_line))
+#            print('2dfdr call options (will be removed from tdfdr.py):')
+#            print(' '.join(command_line))
             #print('#####################')
             #print()
 
@@ -156,15 +156,25 @@ def call_2dfdr_reduce(dirname, options=None, dummy=False):
             # Confirm that the above command ran to completion, otherwise raise an exception
             try:
                 confirm_line = tdfdr_stdout.splitlines()[-2]
-                print(confirm_line)
                 assert (
                     re.search(r"Action \"EXIT\", Task \S+, completed.*", tdfdr_stdout) is not None or  # 2dfdr v6.28
                     re.match(r"Data Reduction command \S+ completed.", confirm_line) is not None       # 2dfdr v6.14
                 )
-            except (IndexError, AssertionError):
-                log.debug(tdfdr_stdout)
+            except (IndexError, AssertionError): #write 2dfdr failures to tdfdr_failure.txt
+                #log.debug(tdfdr_stdout)
                 message = "2dfdr did not run to completion for command: %s" % " ".join(command_line)
-                raise TdfdrException(message)
+                print("Error has occured! Should check "+root+"/tdfdr_failure.txt")
+                print("   "+message)
+                f = open(root+'/tdfdr_failure.txt', 'a')
+                if os.path.exists(root+'/tdfdr_failure.txt'):
+                    lines = np.array([line.rstrip() for line in open(root+'/tdfdr_failure.txt')])
+                    sub = np.where(message == lines)
+                    if len(sub[0]) == 0:
+                        f.write(message+'\n')
+                else:
+                    f.write(message+'\n')
+                f.close()
+                #raise TdfdrException(message)
 
 
 def call_2dfdr_gui(dirname, options=None):
@@ -207,7 +217,7 @@ def load_gui(dirname, idx_file=None):
     return
 
 
-def run_2dfdr_single(fits, idx_file, options=None, dummy=False):
+def run_2dfdr_single(fits, idx_file, root=None, options=None, dummy=False):
     """Run 2dfdr on a single FITS file."""
     print('Reducing file:', fits.filename)
 
@@ -248,7 +258,7 @@ def run_2dfdr_single(fits, idx_file, options=None, dummy=False):
 
     if options is not None:
         options_all.extend(options)
-    call_2dfdr_reduce(fits.reduced_dir, options=options_all, dummy=dummy)
+    call_2dfdr_reduce(fits.reduced_dir,root=root, options=options_all, dummy=dummy)
 
     if socket.gethostname()[0:3] == 'aat':
         files = glob.glob(out_dirname_tmp + '/*')
