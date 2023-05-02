@@ -4894,7 +4894,7 @@ class FITSFile:
             # Check in the fibre table instead
             header = self.hdulist[self.fibres_extno].header
             self.plate_id = header['PLATEID']
-            match = re.match(r'(^run_[0-9]+_)(P[0-9]+$)', self.plate_id)
+            match = re.match(r'(^run_[0-9]+_)(P[0-9]+$)', self.plate_id) #This is for SAMI
             comment = 'Plate ID (from config file)'
             if match and 'star plate' in header['LABEL']:
                 # This is a star field; adjust the plate ID accordingly
@@ -4912,22 +4912,15 @@ class FITSFile:
         if self.header['EPOCH'] > 2021. and self.plate_id == '1': # Hector commissioning data (Dec 2021 - Apr 2023) have PLATEID=1 
             # TODO: adjust epoch when the primary header has a proper PLATEID
             tile = self.hdulist[self.fibres_extno].header['FILENAME'] # the tile name is truncated in the primary header and get it from fibre table
-            start = tile.find('Tile_FinalFormat_')+17
-            end = tile.find('_CONFIGURED_correct_header.csv')
-            if (start < 0): # Apr 2023 tile file has the new format of the name 
-                start = tile.find('Tile_')+5
-            if (end < 0):
-                end = tile.find('.csv')
-            if (start < 0) | (end < 0):
-                self.plate_id = tile[0:-4]
-            else:
-                self.plate_id = tile[start:end]
+            start = max(tile.find('Tile_FinalFormat_')+17,tile.find('Tile_')+5,0)
+            end = np.array([tile.find('_CONFIGURED_correct_header.csv'),tile.find('.csv')])
+            end = end[np.where(end > -1)]; end = min(end)
+            self.plate_id = tile[start:end]
             try: # Save this to the primary header
                 self.add_header_item('PLATEID', self.plate_id, 'Plate ID (edited by manager)',
                                      source=True)
             except IOError:
                 pass
-
         if self.plate_id == '':
             self.plate_id = 'none'
         return
