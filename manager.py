@@ -1127,11 +1127,11 @@ class Manager:
         self.set_reduced_path(fits)
         if not fits.do_not_use:
             fits.make_reduced_link()
-        if fits.grating in self.gratlpmm:
-            try:
-                fits.add_header_item('GRATLPMM', self.gratlpmm[fits.grating],'Grating Lines per mm, set by Hector manager')
-            except IOError:
-                pass
+#        if fits.grating in self.gratlpmm: #why do we need to modify this in the header? It may require for SAMI?
+#            try:
+#                fits.add_header_item('GRATLPMM', self.gratlpmm[fits.grating],'Grating Lines per mm, set by Hector manager')
+#            except IOError:
+#                pass
         if fits.grating not in self.idx_files:
             # Without an idx file we would have no way to reduce this file
             self.disable_files([fits])
@@ -3312,7 +3312,7 @@ class Manager:
 
         # Define what the best choice is for a FFLAT, in particular
         # if we are going to use a twilight flat:
-        if (self.use_twilight_flat_blue  and (fits.ccd == 'ccd_1' or fits.ccd == 'ccd_3')): #marie adds ccd_3
+        if (self.use_twilight_flat_blue  and ((fits.ccd == 'ccd_1') or (fits.ccd == 'ccd_3'))): #marie adds ccd_3
             best_fflat = 'fflat_mfsky'
         else:
             best_fflat = 'fflat'
@@ -4447,7 +4447,7 @@ class Manager:
             dirname = fits_or_dirname
             if dirname.find('ccd_') > 0:
                 # Specify what idx file to use using the given dirname
-                readccd = int(dirname[dirname.find('ccd_')+4:dirname.find('ccd_')+5])
+                readccd = int(dirname[dirname.find('ccd_')+4:dirname.find('ccd_')+5])-1
                 ngrating = ['580V','1000R','SPECTOR1','SPECTOR2']
                 idx_file = IDX_FILES_FAST[ngrating[readccd]]
             else: 
@@ -5097,9 +5097,9 @@ class FITSFile:
             self.grating = self.header['GRATID']
         else:
             self.grating = None
-        if self.grating == 3 or 'VPH-1099-484':
+        if (self.grating == 3) or (self.grating == 'VPH-1099-484'):
             self.grating = 'SPECTOR1'
-        if self.grating == 4 or 'VPH-1178-679':
+        if (self.grating == 4) or (self.grating == 'VPH-1178-679'):
             self.grating = 'SPECTOR2'
 
         return

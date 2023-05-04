@@ -78,7 +78,7 @@ else:
     TemporaryDirectory = tempfile.TemporaryDirectory
 
 
-def subprocess_call(command_line, t_max=480, **kwargs):
+def subprocess_call(command_line, t_max=2000, **kwargs):
     """Generic function to run a command in an asynchronous way, capturing STDOUT and returning it."""
     formatted_command = " ".join(command_line)
     log.info("async call: {}".format(formatted_command))
@@ -129,7 +129,7 @@ def call_2dfdr_reduce(dirname, root=None, options=None, dummy=False):
             print()
         else:
 #            print('2dfdr call options (will be removed from tdfdr.py):')
-#            print(' '.join(command_line))
+            print(' '.join(command_line))
             #print('#####################')
             #print()
 
@@ -168,7 +168,7 @@ def call_2dfdr_reduce(dirname, root=None, options=None, dummy=False):
                 f = open(root+'/tdfdr_failure.txt', 'a')
                 if os.path.exists(root+'/tdfdr_failure.txt'):
                     lines = np.array([line.rstrip() for line in open(root+'/tdfdr_failure.txt')])
-                    sub = np.where(message == lines)
+                    sub = np.where(message.rstrip() == lines)
                     if len(sub[0]) == 0:
                         f.write(message+'\n')
                 else:
