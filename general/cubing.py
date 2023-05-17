@@ -1195,6 +1195,8 @@ def create_primary_header(ifu_list,name,files,WCS_pos,WCS_flag):
         rss_key='HIERARCH RSS_FILE '+str(num+1)
         rss_string='Input RSS file '+str(num+1)
         hdr_new[rss_key] = (os.path.basename(files[num]), rss_string)
+    hdr_new['NDITHER'] = str(num+1)
+
 
     # Extract header keywords of interest from the metadata table, check for consistency
     # then append to the main header
@@ -1204,7 +1206,7 @@ def create_primary_header(ifu_list,name,files,WCS_pos,WCS_flag):
                                    'RO_NOISE','ORIGIN','TELESCOP','ALT_OBS','LAT_OBS','LONG_OBS',
                                    'RCT_VER','RCT_DATE','INSTRUME','SPECTID',
                                    'GRATID','GRATTILT','GRATLPMM','ORDER','TDFCTVER','TDFCTDAT','DICHROIC',
-                                   'OBSTYPE','TOPEND','AXIS','AXIS_X','AXIS_Y','TRACKING','TDFDRVER']
+                                   'OBSTYPE','TOPEND','AXIS','AXIS_X','AXIS_Y','TRACKING','TDFDRVER','PLATEID','LABEL']
 
     primary_header_conditional_keyword_list = ['COORDROT','COORDREV']
 
@@ -1219,16 +1221,15 @@ def create_primary_header(ifu_list,name,files,WCS_pos,WCS_flag):
 
     # Extract the couple of relevant keywords from the fibre table header and again
     # check for consistency of keyword values
-
-    fibre_header_keyword_list = ['PLATEID','LABEL']
-
-    for keyword in fibre_header_keyword_list:
-        val = []
-        for ifu in ifu_list: val.append(ifu.fibre_table_header[keyword])
-        if len(set(val)) == 1:
-            hdr_new.append(ifu_list[0].fibre_table_header.cards[keyword])
-        else:
-            print('Non-unique value for keyword:', keyword)
+    # Sree: decide to grab PLATEID and LABEL from the primary header. The below can be removed if it works properly
+#    fibre_header_keyword_list = ['PLATEID','LABEL']
+#    for keyword in fibre_header_keyword_list:
+#        val = []
+#        for ifu in ifu_list: val.append(ifu.fibre_table_header[keyword])
+#        if len(set(val)) == 1:
+#            hdr_new.append(ifu_list[0].fibre_table_header.cards[keyword])
+#        else:
+#            print('Non-unique value for keyword:', keyword)
 
     # Append HISTORY from the initial RSS file header, assuming HISTORY is
     # common for all RSS frames.

@@ -104,11 +104,10 @@ except ImportError:
 
 MF_BIN_DIR = '/suphys/nscott/molecfit_install/bin' # directory for molecfit binary files
 #MF_BIN_DIR = '/Users/scroom/code/molecfit/bin/' # directory for molecfit binary files
-#MF_BIN_DIR = '/priv/hector/software/install/bin/'
-#MF_BIN_DIR = '/priv/hector/software/install/esoreflex-2.11.5/esoreflex/bin'
+MF_BIN_DIR = hector_path[0:-7]+'molecfit_install/bin'
 
 if not os.path.exists(os.path.join(MF_BIN_DIR,'molecfit')):
-        warnings.warn('molecfit not found. Disabling improved telluric subtraction')
+        warnings.warn('molecfit not found from '+MF_BIN_DIR+'; Disabling improved telluric subtraction')
         MOLECFIT_AVAILABLE = False
 else:
         MOLECFIT_AVAILABLE = True
@@ -4904,6 +4903,8 @@ class FITSFile:
             try:
                 self.add_header_item('PLATEID', self.plate_id, comment,
                                      source=True)
+                self.add_header_item('LABEL', header['LABEL'], 'LABEL (edited by manager)',
+                                     source=True)
             except IOError:
                 # This probably means we don't have write access to the
                 # source file. Ideally we would still edit the copied file,
@@ -4918,6 +4919,8 @@ class FITSFile:
             self.plate_id = tile[start:end]
             try: # Save this to the primary header
                 self.add_header_item('PLATEID', self.plate_id, 'Plate ID (edited by manager)',
+                                     source=True)
+                self.add_header_item('LABEL', '1', 'LABEL (edited by manager)',
                                      source=True)
             except IOError:
                 pass
