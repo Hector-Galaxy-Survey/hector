@@ -78,7 +78,7 @@ else:
     TemporaryDirectory = tempfile.TemporaryDirectory
 
 
-def subprocess_call(command_line, t_max=2000, **kwargs):
+def subprocess_call(command_line, t_max=600, **kwargs):
     """Generic function to run a command in an asynchronous way, capturing STDOUT and returning it."""
     formatted_command = " ".join(command_line)
     log.info("async call: {}".format(formatted_command))
