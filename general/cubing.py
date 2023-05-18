@@ -497,6 +497,10 @@ def dithered_cube_from_rss_wrapper(files, name, size_of_grid=50,
 
         hdr_new = create_primary_header(ifu_list, name, files, WCS_pos, WCS_flag)
 
+        if hdr_new['CRPIX1'] != np.shape(flux_cube)[0]/2+0.5: #when Susie's resizing cubes is active
+            hdr_new['CRPIX1'] = (np.shape(flux_cube)[0]/2+0.5, 'Pixel coordinate of reference point after resizing')
+            hdr_new['CRPIX2'] = (np.shape(flux_cube)[1]/2+0.5, 'Pixel coordinate of reference point after resizing')
+
         # Define the units for the datacube
         hdr_new['BUNIT'] = ('10**(-16) erg /s /cm**2 /angstrom /pixel', 
                             'Units')
@@ -1003,6 +1007,142 @@ def dithered_cube_from_rss(ifu_list, size_of_grid=50, output_pix_size_arcsec=0.5
     # (and hence surface brightness sensitivity) from the output data cube.
     flux_cube_unprimed = flux_cube / weight_cube 
     var_cube_unprimed = var_cube / (weight_cube * weight_cube)
+
+    #Print out the dimension before cropping #Susie's code resizing cubes
+    print('Dimension flux before cropping: ',np.shape(flux_cube_unprimed))
+    print('Dimension var before cropping: ',np.shape(var_cube_unprimed))
+    print('Dimension weight before cropping: ', np.shape(weight_cube))
+    print('Dimension covariance before cropping: ', np.shape(covariance_array))
+    #This part is for trimming the edge to minimise the size of cube
+    #by deleting NaN rows and columns and keep the object in the centre
+    
+    #Collect the edged indices for each dimension
+    top_all = []
+    bottom_all = []
+    left_all = []
+    right_all = []
+    
+    #For top-bottom cropping
+    for i in range(np.shape(flux_cube_unprimed)[0]):
+        #finding the first row with all NaN from the centre to the top side
+        i0 = int((np.shape(flux_cube_unprimed)[1]/2) - 1)
+        top0 = []
+        while i0 > 0:
+            if all(np.isnan(flux_cube_unprimed[i][i0,:])):
+                top0.append(i0)
+                break
+            else:
+                i0 = i0 - 1
+        #finding the first row with all NaN from the centre to the bottom side
+        i1 = int(np.shape(flux_cube_unprimed)[1]/2)
+        bottom0 = []
+        while i1 < int(np.shape(flux_cube_unprimed)[1]):
+            if all(np.isnan(flux_cube_unprimed[i][i1,:])):
+                bottom0.append(i1)
+                break
+            else:
+                i1 = i1 + 1
+        #Compare the length: pick up the longer one    
+        if len(top0)>int(0) and len(bottom0)>int(0):  
+            if (int((np.shape(flux_cube_unprimed)[1]/2) - 1) - top0[0]) > (bottom0[0] - int(np.shape(flux_cube_unprimed)[1]/2)):
+                top = top0[0]
+                bottom = int(np.shape(flux_cube_unprimed)[1]/2) + (int((np.shape(flux_cube_unprimed)[1]/2) - 1) - top0[0])
+            else:
+                bottom = bottom0[0]
+                top = int((np.shape(flux_cube_unprimed)[1]/2) - 1) - (bottom0[0] - int(np.shape(flux_cube_unprimed)[1]/2))
+        else:
+            top = 0
+            bottom = np.shape(flux_cube_unprimed)[1]
+        #append the values for each side
+        top_all.append(top)
+        bottom_all.append(bottom)
+    
+    #For left-right cropping
+    for i in range(np.shape(flux_cube_unprimed)[1]):
+        #finding the first row with all NaN from the centre to the left side
+        i2 = int((np.shape(flux_cube_unprimed)[0]/2) - 1)
+        left0 = []
+        while i2 > 0:
+            if all(np.isnan(flux_cube_unprimed[i2,i,:])):
+                left0.append(i2)
+                break
+            else:
+                i2 = i2 - 1
+        #finding the first row with all NaN from the centre to the right side
+        i3 = int(np.shape(flux_cube_unprimed)[0]/2)
+        right0 = []
+        while i3 < np.shape(flux_cube_unprimed)[0]:
+            if all(np.isnan(flux_cube_unprimed[i3,i,:])):
+                right0.append(i3)
+                break
+            else:
+                i3 = i3 + 1
+        #Compare the length: pick up the longer one
+        if len(left0)>int(0) and len(right0)>int(0):
+            if (int((np.shape(flux_cube_unprimed)[0]/2) - 1) - left0[0]) > (right0[0] - int(np.shape(flux_cube_unprimed)[0]/2)):
+                left = left0[0]
+                right = int(np.shape(flux_cube_unprimed)[0]/2) + (int((np.shape(flux_cube_unprimed)[0]/2) - 1) - left0[0])
+            else:
+                right = right0[0]
+                left = int((np.shape(flux_cube_unprimed)[0]/2) - 1) - (right0[0] - int(np.shape(flux_cube_unprimed)[0]/2))
+        else:
+                left = 0
+                right = np.shape(flux_cube_unprimed)[0]
+        #append the values for each side    
+        left_all.append(left)
+        right_all.append(right)
+    
+    #Pick up the best values for all slices: minima for top and left, maxima for bottom and right
+    #This is to maximise the size of the cube and avoid deleting spaxels with information
+    top_i = min(top_all)
+    left_i = min(left_all)
+    bottom_i = max(bottom_all)
+    right_i = max(right_all)
+    
+    #Compare the length and get the top-bottom values from the longer one
+    diff_v = ((((np.shape(flux_cube_unprimed)[1]/2) - 1) - top_i) - (bottom_i - (np.shape(flux_cube_unprimed)[1]/2)))
+    if diff_v > 0:
+        top = int(top_i)
+        bottom = int(bottom_i + diff_v)
+    elif diff_v < 0:
+        bottom = int(bottom_i)
+        top = int(top_i + diff_v)
+    else:
+        top = int(top_i)
+        bottom = int(bottom_i)
+    #Compare the length and get the left-right values from the longer one    
+    diff_h = ((((np.shape(flux_cube_unprimed)[0]/2) - 1) - left_i) - (right_i - (np.shape(flux_cube_unprimed)[0]/2)))
+    if diff_h > 0:
+        left = int(left_i)
+        right = int(right_i + diff_h)
+    elif diff_h < 0:
+        right = int(right_i)
+        left = int(left_i + diff_h)
+    else:
+        left = int(left_i)
+        right = int(right_i)
+               
+    #Get equal x-y dimension
+    if bottom > right:
+        left = top
+        right = bottom
+    elif bottom < right:
+        top = left
+        bottom = right
+    else:
+        pass
+    
+    #Cropping the final cubes
+    flux_cube_unprimed = (flux_cube_unprimed[left+1:right,top+1:bottom,:])
+    var_cube_unprimed = (var_cube_unprimed[left+1:right,top+1:bottom,:])
+    weight_cube = (weight_cube[left+1:right,top+1:bottom,:])
+    covariance_array = covariance_array[left+1:right,top+1:bottom,:]
+    
+    #Print out the dimension after cropping
+    print('Dimension flux after cropping: ',np.shape(flux_cube_unprimed))
+    print('Dimension var after cropping: ',np.shape(var_cube_unprimed))
+    print('Dimension weight after cropping: ', np.shape(weight_cube))
+    print('Dimension covariance after cropping: ', np.shape(covariance_array))
 
     return flux_cube_unprimed, var_cube_unprimed, weight_cube, diagnostic_info, covariance_array, covariance_slice_locs
 

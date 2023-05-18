@@ -1816,9 +1816,8 @@ class Manager:
         # fact that it is also set for the twilight reductions (ccd1 only).
         do_twilight = True
         if ('ccd' in kwargs):
-            if (kwargs['ccd'] == 'ccd_1' or kwargs['ccd'] == 'ccd_3'): #marie: I think this should be removed to apply to ccd_3
+            if ((kwargs['ccd'] == 'ccd_1') or (kwargs['ccd'] == 'ccd_3')): #marie: I think this should modify it to apply to ccd_3
                 do_twilight = True
-
             else:
                 do_twilight = False
 
@@ -2682,7 +2681,7 @@ class Manager:
 
     def cube(self, overwrite=False, min_exposure=599.0, name='main',
              star_only=False, drop_factor=None, tag='', update_tol=0.02,
-             size_of_grid=50, output_pix_size_arcsec=0.5,
+             size_of_grid=70, output_pix_size_arcsec=0.5,
              min_transmission=0.333, max_seeing=4.0, min_frames=6, **kwargs):
         """Make datacubes from the given RSS files."""
         groups = self.group_files_by(
@@ -2719,7 +2718,9 @@ class Manager:
                         drop_factor = 0.75
                     else:
                         drop_factor = 0.5
-
+                gridsize = size_of_grid
+                if((ccd == 'ccd_1') or ((ccd == 'ccd_2'))):
+                    gridsize = 50
                 for objname in objects:
                     inputs_list.append(
                         (field_id, ccd, path_list, objname, cubed_root, drop_factor,
@@ -2744,6 +2745,85 @@ class Manager:
                         break
                 if fits:
                     update_checks('CUB', [fits], False)
+                #Resize the cropped blue and red cubes of the same object to get equal dimension
+
+        print('Start resizing the cubes...') #Susie's code resizing cubes
+        for k0 in glob(cubed_root + '/*/'):
+            print('Processing file ',k0)
+            axis_b = pf.getheader(k0 + os.listdir(k0)[0])['NAXIS1']
+            axis_r = pf.getheader(k0 + os.listdir(k0)[1])['NAXIS1']
+            #Set the condition to follow the larger values
+            if axis_b > axis_r:
+                axis = axis_b
+            elif axis_b < axis_r:
+                axis = axis_r
+            else:
+                axis = axis_b
+            for i in range(2):
+                #open file
+                file = pf.open(k0 + os.listdir(k0)[i])
+                length = file[0].header['NAXIS1']
+                if length==axis: #no need to change
+                    print(file[0].header['NAME'],file[0].header['SPECTID'],'Unchanged...')
+                    pass
+                else: #insert NaN row to fulfil the data
+                    print(file[0].header['NAME'],file[0].header['SPECTID'],'Resized...')
+                    for j0 in range(len(file)-1):
+                        x = file[j0].data
+                        header = file[j0].header
+                        print('Before resizing file',j0,np.shape(x))
+                        if j0 < len(file)-2:
+                            n0 = int(1)
+                            n1 = int(2)
+                        else:
+                            n0 = int(3)
+                            n1 = int(4)
+                        j1 = 0
+                        while j1 < int((axis-length)/2):
+                            x = np.insert(x, (0,(np.shape(x)[n0])), np.nan , axis=n0)
+                            j1 = j1 + 1
+                        j2 = 0
+                        while j2 < int((axis-length)/2):
+                            x = np.insert(x, (0,(np.shape(x)[n1])), np.nan , axis=n1)
+                            j2 = j2 + 1
+                            
+                        print('After resizing file',j0,np.shape(x))
+                        print('Writing a new .fits file...')
+                                        
+                        if j0==0:
+                            header['EXTNAME'] = ('PRIMARY','extension name')
+                            header['NAXIS1'] = axis
+                            header['NAXIS2'] = axis
+                            header['CRPIX1'] = (header['CRPIX1'] + int((axis-length)/2),'Pixel coordinate of reference point')
+                            header['CRPIX2'] = (header['CRPIX2'] + int((axis-length)/2),'Pixel coordinate of reference point')
+                            p0 = pf.PrimaryHDU(x, header)
+                        elif j0==1:
+                            header['EXTNAME'] = ('VARIANCE','extension name')
+                            p1 = pf.ImageHDU(x , header)
+                        elif j0==2:
+                            header['EXTNAME'] = ('WEIGHT','extension name')
+                            p2 = pf.ImageHDU(x , header)
+                        else:
+                            header['EXTNAME'] = ('COVAR','extension name')
+                            p3 = pf.ImageHDU(x , header)
+        
+                    #unchanged throughout the process
+                    header4 = file[4].header
+                    header4['EXTNAME'] = ('QC','extension name')
+                    p4 = pf.BinTableHDU(file[4].data , header4)
+        
+                    #combine HDUList
+                    hdul = pf.HDUList([p0,p1,p2,p3,p4])
+            
+                    #name of file to be written
+                    filename = k0 + os.listdir(k0)[i]
+        
+                    #Overwrite the files
+                    hdul.writeto(filename,overwrite=True)
+                    hdul.close()
+                    print('Finish resizing ', file[0].header['NAME'],file[0].header['SPECTID'])
+        print('Finish resizing all cubes')
+                   
         self.next_step('cube', print_message=True)
         return
 
@@ -2878,32 +2958,34 @@ class Manager:
                              include_gzipped=False, **kwargs):
         """Create aperture spectra."""
         print('Producing aperture spectra')
-        path_pair_list = []
-        groups = self.group_files_by(
-            'field_id', ccd='ccd_1', ndf_class='MFOBJECT', do_not_use=False,
-            reduced=True, name=name, include_linked_managers=True, **kwargs)
-        for (field_id,), fits_list in groups.items():
-            table = pf.getdata(fits_list[0].reduced_path, 'FIBRES_IFU')
-            objects = table['NAME'][table['TYPE'] == 'P']
-            objects = np.unique(objects)
-            objects = [obj.strip() for obj in objects]
-            for objname in objects:
-                path_pair = [
-                    self.cubed_path(objname.strip(), arm, fits_list, field_id,
-                                    exists=True, min_exposure=min_exposure,
-                                    min_transmission=min_transmission,
-                                    max_seeing=max_seeing, tag=tag, gzipped=include_gzipped)
-                    for arm in ('blue', 'red')]
-                if path_pair[0] and path_pair[1]:
-                    if (('.gz' in path_pair[0]) or ('.gz' in path_pair[1])) and (include_gzipped == False):
-                        continue
-                    path_pair_list.append(path_pair)
+        ccdname = ['ccd_1','ccd_3']
+        for nccd in ccdname:
+            path_pair_list = []
+            groups = self.group_files_by(
+                'field_id', ccd=nccd, ndf_class='MFOBJECT', do_not_use=False,
+                reduced=True, name=name, include_linked_managers=True, **kwargs)
+            for (field_id,), fits_list in groups.items():
+                table = pf.getdata(fits_list[0].reduced_path, 'FIBRES_IFU')
+                objects = table['NAME'][table['TYPE'] == 'P']
+                objects = np.unique(objects)
+                objects = [obj.strip() for obj in objects]
+                for objname in objects:
+                    path_pair = [
+                        self.cubed_path(objname.strip(), arm, fits_list, field_id,
+                                        exists=True, min_exposure=min_exposure,
+                                        min_transmission=min_transmission,
+                                        max_seeing=max_seeing, tag=tag, gzipped=include_gzipped)
+                        for arm in ('blue', 'red')]
+                    if path_pair[0] and path_pair[1]:
+                        if (('.gz' in path_pair[0]) or ('.gz' in path_pair[1])) and (include_gzipped == False):
+                            continue
+                        path_pair_list.append(path_pair)
 
-        inputs_list = []
+            inputs_list = []
 
-        for path_pair in path_pair_list:
-            inputs_list.append([path_pair,overwrite])
-        self.map(aperture_spectra_pair, inputs_list)
+            for path_pair in path_pair_list:
+                inputs_list.append([path_pair,overwrite])
+            self.map(aperture_spectra_pair, inputs_list)
         self.next_step('bin_aperture_spectra', print_message=True)
 
         return
@@ -2911,24 +2993,26 @@ class Manager:
     def record_dust(self, overwrite=False, min_exposure=599.0, name='main',
                     min_transmission=0.333, max_seeing=4.0, tag=None, **kwargs):
         """Record information about dust in the output datacubes."""
-        groups = self.group_files_by(
-            'field_id', ccd='ccd_1', ndf_class='MFOBJECT', do_not_use=False,
-            reduced=True, name=name, include_linked_managers = True, **kwargs)
-        for (field_id,), fits_list in groups.items():
-            table = pf.getdata(fits_list[0].reduced_path, 'FIBRES_IFU')
-            objects = table['NAME'][table['TYPE'] == 'P']
-            objects = np.unique(objects).tolist()
-            objects = [obj.strip() for obj in objects]
-            for objname in objects:
-                for arm in ('blue', 'red'):
-                    path = self.cubed_path(
-                        objname, arm, fits_list, field_id,
-                        exists=True, min_exposure=min_exposure,
-                        min_transmission=min_transmission,
-                        max_seeing=max_seeing, tag=tag, gzipped=False)
-                    if path:
-                        if '.gz' not in path:
-                            dust.dustCorrectHectorCube(path, overwrite=overwrite)
+        ccdname = ['ccd_1','ccd_3']
+        for nccd in ccdname:
+            groups = self.group_files_by(
+                'field_id', ccd=nccd, ndf_class='MFOBJECT', do_not_use=False,
+                reduced=True, name=name, include_linked_managers = True, **kwargs)
+            for (field_id,), fits_list in groups.items():
+                table = pf.getdata(fits_list[0].reduced_path, 'FIBRES_IFU')
+                objects = table['NAME'][table['TYPE'] == 'P']
+                objects = np.unique(objects).tolist()
+                objects = [obj.strip() for obj in objects]
+                for objname in objects:
+                    for arm in ('blue', 'red'):
+                        path = self.cubed_path(
+                            objname, arm, fits_list, field_id,
+                            exists=True, min_exposure=min_exposure,
+                            min_transmission=min_transmission,
+                            max_seeing=max_seeing, tag=tag, gzipped=False)
+                        if path:
+                            if '.gz' not in path:
+                                dust.dustCorrectHectorCube(path, overwrite=overwrite)
 
         self.next_step('record_dust',print_message=True)
         return
