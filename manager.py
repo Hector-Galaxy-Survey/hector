@@ -1641,7 +1641,7 @@ class Manager:
         self.disable_files() #do not use diabled file listed in disable.txt
         do_twilight = True
         if ('ccd' in kwargs):
-            if (kwargs['ccd'] == 'ccd_1'):
+            if ((kwargs['ccd'] == 'ccd_1') or (kwargs['ccd'] == 'ccd_3')):
                 do_twilight = True
             else:
                 do_twilight = False
@@ -1659,7 +1659,8 @@ class Manager:
             # make a copy with file type MFFFF.  The copied files are
             # placed in the list fits_twilight_list and then can be
             # processed as normal MFFFF files.
-            for fits in self.files(ndf_class='MFSKY', do_not_use=False, ccd='ccd_1', **kwargs_copy): #marie
+            ccds = ['ccd_1','ccd_3']
+            for fits in self.files(ndf_class='MFSKY', do_not_use=False, ccd=ccds, **kwargs_copy): #marie
                 fits_twilight_list.append(self.copy_as(fits, 'MFFFF', overwrite=overwrite))
             # use the iterable file reducer to loop over the copied twilight list and
             # reduce them as MFFFF files to make TLMs.
@@ -1903,14 +1904,15 @@ class Manager:
         # Send all the sky frames to the improved wavecal routine then
         # apply correction to all the blue arcs
         if  self.improve_blue_wavecorr:
-            file_list_tw = []
             ccdname = ['ccd_1','ccd_3']
             for nccd in ccdname:
+                file_list_tw = []
                 for f in file_list:
                     if f.ccd == nccd:
                         file_list_tw.append(f)
                 input_list = zip(file_list_tw,[overwrite]*len(file_list_tw))
                 self.map(wavecorr_frame,input_list)
+                print(nccd, file_list_tw)
                 wavecorr_av(file_list_tw,self.root)
             
                 kwargs_tmp = kwargs.copy()
@@ -3404,8 +3406,7 @@ class Manager:
         options = []
 
         # Define what the best choice is for a TLM:
-        if (self.use_twilight_tlm_all or (self.use_twilight_tlm_blue and ((fits.ccd == 'ccd_1') or (fits.ccd == 'ccd_3'))) and
-            (fits.plate_id_short != 'Y14SAR4_P007')):
+        if (self.use_twilight_tlm_all or (self.use_twilight_tlm_blue and ((fits.ccd == 'ccd_1') or (fits.ccd == 'ccd_3')) and (fits.plate_id_short != 'Y14SAR4_P007'))):
             best_tlm = 'tlmap_mfsky'
         else:
             best_tlm = 'tlmap'
@@ -3425,7 +3426,7 @@ class Manager:
             options.extend(['-SKYSCRUNCH', '0'])
 
         # only do improved 5577 PCA for longer exposures (CCD_1):
-        if (fits.ccd == 'ccd_1') and (fits.exposure <= self.min_exposure_for_5577pca):
+        if ((fits.ccd == 'ccd_1') or (fits.ccd == 'ccd_3')) and (fits.exposure <= self.min_exposure_for_5577pca):
             options.extend(['PCASKY','0'])
                 
         # add options for just CCD_2:

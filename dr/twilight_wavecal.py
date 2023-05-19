@@ -25,7 +25,8 @@ import astropy.io.fits as pf
 import numpy as np
 from astropy.table import Table
 import os,code,warnings
-import pathlib #marie
+import hector
+hector_path = str(hector.__path__[0])+'/'
 
 warnings.simplefilter('ignore',np.RankWarning)
 
@@ -63,10 +64,7 @@ def calculate_wavelength_offsets(twilight_hdu):
     # Wrapper function to apply the offset measurement to all fibres in a frame
     
     # Offset is determined wrt a high-resolution solar spectrum, and has unit Angstoms
-
-    path = pathlib.Path(__file__).parent.absolute()#os.path.dirname(os.path.abspath('manager.py')) #marie
-    print(path) #marie
-    hdulist_solar = pf.open(path+'/standards/solar/fts-atlas-interp-sami.fits') #marie
+    hdulist_solar = pf.open(hector_path+'/standards/solar/fts-atlas-interp-sami.fits') #marie
     solar_flux = hdulist_solar[0].data
     sh = hdulist_solar[0].header
     solar_wav = np.arange(sh['NAXIS1'])*sh['CDELT1'] + sh['CRVAL1']
@@ -187,7 +185,7 @@ def wavecorr_av(file_list,root_dir):
     offsets_av = np.reshape(offsets_av,(len(offsets_av),1))
 
     tb = Table(offsets_av,names=['Offset'])
-    tb.write(os.path.join(root_dir,'average_blue_wavelength_offset.dat'),format='ascii.commented_header',overwrite=True)
+    tb.write(os.path.join(root_dir,'average_blue_wavelength_offset_ccd_'+str(file_list[0].reduced_path[-13:-12])+'.dat'),format='ascii.commented_header',overwrite=True)
     
 def apply_wavecorr(path,root_dir):
 
@@ -200,8 +198,7 @@ def apply_wavecorr(path,root_dir):
         print('No average wavelength correction file found.') 
         print('Wavelength correction not applied')
         return
-        
-    tb = Table.read(os.path.join(root_dir,'average_blue_wavelength_offset.dat'),format='ascii.commented_header')
+    tb = Table.read(os.path.join(root_dir,'average_blue_wavelength_offset_ccd_'+str(path[-13:-12])+'.dat'),format='ascii.commented_header')
     offsets = tb['Offset'].data
     
     hdulist = pf.open(path,'update')
