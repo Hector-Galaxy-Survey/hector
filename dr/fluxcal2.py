@@ -209,10 +209,15 @@ def chunk_data(ifu, n_drop=None, n_chunk=None, sigma_clip=None):
     n_pixel = ifu.naxis1
     n_fibre = len(ifu.data)
     if n_drop is None:
-        n_drop = 24
+        n_drop = 24 #TODO: why it is 24 for SAMI? would it be okay to make it 48 for Hector?
+        if ifu.instrument == 'SPECTOR':
+            n_drop = 48 # for Hector
     if n_chunk is None:
-        n_chunk = round((n_pixel - 2*n_drop) / 100.0)
-    chunk_size = round((n_pixel - 2*n_drop) / n_chunk)
+        size = 100.
+        if ifu.instrument == 'SPECTOR':  # Is it reasonable to have the same 40 chunks for both AAOmega and Spector?
+            size = 200.
+        n_chunk = int((n_pixel - 2*n_drop) / size)
+    chunk_size = int((n_pixel - 2*n_drop) / n_chunk)
     if sigma_clip:
         good = np.isfinite(ifu.data)
         data_smooth = ifu.data.copy()
@@ -232,6 +237,7 @@ def chunk_data(ifu, n_drop=None, n_chunk=None, sigma_clip=None):
     chunk_size = np.int(np.floor(chunk_size))
     start = n_drop
     end = n_drop + n_chunk * chunk_size
+    print('remove from dr/fluxcal2.py',n_drop, n_chunk, chunk_size, start, end, data.shape, data[:, start:end].shape)
     data = data[:, start:end].reshape(n_fibre, n_chunk, chunk_size)
     variance = ifu.var[:, start:end].reshape(n_fibre, n_chunk, chunk_size)
     wavelength = ifu.lambda_range[start:end].reshape(n_chunk, chunk_size)

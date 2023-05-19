@@ -989,6 +989,8 @@ def interpolate_arms(flux, noise, wavelength, good=None, n_pix_fit=300):
     n_pix_insert_red = int(np.round(
         (wavelength_end - wavelength_middle) / delta_wave_red))
     n_pix_insert = n_pix_insert_red + n_pix_insert_blue
+    print('qc/fluxcal.py',  min(wavelength),    max(wavelength), wavelength_start,wavelength_middle,wavelength_end, n_pix_insert_blue, n_pix_insert_red, n_pix,middle, middle-1,delta_wave_blue)
+    print(wavelength[middle], wavelength[middle-1])
     wavelength_insert = np.hstack((
         np.linspace(wavelength_start, wavelength_middle, n_pix_insert_blue,
                     endpoint=False),
