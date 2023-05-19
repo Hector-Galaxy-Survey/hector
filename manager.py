@@ -69,6 +69,8 @@ from pydoc import pager
 import itertools
 import traceback
 import datetime
+import csv
+import pandas as pd
 
 import six
 from six.moves import input
@@ -102,7 +104,8 @@ try:
 except ImportError:
     PATCH_AVAILABLE = False
 
-MF_BIN_DIR = '/suphys/nscott/molecfit_install/bin' # directory for molecfit binary files
+# MF_BIN_DIR = '/Users/madusha/molecfit_install/bin' # directory for molecfit binary files
+# MF_BIN_DIR = '/suphys/nscott/molecfit_install/bin' # directory for molecfit binary files
 #MF_BIN_DIR = '/Users/scroom/code/molecfit/bin/' # directory for molecfit binary files
 MF_BIN_DIR = hector_path[0:-7]+'molecfit_install/bin'
 
@@ -147,6 +150,16 @@ elif ASTROPY_VERSION[:2] == (0, 3):
 else:
     def ICRS(*args, **kwargs):
         return coord.SkyCoord(*args, frame='icrs', **kwargs)
+
+# Print colours in python terminal --> https://www.geeksforgeeks.org/print-colors-python-terminal/
+def prRed(skk): print("\033[91m {}\033[00m" .format(skk))
+def prGreen(skk): print("\033[92m {}\033[00m" .format(skk))
+def prYellow(skk): print("\033[93m {}\033[00m" .format(skk))
+def prLightPurple(skk): print("\033[94m {}\033[00m" .format(skk))
+def prPurple(skk): print("\033[95m {}\033[00m" .format(skk))
+def prCyan(skk): print("\033[96m {}\033[00m" .format(skk))
+def prLightGray(skk): print("\033[97m {}\033[00m" .format(skk))
+def prBlack(skk): print("\033[98m {}\033[00m" .format(skk))
 
 #below are for SAMI
 #IDX_FILES_SLOW = {'580V': 'sami580V_v1_7.idx',
@@ -314,12 +327,16 @@ STELLAR_MAGS_FILES = [
 
 def stellar_mags_files():
     """Yield details of each stellar magnitudes file that can be found."""
+    # MLPG: Commenting out the SAMI extra file path, and adding the Hector extra file downloaded by user path
     for mags_file in STELLAR_MAGS_FILES:
         # The pre-determined ones listed above
         yield mags_file
-    for path in glob(hector_path+'standards/secondary/sdss_stellar_mags_*.csv'):
+    # for path in glob(hector_path+'standards/secondary/sdss_stellar_mags_*.csv'):
         # Extra files that have been downloaded by the user
-        yield (path, 'SDSS_GAMA', (0.0, 0.0, 0.0, 0.0, 0.0))
+        # yield (path, 'SDSS_GAMA', (0.0, 0.0, 0.0, 0.0, 0.0))
+    for path in glob(hector_path+'standards/secondary/Hector_tiles/Hector_secondary_standards_shortened.csv'):
+        # Extra files that have been downloaded by the user
+        yield (path, 'Hector_mags', (0.0, 0.0, 0.0, 0.0, 0.0))
 
 
 class Manager:
@@ -2218,11 +2235,15 @@ class Manager:
         return reduced_files
 
     def derive_transfer_function(self,
-                                 overwrite=False, model_name='ref_centre_alpha_circ_hdratm',
+                                 overwrite=False, model_name='ref_centre_alpha_circ_hdr_cvd',
                                  smooth='spline', **kwargs):
         """Derive flux calibration transfer functions and save them."""
         # modified model name to be the version that takes ZD from header values, not
         # fitted.  This is because the fitting is not always robust for ZD.
+        # MLPG: modified model_name = ref_centre_alpha_circ_hdr_cvd
+        # such that DAR correction is removed/and chromatic variation distortion added
+        # CVD model name: ref_centre_alpha_circ_hdr_cvd
+        # Original model name: ref_centre_alpha_circ_hdratm
         inputs_list = []
         ccdname = ['ccd_1','ccd_3']
         for nccd in ccdname:
@@ -2335,6 +2356,7 @@ class Manager:
                          **kwargs):
         """Apply telluric correction to object frames."""
         # First make the list of file pairs to correct
+        # MLPG: adding new model name = ref_centre_alpha_circ_hdr_cvd
         inputs_list = []
         ccdname = ['ccd_2','ccd_4']
         for nccd in ccdname:
@@ -2371,7 +2393,7 @@ class Manager:
                          scale_PS_by_airmass = False
                      # Also constrain the zenith distance in fitting the star
                      if model_name is None:
-                         model_name_out = 'ref_centre_alpha_circ_hdratm'
+                         model_name_out = 'ref_centre_alpha_circ_hdr_cvd' # old_model = 'ref_centre_alpha_circ_hdratm'
                      else:
                          model_name_out = model_name
                  else:
@@ -2386,7 +2408,7 @@ class Manager:
                          # getting the zenith distance.  A more reliable fit is
                          # obtained when we instead use the ZD based on the atmosphere
                          # fully, not just the direction:
-                         model_name_out = 'ref_centre_alpha_circ_hdratm'
+                         model_name_out = 'ref_centre_alpha_circ_hdr_cvd' # old model_name = 'ref_centre_alpha_circ_hdratm'
                      else:
                          model_name_out = model_name
                  inputs_list.append({
@@ -2473,6 +2495,8 @@ class Manager:
         This is done with fits to stellar models using ppxf to get the correct stellar model.
         If force=True, we will apply the correction even if the SECCOR keyword is set to 
         True."""
+        # MLPG: ccds array is added, and that's assigned to 'ccd' keyword
+        # assertion added after "assign_true_mag" call to ensure the standard star is in the catalogue
 
         # Generate a list of frames to do fit the stellar models to.
         # these are only for ccd_1 (not enough features in the red arm to
@@ -2481,9 +2505,10 @@ class Manager:
         # of the frame.  Also write a header keyword to signify that the
         # secondary correction has been done - keyword is SECCOR.
         inputs_list = []
-        print('Fitting models to star observations')
+        ccds = ['ccd_1', 'ccd_3']
+        prGreen('Fitting models to star observations')
         for fits_1 in self.files(ndf_class='MFOBJECT', do_not_use=False,
-                                 spectrophotometric=False, ccd='ccd_1',
+                                 spectrophotometric=False, ccd=ccds,
                                  name='main',**kwargs):
             if ((not overwrite and 'SECCOR' in
                     pf.getheader(fits_1.telluric_path)) | 
@@ -2500,13 +2525,13 @@ class Manager:
         # group the data by field and/or std star (probably field).  Average
         # The best templates or weights to determine the best model for the
         # star in each field.
-        print('Averaging models to determine best calibration template')
+        prGreen('Averaging models to determine best calibration template')
         groups = self.group_files_by(('date', 'field_id', 'ccd'),
                                      ndf_class='MFOBJECT', do_not_use=False,
-                                     ccd='ccd_1',name='main',
+                                     ccd=ccds,name='main',
                                      spectrophotometric=False, **kwargs)
 
-        print('Deriving and applying secondary transfer functions')
+        prGreen('Deriving and applying secondary transfer functions')
         for fits_list in groups.values():
             #fits_1 = self.other_arm(fits_2)
             #inputs_list.append((fits_1.telluric_path, fits_2.telluric_path))
@@ -2544,13 +2569,14 @@ class Manager:
                 # HDU.  This is also done in the scale_frames() function, but as scale_frames()
                 # is not used when doing secondary calibration, we do it here instead.
                 star = pf.getval(path1, 'STDNAME', 'FLUX_CALIBRATION')
-                found = assign_true_mag([path1,path2], star, catalogue=None,
-                                hdu='FLUX_CALIBRATION')
-                
+                found = assign_true_mag([path1,path2], star, catalogue=None, hdu='FLUX_CALIBRATION')
+
+                assert found, prRed(f"{star} is not found in the catalogue")
+
                 # also write the SDSS/VST mags to the TRANSFER2combined.fits if this is the first frame,
                 # don't need to repeat every time.  For completeness, do this for red and blue arms,
                 # although really only need it on one of them.
-                if (index == 0):
+                if index == 0:
                     stdname = pf.getval(path1,'STDNAME',extname='FLUX_CALIBRATION')
                     hdulist1 = pf.open(path_out, 'update')
                     hdulist2 = pf.open(path_out2, 'update')
@@ -2567,20 +2593,14 @@ class Manager:
                     hdulist2.close()
 
 
-                
-
-
-                
                 umag = pf.getval(path1,'CATMAGU',extname='FLUX_CALIBRATION')
                 gmag = pf.getval(path1,'CATMAGG',extname='FLUX_CALIBRATION')
                 rmag = pf.getval(path1,'CATMAGR',extname='FLUX_CALIBRATION')
                 imag = pf.getval(path1,'CATMAGI',extname='FLUX_CALIBRATION')
                 zmag = pf.getval(path1,'CATMAGZ',extname='FLUX_CALIBRATION')
 
-        
-        # possibly set some QC stuff here...?
+        # TODO: possibly set some QC stuff here...?
 
-        
         self.next_step('fluxcal_secondary', print_message=True)
         
         return
@@ -5525,6 +5545,7 @@ def telluric_correct_pair(inputs):
     print('Deriving telluric correction for ' + fits_1.filename +
           ' and ' + fits_2.filename)
     try:
+        prCyan("The inputs to telluric.derive_transfer_function:")
         print(path_pair,PS_spec_file,use_PS,n_trim,scale_PS_by_airmass,model_name,MOLECFIT_AVAILABLE, MF_BIN_DIR)
         telluric.derive_transfer_function(
             path_pair, PS_spec_file=PS_spec_file, use_PS=use_PS, n_trim=n_trim,
@@ -5616,7 +5637,7 @@ def cube_object(inputs):
         suffix += '_' + tag
     return dithered_cube_from_rss_wrapper(
         path_list, name, suffix=suffix, write=True, nominal=True,
-        root=cubed_root, overwrite=overwrite, do_dar_correct=True, clip=False,
+        root=cubed_root, overwrite=overwrite, do_dar_correct=False, do_cvd_correct=True, clip=False,
         do_clip_by_fibre=True, drop_factor=drop_factor, update_tol=update_tol,
         size_of_grid=size_of_grid,
         output_pix_size_arcsec=output_pix_size_arcsec)
@@ -5687,9 +5708,10 @@ def fit_sec_template(path):
     """Fit theoretical templates to secondary calibration stars that have been
     selected to be halo F-stars.  This uses ppxf and save the best template and
     weight to the fits header."""
+    # MLPG: setting dplot=True and turning on verbose
 
     # call the main template fitting routine for the given file:
-    fluxcal2.fit_sec_template_ppxf(path)
+    fluxcal2.fit_sec_template_ppxf(path) # , doplot=True,verbose=True)
     
     
     return
@@ -5781,6 +5803,8 @@ def gzip_wrapper(path):
 
 def assign_true_mag(path_pair, name, catalogue=None, hdu=0):
     """Find the magnitudes in a catalogue and save them to the header."""
+    # MLPG: added a warning to indicate the cases where the name of the standard star
+    # is not in the catalogue
     if catalogue is None:
         catalogue = read_stellar_mags()
         # in some cases the catalogue keys can end up at bytes, rather than as strings.
@@ -5788,6 +5812,7 @@ def assign_true_mag(path_pair, name, catalogue=None, hdu=0):
         # fixed by numpy vesion 1.14.2.
         # this bug can lead to a failure of matching in the lines below (matched against "name").
     if name not in catalogue:
+        prRed(f"WARNING: {name} is not in the catalogue")
         return False
     line = catalogue[name]
     for path in path_pair:
@@ -5799,11 +5824,84 @@ def assign_true_mag(path_pair, name, catalogue=None, hdu=0):
         hdulist.close()
     return True
 
+def read_hector_tiles():
+    """ reads in a hector tiling file, and extracts the magnitude information """
+    # MLPG: A new function added to extract the magnitude information from tiling files
+    # To work, the user is requried to download the hector tile files to the "Hector_tiles" folder.
+    # Ideally, an automated download would be good, however, the data central cloud requires
+    # user password, thus not secure.
+    # TODO: MLPG: the tile file download part should preferrably be automated.
+    # How to run: import hector
+    #             hector.manager.read_hector_tiles()
+    #
+    from pathlib import Path
+
+    headerList = ['#probe', 'ID', 'x', 'y', 'rads', 'angs', 'azAngs', 'angs_azAng', 'RA', 'DEC', 'g_mag', 'r_mag',
+                  'i_mag', 'z_mag', 'y_mag', 'GAIA_g_mag', 'GAIA_bp_mag', 'GAIA_rp_mag', 'Mstar', 'Re', 'z',
+                  'GAL_MU_E_R', 'pmRA', 'pmDEC', 'priority', 'MagnetX_noDC', 'MagnetY_noDC', 'type', 'MagnetX',
+                  'MagnetY', 'SkyPosition', 'fibre_type', 'Magnet', 'Label', 'order', 'Pickup_option', 'Index',
+                  'Hexabundle', 'probe_orientation', 'rectMag_inputOrientation', 'Magnet_C', 'Label_C', 'order_C',
+                  'Pickup_option_C', 'offset_P', 'offset_Q']
+    headerNew = ['ID', 'x', 'y', 'rads', 'angs', 'azAngs', 'angs_azAng', 'RA', 'DEC', 'u_mag', 'g_mag', 'r_mag',
+                 'i_mag', 'z_mag', 'GAIA_g_mag', 'GAIA_bp_mag', 'GAIA_rp_mag']
+
+    # setup file paths
+    base_path = Path(hector_path) / f"standards/secondary/Hector_tiles"
+    file_names = ["Hector_tiles.csv", "Hector_secondary_standards.csv", "Hector_secondary_standards_shortened.csv"]
+
+    # Check if the director exists, if not create
+    if not os.path.isdir(base_path):
+        os.makedirs(base_path)
+
+    # Check if the files holding the tile list and secondary standards exists. If not, create.
+    if not os.path.exists(f"{base_path}/{file_names[0]}"):
+        with open(f"{base_path}/{file_names[0]}", 'w') as filelist:
+            filelist.write("Hector_Tile_List \n")  # create hector-tile-list file
+
+        with open(f"{base_path}/{file_names[1]}", 'w') as filelist:
+            dw = csv.DictWriter(filelist, delimiter=',', fieldnames=headerList)
+            dw.writeheader() # create hector standard star list file. This contains all information in the tile file
+            del dw
+
+        with open(f"{base_path}/{file_names[2]}", 'w') as filelist:
+            dw = csv.DictWriter(filelist, delimiter=',', fieldnames=headerNew)
+            dw.writeheader() # create hector standard star list file. This contains a subset of information in the tile file
+            del dw
+
+    prRed(f"Please ensure that the relevant tile file is present in {base_path} \n "
+          f"If not, add the file run hector.manager.read_hector_tiles(), again")
+
+    # Loop through and check whether the tile files present in the directory are all listed in "Hector_Tile_List".
+    # If not add them to "Hector_Tile_List", as well as keep a record in "not_in_list"
+    filenames = [file_name for file_name in os.listdir(base_path) if "Tile" in file_name]
+    not_in_list = []
+    with open(f"{base_path}/{file_names[0]}", 'r+') as file:
+        content = file.read() # read all content from a file using read()
+        for afile in filenames:
+            if afile not in content:
+                file.write(afile + "\n")
+                not_in_list.append(f"{base_path}/{afile}")
+
+    if len(not_in_list):
+        # Check to see if the number of columns and their names match by comparing the headers
+        ss_header = pd.read_csv(f"{base_path}/{file_names[1]}", nrows=0).columns
+        cols = [pd.read_csv(abs_path, nrows=0, header=11).columns for abs_path in not_in_list]
+        cols_identical = [all(ss_header == colx) for colx in cols]
+        assert all(cols_identical), f"Tile file header mis-match. The required column names are: {headerList}"
+
+        for afile in not_in_list:
+            hector_tile = pd.read_csv(afile, header=11, index_col="Hexabundle")
+            hector_tile['u_mag'] = np.repeat(-99.0, hector_tile.shape[0])
+            hector_tile.loc[["H", "U"]].to_csv(f"{base_path}/{file_names[1]}", mode='a', header=False, index=False)
+            hector_tile.loc[["H", "U"]].to_csv(f"{base_path}/{file_names[2]}", mode='a', header=False, index=False, columns=headerNew)
+    return
+
 def read_stellar_mags():
     """Read stellar magnitudes from the various catalogues available.  Note that
     for python 3 some versions of numpy will have a problem with loadtxt() not
     converting the strings from byte to str.  This is fixed in later versions of
     numpy, so make sure to update your numpy."""
+    # MLPG: elif added to take "Hector_mags" into account, which comes from Tiling files
     data_dict = {}
     for (path, catalogue_type, extinction) in stellar_mags_files():
         if catalogue_type == 'ATLAS':
@@ -5826,6 +5924,14 @@ def read_stellar_mags():
                      'g', 'sig_g', 'r', 'sig_r', 'i', 'sig_i', 'z', 'sig_z')
             formats = ('U20', 'U30', 'f8', 'f8', 'U10', 'f8', 'f8',
                        'f8', 'f8', 'f8', 'f8', 'f8', 'f8', 'f8', 'f8')
+            skiprows = 1
+            delimiter = ','
+            name_func = lambda d: d['name']
+        elif catalogue_type == "Hector_mags":
+            names = ('name', 'x', 'y', 'rads', 'angs', 'azAngs', 'angs_azAng', 'ra', 'dec', 'u', 'g', 'r',
+                  'i', 'z', 'GAIA_g_mag', 'GAIA_bp_mag', 'GAIA_rp_mag')
+            formats = ('U30', 'f8', 'f8', 'f8', 'f8', 'f8', 'f8', 'f8', 'f8', 'f8', 'f8', 'f8',
+                       'f8', 'f8', 'f8', 'f8', 'f8')
             skiprows = 1
             delimiter = ','
             name_func = lambda d: d['name']

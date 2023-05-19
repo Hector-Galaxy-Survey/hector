@@ -12,12 +12,15 @@ secondary standards were too faint to be much use.
 """
 from __future__ import absolute_import, division, print_function, unicode_literals
 
+import os
+import sys
 import warnings
 
 from .fluxcal2 import read_chunked_data, set_fixed_parameters, fit_model_flux
 from .fluxcal2 import insert_fixed_parameters, check_psf_parameters
 from .fluxcal2 import extract_total_flux, save_extracted_flux, trim_chunked_data
 from .telluric2 import TelluricCorrect as molecfit_telluric
+from .cvd_model import get_cvd_parameters
 
 from .. import utils
 from ..utils.ifu import IFU
@@ -29,11 +32,15 @@ from scipy.ndimage.filters import median_filter
 import scipy.optimize as optimize
 import re
 
+# required for test plotting:
+import pylab as py
+
+
 # KEY:      SS = Secondary Standard, PS = Primary Standard
 
 def derive_transfer_function(frame_list, PS_spec_file=None, use_PS=False,
                              scale_PS_by_airmass=False, 
-                             model_name='ref_centre_alpha_dist_circ_hdratm',
+                             model_name='ref_centre_alpha_dist_circ_hdr_cvd',
                              n_trim=0, use_probe=None, hdu_name='FLUX_CALIBRATION',
                              molecfit_available = False, molecfit_dir ='',speed=''):
     """
@@ -42,6 +49,8 @@ def derive_transfer_function(frame_list, PS_spec_file=None, use_PS=False,
     "FLUX_CALIBRATION" and has values that are mostly 1s apart from the telluric 
     regions.
     """
+    # MLPG: new model name added in the def (.....) above
+    # turning on "extract_secondary_standard"
     
     # frame_list = list = two element list of strings that give the path and file names for the location of the secondary standard. First element is the blue frame and the second is the red frame.
     # PS_spec_file = str = path and file name of Primary Standard's "TRANSFERcombined.fits" file.
@@ -53,8 +62,7 @@ def derive_transfer_function(frame_list, PS_spec_file=None, use_PS=False,
     # actually need to extract it, but we do still need to create the
     # extension and copy atmospheric parameters across
 
-#Sree: I turn this off at the moment because ss is not ready to use
-#    extract_secondary_standard(frame_list, model_name=model_name, n_trim=n_trim, use_probe=use_probe, hdu_name=hdu_name)
+    extract_secondary_standard(frame_list, model_name=model_name, n_trim=n_trim, use_probe=use_probe, hdu_name=hdu_name)
 
     # if user defines, use a scaled primary standard telluric correction
     if use_PS:
@@ -79,7 +87,6 @@ def derive_transfer_function(frame_list, PS_spec_file=None, use_PS=False,
     
     else:
         # Get data
-        #Sree: add the below here for now to only consider PS
         extract_secondary_standard(frame_list, model_name=model_name, n_trim=n_trim, use_probe=use_probe, hdu_name=hdu_name)
 
         hdulist = pf.open(frame_list[1])
@@ -123,27 +130,12 @@ def derive_transfer_function(frame_list, PS_spec_file=None, use_PS=False,
     data_2 = np.vstack((model_flux, transfer_function, sigma_transfer))
     for path, data_new in zip(frame_list, (data_1, data_2)):
         hdulist = pf.open(path, 'update', do_not_scale_image_data=True)
-
-        # Sree: when using only PS, there is no 'FLUX_CALIBRATION' extension on *fcal.fits. it is stil required to call extract_secondary_standard()
-        # However, extract_secondary_standard() is not ready to use and I copy 'FLUX_CALIBRATION' extension from TRANSFERcombined.fits for PS
-        try: #Check if there is hdu_name extension, and pass if not (for PS)
-            existing_index = hdulist.index_of(hdu_name)
-        except KeyError: #for PS only, without calling extract_secondary_standard(). may not require when it is possible to call extract_secondary_standard
-            tfhdulist = pf.open(PS_spec_file); tfhdu = tfhdulist[hdu_name]
-            new_hdu = pf.ImageHDU(tfhdu.data, name=hdu_name)
-            data = np.vstack((new_hdu.data[:4, :], data_new))
-            new_hdu.header = tfhdu.header
-            new_hdu.header['FWHM'] = (0, 'Cannot derive FWHM from Primary Standard')
-            new_hdu.data = data
-            hdulist.append(new_hdu)
-            hdulist.close()
-        else:
-            hdu = hdulist[hdu_name]
-            # Arrange the data into a single array
-            data = np.vstack((hdu.data[:4, :], data_new))
-            # Save the data back into the FITS file
-            hdu.data = data
-            hdulist.close()
+        hdu = hdulist[hdu_name]
+        # Arrange the data into a single array
+        data = np.vstack((hdu.data[:4, :], data_new))
+        # Save the data back into the FITS file
+        hdu.data = data
+        hdulist.close()
     return
 
 def residual(A, SS_transfer_function, PS_transfer_function, PS_wave_axis):
@@ -256,8 +248,11 @@ def create_transfer_function(standard_spectrum,sigma,wave_axis,naxis1):
     
     return transfer_function, sigma_factor, fit
 
-def extract_secondary_standard(path_list,model_name='ref_centre_alpha_dist_circ_hdratm',n_trim=0,use_probe=None,hdu_name='FLUX_CALIBRATION'):
+def extract_secondary_standard(path_list,model_name='ref_centre_alpha_dist_circ_hdr_cvd',n_trim=0,use_probe=None,hdu_name='FLUX_CALIBRATION'):
     """Identify and extract the secondary standard in a reduced RSS file."""
+    # MLPG: new model_name added
+    # "identify_secondary_standard" function updated
+    # cvd_model.py added and get_cvd_parameters called
     
     # First check which hexabundle we need to look at
     star_match = identify_secondary_standard(path_list[0], use_probe=use_probe)
@@ -265,6 +260,10 @@ def extract_secondary_standard(path_list,model_name='ref_centre_alpha_dist_circ_
     chunked_data = read_chunked_data(path_list, star_match['probenum'], 
                                      sigma_clip=5)
     trim_chunked_data(chunked_data, n_trim)
+
+    # Get CvD parameters from the polynomial fits to the centroid varations in x-, y-directions
+    cvd_parameters = get_cvd_parameters(path_list, star_match)
+
     # Fit the PSF
     fixed_parameters = set_fixed_parameters(
         path_list, model_name, probenum=star_match['probenum'])
@@ -276,13 +275,34 @@ def extract_secondary_standard(path_list,model_name='ref_centre_alpha_dist_circ_
         chunked_data['wavelength'],
         model_name,
         fixed_parameters=fixed_parameters,
+        cvd_parameters=cvd_parameters,
 		secondary=True)
     psf_parameters = insert_fixed_parameters(psf_parameters, fixed_parameters)
     good_psf = check_psf_parameters(psf_parameters, chunked_data)
     for path in path_list:
         ifu = IFU(path, star_match['probenum'], flag_name=False)
         observed_flux, observed_background, sigma_flux, sigma_background = \
-            extract_total_flux(ifu, psf_parameters, model_name, clip=5.0)
+            extract_total_flux(ifu, psf_parameters, model_name, clip=5.0, cvd_parameters=cvd_parameters)
+
+        #######################
+        # MLPG: Diagnostic plot showing extracted flux versus summed flux, saved in
+        # the data reduction location
+        # TODO: make this plot only if the user invokes debug command
+        # fig = py.figure()
+        # ax = fig.add_subplot(111)
+        #
+        # data, wavelength = ifu.data, ifu.lambda_range
+        # good_fibre = (ifu.fib_type == 'P')
+        # data = data[good_fibre, :]
+        # data = np.nansum(data, axis=0)
+        #
+        # ax.plot(wavelength, data, 'b', alpha=0.5, label='Summed')
+        # ax.plot(ifu.lambda_range, observed_flux, 'r', alpha=0.5, label='Extracted')
+        # fig.legend(loc='best')
+        # ax.set(xlabel='Wavelength (Ang.)', ylabel='flux', title=os.path.basename(path))
+        # py.savefig(f"{os.path.basename(path)}_derive_STF.png", bbox_inches='tight')
+        #######################
+
         save_extracted_flux(path, observed_flux, observed_background,
                             sigma_flux, sigma_background,
                             star_match, psf_parameters, model_name,
@@ -291,22 +311,36 @@ def extract_secondary_standard(path_list,model_name='ref_centre_alpha_dist_circ_
 
 def identify_secondary_standard(path, use_probe=None):
     """Identify the secondary standard star in the given file."""
+    # MLPG: commented out the full original code, and added new code for Hector
+    # as the secondary stars in Hector are assigned to the hexabundles "U" and "H"
     fibre_table = pf.getdata(path, 'FIBRES_IFU')
-    if use_probe is None:
-        unique_names = np.unique(fibre_table['NAME'])
-        for name in unique_names:
-            if is_star(name):
-                break
-        else:
-            raise ValueError('No star identified in file: ' + path)
-        probenum = fibre_table['PROBENUM'][fibre_table['NAME'] == name]
-        probenum = probenum[0]
-    else:
-        probenum = use_probe
-        name = fibre_table['NAME'][(fibre_table['PROBENUM'] == probenum) & (fibre_table['TYPE'] == 'P')]
-        name = name[0]
+
+    mask = (fibre_table.field('TYPE') == 'P') & \
+           ((fibre_table.field('SPAX_ID') == 'H') | (fibre_table.field('SPAX_ID') == 'U'))
+
+    probenum = fibre_table.field('PROBENUM')[mask][0]
+    name = fibre_table.field('NAME')[mask][0]
+
     star_match = {'name': name, 'probenum': probenum}
     return star_match
+
+    # MLPG: commenting out the original code for the function "identify_secondary_standard"
+    # fibre_table = pf.getdata(path, 'FIBRES_IFU')
+    # if use_probe is None:
+    #     unique_names = np.unique(fibre_table['NAME'])
+    #     for name in unique_names:
+    #         if is_star(name):
+    #             break
+    #     else:
+    #         raise ValueError('No star identified in file: ' + path)
+    #     probenum = fibre_table['PROBENUM'][fibre_table['NAME'] == name]
+    #     probenum = probenum[0]
+    # else:
+    #     probenum = use_probe
+    #     name = fibre_table['NAME'][(fibre_table['PROBENUM'] == probenum) & (fibre_table['TYPE'] == 'P')]
+    #     name = name[0]
+    # star_match = {'name': name, 'probenum': probenum}
+    # return star_match
     
 def is_star(name):
     """Return True if the name provided is for a star"""

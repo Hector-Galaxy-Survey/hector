@@ -34,17 +34,20 @@ except ImportError:
 from astropy import coordinates as co
 from astropy import units as u
 
+import hector
+hector_path = str(hector.__path__[0])+'/'
+
 MAPS = {}
 
 MAPS_FILES = {
     'planck': {
-        'filename': 'dust/HFI_CompMap_ThermalDustModel_2048_R1.20.fits',
+        'filename': hector_path + 'dust/HFI_CompMap_ThermalDustModel_2048_R1.20.fits',
         'field': 2,
         'url': 'http://pla.esac.esa.int/pla/aio/product-action?MAP.MAP_ID=HFI_CompMap_ThermalDustModel_2048_R1.20.fits',
         'header_key': 'EBVPLNCK',
         'comment_name': 'Planck v1.20'},
     'sfd98': {
-        'filename': 'dust/lambda_sfd_ebv.fits',
+        'filename': hector_path + 'dust/lambda_sfd_ebv.fits',
         'field': 0,
         'url': 'http://lambda.gsfc.nasa.gov/data/foregrounds/SFD/lambda_sfd_ebv.fits',
         'header_key': 'EBVSFD98',

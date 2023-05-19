@@ -114,6 +114,8 @@ dithered_cubes_from_rss_list.
 """
 from __future__ import absolute_import, division, print_function, unicode_literals
 
+import sys
+
 import pylab as py
 import numpy as np
 import scipy as sp
@@ -228,6 +230,17 @@ else:
 epsilon = np.finfo(float).eps
 # Store the value of epsilon for quick access.
 
+# Print colours in python terminal --> https://www.geeksforgeeks.org/print-colors-python-terminal/
+def prRed(skk): print("\033[91m {}\033[00m" .format(skk))
+def prGreen(skk): print("\033[92m {}\033[00m" .format(skk))
+def prYellow(skk): print("\033[93m {}\033[00m" .format(skk))
+def prLightPurple(skk): print("\033[94m {}\033[00m" .format(skk))
+def prPurple(skk): print("\033[95m {}\033[00m" .format(skk))
+def prCyan(skk): print("\033[96m {}\033[00m" .format(skk))
+def prLightGray(skk): print("\033[97m {}\033[00m" .format(skk))
+def prBlack(skk): print("\033[98m {}\033[00m" .format(skk))
+
+
 def get_object_names(infile):
     """Get the object names observed in the file infile."""
 
@@ -341,7 +354,7 @@ def dar_correct(ifu_list, xfibre_all, yfibre_all, method='simple',update_rss=Fal
 
 
     wavelength_array = ifu_list[0].lambda_range
-    
+
     # Iterate over wavelength slices
     for l in range(n_slices):
         
@@ -366,6 +379,70 @@ def dar_correct(ifu_list, xfibre_all, yfibre_all, method='simple',update_rss=Fal
     if diagnostics.enabled:
         diagnostics.DAR.xfib = xfibre_all
         diagnostics.DAR.yfib = yfibre_all
+
+
+def other_arm(filename):
+    """Return the FITSFile from the other arm of the spectrograph."""
+    if 'ccd_1' in filename:
+        other_number = '2'
+        other_filename = (filename[:-13] + other_number + filename[-12:]).replace("ccd_1", "ccd_" + other_number)
+        return filename, other_filename
+    elif 'ccd_2' in filename:
+        other_number = '1'
+        other_filename = (filename[:-13] + other_number + filename[-12:]).replace("ccd_2", "ccd_" + other_number)
+        return other_filename, filename
+    elif 'ccd_3' in filename:
+        other_number = '4'
+        other_filename = (filename[:-13] + other_number + filename[-12:]).replace("ccd_3", "ccd_" + other_number)
+        return filename, other_filename
+    elif 'ccd_4' in filename:
+        other_number = '3'
+        other_filename = (filename[:-13] + other_number + filename[-12:]).replace("ccd_4", "ccd_" + other_number)
+        return other_filename, filename
+    else:
+        raise ValueError('Unrecognised CCD: ' + filename)
+
+
+def cvd_correct(ifu_list, files, xfibre_all, yfibre_all, update_rss=False):
+    """
+    Update the fiber positions as a function of wavelength to reflect CvD correction.
+    """
+    # MLPG: brand new function to call and apply cvd corrections. CvD corrections are applied in microns now.
+
+    from ..dr.cvd_model import get_cvd_parameters
+
+    CONVERT_ARCSEC_TO_MICRONS = 105.0 / 1.6  # 105 microns = 1.6 arcseconds
+
+    n_obs, n_fibres, n_slices = xfibre_all.shape
+    star_match = {'name': ifu_list[0].hexabundle_name[0], 'probenum': ifu_list[0].ifu}
+    prGreen(f"--> cvd correcting....{star_match}")
+
+    # Iterate over observations
+    cvd_parameters_xarray, cvd_parameters_yarray = np.zeros((n_obs, 3)) + np.NaN, np.zeros((n_obs, 3)) + np.NaN
+    for i_obs in range(n_obs):
+        # Get CvD parameters from the polynomial fits to the centroid varations in x-, y-directions
+        cvd_parameters = get_cvd_parameters(other_arm(files[i_obs]), star_match)
+        cvd_parameters_xarray[i_obs, :] = cvd_parameters[0]
+        cvd_parameters_yarray[i_obs, :] = cvd_parameters[1]
+        del cvd_parameters
+
+    cvd_xvals = np.nanmedian(cvd_parameters_xarray, axis=0)
+    cvd_yvals = np.nanmedian(cvd_parameters_yarray, axis=0)
+
+    wavelength_array = ifu_list[0].lambda_range
+
+    # Iterate over wavelength slices
+    for l in range(n_slices):
+
+        # Iterate over observations
+        for i_obs in range(n_obs):
+            cvd_x = np.polyval(cvd_xvals, wavelength_array[l]) * CONVERT_ARCSEC_TO_MICRONS
+            cvd_y = np.polyval(cvd_yvals, wavelength_array[l]) * CONVERT_ARCSEC_TO_MICRONS
+            # TODO: Need to change to arcsecs!
+
+            xfibre_all[i_obs, :, l] = xfibre_all[i_obs, :, l] - cvd_x
+            yfibre_all[i_obs, :, l] = yfibre_all[i_obs, :, l] - cvd_y
+
 
 
 def dithered_cubes_from_rss_files(inlist, **kwargs):
@@ -416,9 +493,10 @@ def dithered_cube_from_rss_wrapper(files, name, size_of_grid=50,
                                    clip=False, do_clip_by_fibre=True, plot=True, write=True, suffix='',
                                    nominal=False, root='', overwrite=False,
                                    offsets='file', covar_mode='optimal',
-                                   do_dar_correct=True, clip_throughput=True,
+                                   do_dar_correct=False, do_cvd_correct=True, clip_throughput=True,
                                    update_tol=0.02):
     """Cubes and saves a single object."""
+    # MLPG: added "files" to "dithered_cube_from_rss" function call. I've set "do_dar_correct=False"
     n_files = len(files)
 
     ifu_list = []
@@ -462,11 +540,11 @@ def dithered_cube_from_rss_wrapper(files, name, size_of_grid=50,
     #try:
     flux_cube, var_cube, weight_cube, diagnostics, covariance_cube, covar_locs = \
         dithered_cube_from_rss(
-            ifu_list, size_of_grid=size_of_grid,
+            ifu_list, files, size_of_grid=size_of_grid,
             output_pix_size_arcsec=output_pix_size_arcsec,
             drop_factor=drop_factor, clip=clip, do_clip_by_fibre=do_clip_by_fibre, plot=plot,
             offsets=offsets, covar_mode=covar_mode,
-            do_dar_correct=do_dar_correct, clip_throughput=clip_throughput,
+            do_dar_correct=do_dar_correct, do_cvd_correct=do_cvd_correct, clip_throughput=clip_throughput,
             update_tol=update_tol)
 
     #except Exception:
@@ -552,9 +630,11 @@ def dithered_cube_from_rss_wrapper(files, name, size_of_grid=50,
     return True
 
 
-def dithered_cube_from_rss(ifu_list, size_of_grid=50, output_pix_size_arcsec=0.5, drop_factor=0.5,
+def dithered_cube_from_rss(ifu_list, files, size_of_grid=50, output_pix_size_arcsec=0.5, drop_factor=0.5,
                            clip=False, do_clip_by_fibre=True, plot=True, offsets='file', covar_mode='optimal',
-                           do_dar_correct=True, clip_throughput=True, update_tol=0.02):
+                           do_dar_correct=False, do_cvd_correct=True, clip_throughput=True, update_tol=0.02):
+    # MLPG: adding a cvd_correct functional call in place of dar_correct. added do_cvd_correct keyword to
+    # the above functional call
     diagnostic_info = {}
 
     n_obs = len(ifu_list)
@@ -715,10 +795,17 @@ def dithered_cube_from_rss(ifu_list, size_of_grid=50, output_pix_size_arcsec=0.5
     #
     #     DAR correction is handled by another function in this module, which
     #     updates the fibre positions in place.
-    
+
+
+    prCyan(f"do_cvd_correct is set to {do_cvd_correct} and do_dar_correct is set to {do_dar_correct}")
+    if do_cvd_correct and (ifu_list[0].hexabundle_name[0] != "M"):
+        cvd_correct(ifu_list, files, xfibre_all, yfibre_all)
+    else:
+        prRed("WARNING: Hexabundle M is excluded from cvd modelling...")
+
+    do_dar_correct = False
     if do_dar_correct:
         dar_correct(ifu_list, xfibre_all, yfibre_all)
-
 
     # Reshape the arrays
     #

@@ -51,6 +51,7 @@ so can be extended for further models quite straightforwardly.
 from __future__ import absolute_import, division, print_function, unicode_literals
 
 import os
+import sys
 import warnings
 
 import numpy as np
@@ -83,6 +84,7 @@ from ..config import millibar_to_mmHg
 from ..utils.fluxcal2_io import read_model_parameters, save_extracted_flux
 from .telluric2 import TelluricCorrectPrimary as telluric_correct_primary
 from . import dust
+from .cvd_model import get_cvd_parameters
 #from ..manager import read_stellar_mags
 #from ..qc.fluxcal import measure_band
 
@@ -116,6 +118,16 @@ TELLURIC_BANDS = np.array([[6850, 6960],
                            [7130, 7360], 
                            [7560, 7770], 
                            [8100, 8360]])
+
+# Print colours in python terminal --> https://www.geeksforgeeks.org/print-colors-python-terminal/
+def prRed(skk): print("\033[91m {}\033[00m" .format(skk))
+def prGreen(skk): print("\033[92m {}\033[00m" .format(skk))
+def prYellow(skk): print("\033[93m {}\033[00m" .format(skk))
+def prLightPurple(skk): print("\033[94m {}\033[00m" .format(skk))
+def prPurple(skk): print("\033[95m {}\033[00m" .format(skk))
+def prCyan(skk): print("\033[96m {}\033[00m" .format(skk))
+def prLightGray(skk): print("\033[97m {}\033[00m" .format(skk))
+def prBlack(skk): print("\033[98m {}\033[00m" .format(skk))
 
 def generate_subgrid(fibre_radius, n_inner=6, n_rings=10, wt_profile=False):
     """Generate a subgrid of points within a fibre."""
@@ -271,19 +283,20 @@ def moffat_flux(parameters_array, xfibre, yfibre):
                             parameters_slice['background'])
     return flux
 
-def model_flux(parameters_dict, xfibre, yfibre, wavelength, model_name):
+def model_flux(parameters_dict, xfibre, yfibre, wavelength, model_name, cvd_parameters=None):
     """Return n_fibre X n_wavelength array of model flux values."""
     parameters_array = parameters_dict_to_array(parameters_dict, wavelength,
-                                                model_name)
+                                                model_name, cvd_parameters=cvd_parameters)
     return moffat_flux(parameters_array, xfibre, yfibre)
 
 def residual(parameters_vector, datatube, vartube, xfibre, yfibre,
-             wavelength, model_name, fixed_parameters=None, secondary=False):
+             wavelength, model_name, fixed_parameters=None, cvd_parameters=None, secondary=False):
     """Return the residual in each fibre for the given model."""
+    # MLPG: new keyword cvd_parameters added, which goes into model_flux as a keyword
     parameters_dict = parameters_vector_to_dict(parameters_vector, model_name)
     parameters_dict = insert_fixed_parameters(parameters_dict, 
                                               fixed_parameters)
-    model = model_flux(parameters_dict, xfibre, yfibre, wavelength, model_name)
+    model = model_flux(parameters_dict, xfibre, yfibre, wavelength, model_name, cvd_parameters=cvd_parameters)
     # 2dfdr variance is just plain wrong for fibres with little or no flux!
     # Try replacing with something like sqrt(flux), but with a floor
     if (secondary):
@@ -303,13 +316,14 @@ def residual(parameters_vector, datatube, vartube, xfibre, yfibre,
     return res
 
 def fit_model_flux(datatube, vartube, xfibre, yfibre, wavelength, model_name,
-                   fixed_parameters=None, secondary=False):
+                   fixed_parameters=None, cvd_parameters=None, secondary=False):
     """Fit a model to the given datatube. slow_task 100 sec """
+    # MLPG: new keyword "cvd_parameters" added, which goes into leastsq via args
     par_0_dict = first_guess_parameters(datatube, vartube, xfibre, yfibre, 
                                         wavelength, model_name)
     par_0_vector = parameters_dict_to_vector(par_0_dict, model_name)
     args = (datatube, vartube, xfibre, yfibre, wavelength, model_name,
-            fixed_parameters, secondary)
+            fixed_parameters, cvd_parameters, secondary)
     parameters_vector = leastsq(residual, par_0_vector, args=args)[0]
     parameters_dict = parameters_vector_to_dict(parameters_vector, model_name)
     return parameters_dict
@@ -317,6 +331,7 @@ def fit_model_flux(datatube, vartube, xfibre, yfibre, wavelength, model_name,
 def first_guess_parameters(datatube, vartube, xfibre, yfibre, wavelength, 
                            model_name):
     """Return a first guess to the parameters that will be fitted."""
+    # MLPG: Adding the new model ref_centre_alpha_circ_hdr_cvd
     par_0 = {}
     #weighted_data = np.sum(datatube / vartube, axis=1)
     if (np.ndim(datatube)>1):
@@ -381,12 +396,20 @@ def first_guess_parameters(datatube, vartube, xfibre, yfibre, wavelength,
         par_0['ycen_ref'] = np.sum(yfibre * weighted_data)
         par_0['alpha_ref'] = 1.0
         par_0['beta'] = 4.0
+    elif model_name == 'ref_centre_alpha_circ_hdr_cvd':
+        par_0['flux'] = np.nansum(datatube, axis=0)
+        par_0['background'] = np.zeros(len(par_0['flux']))
+        par_0['xcen_ref'] = np.sum(xfibre * weighted_data)
+        par_0['ycen_ref'] = np.sum(yfibre * weighted_data)
+        par_0['alpha_ref'] = 1.0
+        par_0['beta'] = 4.0
     else:
         raise KeyError('Unrecognised model name: ' + model_name)
     return par_0
 
 def parameters_dict_to_vector(parameters_dict, model_name):
     """Convert a parameters dictionary to a vector."""
+    # MLPG: adding "ref_centre_alpha_circ_hdr_cvd" model
     if model_name == 'ref_centre_alpha_angle':
         parameters_vector = np.hstack(
             (parameters_dict['flux'],
@@ -440,12 +463,21 @@ def parameters_dict_to_vector(parameters_dict, model_name):
              parameters_dict['ycen_ref'],
              parameters_dict['alpha_ref'],
              parameters_dict['beta']))
+    elif model_name == 'ref_centre_alpha_circ_hdr_cvd':
+        parameters_vector = np.hstack(
+            (parameters_dict['flux'],
+             parameters_dict['background'],
+             parameters_dict['xcen_ref'],
+             parameters_dict['ycen_ref'],
+             parameters_dict['alpha_ref'],
+             parameters_dict['beta']))
     else:
         raise KeyError('Unrecognised model name: ' + model_name)
     return parameters_vector
 
 def parameters_vector_to_dict(parameters_vector, model_name):
     """Convert a parameters vector to a dictionary."""
+    # MLPG: new model "ref_centre_alpha_circ_hdr_cvd" added
     parameters_dict = {}
     if model_name == 'ref_centre_alpha_angle':
         n_slice = np.int((len(parameters_vector) - 8) // 2)
@@ -500,11 +532,21 @@ def parameters_vector_to_dict(parameters_vector, model_name):
         parameters_dict['ycen_ref'] = parameters_vector[-3]
         parameters_dict['alpha_ref'] = parameters_vector[-2]
         parameters_dict['beta'] = parameters_vector[-1]
+    elif model_name == 'ref_centre_alpha_circ_hdr_cvd':
+        n_slice = np.int((len(parameters_vector) - 4) // 2)
+        parameters_dict['flux'] = parameters_vector[0:n_slice]
+        parameters_dict['background'] = parameters_vector[n_slice:2*n_slice]
+        parameters_dict['xcen_ref'] = parameters_vector[-4]
+        parameters_dict['ycen_ref'] = parameters_vector[-3]
+        parameters_dict['alpha_ref'] = parameters_vector[-2]
+        parameters_dict['beta'] = parameters_vector[-1]
     else:
         raise KeyError('Unrecognised model name: ' + model_name)
     return parameters_dict
 
-def parameters_dict_to_array(parameters_dict, wavelength, model_name):
+def parameters_dict_to_array(parameters_dict, wavelength, model_name, cvd_parameters=None):
+    # MLPG: new cvd_parameters keyword added
+    # cvd_parameters implemented within the code, in place of DAR corrections
     parameter_names = ('xcen ycen alphax alphay beta rho flux '
                        'background'.split())
     formats = ['float64'] * len(parameter_names)
@@ -578,6 +620,23 @@ def parameters_dict_to_array(parameters_dict, wavelength, model_name):
             parameters_array['flux'] = parameters_dict['flux']
         if len(parameters_dict['background']) == len(parameters_array):
             parameters_array['background'] = parameters_dict['background']
+    elif model_name == 'ref_centre_alpha_circ_hdr_cvd':
+        parameters_array['xcen'] = (
+            parameters_dict['xcen_ref'] -
+            np.polyval(cvd_parameters[0], wavelength))
+        parameters_array['ycen'] = (
+            parameters_dict['ycen_ref'] -
+            np.polyval(cvd_parameters[1], wavelength))
+        parameters_array['alphax'] = (
+            alpha(wavelength, parameters_dict['alpha_ref']))
+        parameters_array['alphay'] = (
+            alpha(wavelength, parameters_dict['alpha_ref']))
+        parameters_array['beta'] = parameters_dict['beta']
+        parameters_array['rho'] = np.zeros(lw)
+        if len(parameters_dict['flux']) == len(parameters_array):
+            parameters_array['flux'] = parameters_dict['flux']
+        if len(parameters_dict['background']) == len(parameters_array):
+            parameters_array['background'] = parameters_dict['background']
     else:
         raise KeyError('Unrecognised model name: ' + model_name)
     return parameters_array
@@ -629,11 +688,14 @@ def dar(wavelength, zenith_distance, temperature=None, pressure=None,
 
 def derive_transfer_function(path_list, max_sep_arcsec=60.0,
                              catalogues=STANDARD_CATALOGUES,
-                             model_name='ref_centre_alpha_dist_circ_hdratm',
+                             model_name='ref_centre_alpha_circ_hdr_cvd',
                              n_trim=0, smooth='spline',molecfit_available=False,
                              molecfit_dir='',speed='',tell_corr_primary=False):
     """Derive transfer function and save it in each FITS file."""
     # First work out which star we're looking at, and which hexabundle it's in
+    # MLPG (change back): changed model_name = ref_centre_alpha_circ_hdr_cvd (original = ref_centre_alpha_dist_circ_hdratm)
+    # cvd_model added
+    # cvd_parameters keyword added to various function call withint this routine (e.g. fit_model_flux, extract_flux)
     star_match = match_standard_star(
         path_list[0], max_sep_arcsec=max_sep_arcsec, catalogues=catalogues)
     if star_match is None:
@@ -651,6 +713,9 @@ def derive_transfer_function(path_list, max_sep_arcsec=60.0,
     chunked_data = read_chunked_data(path_list_tel, star_match['probenum'])
     trim_chunked_data(chunked_data, n_trim)
 
+    # Get CvD parameters from the polynomial fits to the centroid varations in x-, y-directions
+    cvd_parameters = get_cvd_parameters(path_list_tel, star_match)
+
     # Fit the PSF
     fixed_parameters = set_fixed_parameters(
         path_list_tel, model_name, probenum=star_match['probenum'])
@@ -661,14 +726,36 @@ def derive_transfer_function(path_list, max_sep_arcsec=60.0,
         chunked_data['yfibre'],
         chunked_data['wavelength'],
         model_name,
-        fixed_parameters=fixed_parameters)
+        fixed_parameters=fixed_parameters,
+        cvd_parameters=cvd_parameters)
+
     psf_parameters = insert_fixed_parameters(psf_parameters, fixed_parameters)
     good_psf = check_psf_parameters(psf_parameters, chunked_data)
     for path,path2 in zip(path_list_tel,path_list):
         ifu = IFU(path, star_match['probenum'], flag_name=False)
         remove_atmosphere(ifu)
         observed_flux, observed_background, sigma_flux, sigma_background = \
-            extract_total_flux(ifu, psf_parameters, model_name)
+            extract_total_flux(ifu, psf_parameters, model_name, cvd_parameters=cvd_parameters)
+
+        #######################
+        # MLPG: Diagnostic plot showing extracted flux versus summed flux, saved in
+        # the data reduction location
+        # TODO: make this plot only if the user invokes debug command
+        # fig = py.figure()
+        # ax = fig.add_subplot(111)
+        #
+        # data, wavelength = ifu.data, ifu.lambda_range
+        # good_fibre = (ifu.fib_type == 'P')
+        # data = data[good_fibre, :]
+        # data = nansum(data, axis=0)
+        #
+        # ax.plot(wavelength, data, 'b', alpha=0.5, label='Summed')
+        # ax.plot(ifu.lambda_range, observed_flux, 'r', alpha=0.5, label='Extracted')
+        # fig.legend(loc='best')
+        # ax.set(xlabel='Wavelength (Ang.)', ylabel='flux', title=os.path.basename(path))
+        # py.savefig(f"{os.path.basename(path)}_derive_TF.png", bbox_inches='tight')
+        #######################
+
         save_extracted_flux(path2, observed_flux, observed_background,
                             sigma_flux, sigma_background,
                             star_match, psf_parameters, model_name,
@@ -747,10 +834,12 @@ def match_star_coordinates(ra, dec, max_sep_arcsec=60.0,
     # No matching star found. Let outer code deal with it.
     return
 
-def extract_total_flux(ifu, psf_parameters, model_name, clip=None):
+def extract_total_flux(ifu, psf_parameters, model_name, clip=None, cvd_parameters=None):
     """Extract the total flux, including light between fibres."""
+    # MLPG: added the keyword = cvd_parameters, which is input into "parameters_dict_to_array"
+    # function call, and "model_flux" call
     psf_parameters_array = parameters_dict_to_array(
-        psf_parameters, ifu.lambda_range, model_name)
+        psf_parameters, ifu.lambda_range, model_name, cvd_parameters=cvd_parameters)
     n_pixel = len(psf_parameters_array)
     flux = np.zeros(n_pixel)
     background = np.zeros(n_pixel)
@@ -774,7 +863,7 @@ def extract_total_flux(ifu, psf_parameters, model_name, clip=None):
         model_parameters['background'] = background
         fit = model_flux(
             model_parameters, xfibre, yfibre, ifu.lambda_range, 
-            model_name)
+            model_name, cvd_parameters=cvd_parameters)
         rms = np.sqrt(np.nansum((ifu.data - fit)**2, axis=0))
         rms_smoothed = median_filter(rms, 41)
         bad = np.where(rms >= (clip * rms_smoothed))[0]
@@ -808,7 +897,8 @@ def extract_total_flux(ifu, psf_parameters, model_name, clip=None):
                     [background[bad_pixel]])
                 fit_pixel = model_flux(
                     model_parameters, xfibre, yfibre, 
-                    np.array([ifu.lambda_range[bad_pixel]]), model_name)[:,0]
+                    np.array([ifu.lambda_range[bad_pixel]]),
+                    model_name, cvd_parameters=cvd_parameters)[:,0]
                 rms_pixel = np.sqrt(np.nansum((ifu.data[keep, bad_pixel] - 
                                                fit_pixel[keep])**2))
                 rms[bad_pixel] = rms_pixel
@@ -1548,6 +1638,9 @@ def save_combined_transfer_function(path_out, tf_combined, path_list):
 
 def read_model(path):
     """Return the model encoded in a FITS file."""
+    # MLPG: model_flux requires a keyword = cvd_parameters (coming from the cvd_model)
+    # Since it appears that this function is not called anywhere, I am not adding the
+    # cvd_parameters keyword here
     hdulist = pf.open(path)
     hdu = hdulist['FLUX_CALIBRATION']
     psf_parameters, model_name = read_model_parameters(hdu)
@@ -1647,40 +1740,43 @@ def median_filter_rotate(array, window):
 def fit_sec_template_ppxf(path,doplot=False,verbose=False,tempfile=hector_path+'standards/kurucz_stds_raw_v5.fits',mdegree=8,lam1=3600.0,lam2=5700.0):
     """main routine that actually calls ppxf to do the fitting of the
     secondary flux calibration stars to model templates."""
+    # MLPG: adding terminal colours
+    # Change 200 to 250 at L2117
+    # (i.e. after the comment "check either side of best fit [FeH].  Find the one with the best chisq")
 
-    if (verbose):
-        print('Fitting secondary stars to template using ppxf: %s' % str(path))
+    if verbose:
+        prGreen('Fitting secondary stars to template using ppxf: %s' % str(path))
 
     # read spectrum of secondary star from the FLUX_CALIBRATION extension.
     # Put these into a temporary array, as we need to cut out Nans etc.
     lam_t,flux_t,sigma_t = read_flux_calibration_extension(path,gettel=False)
 
     # find the first and last good points in the spectrum as ppxf does not
-    # like nans.  Also only fit within lam1 and lam2 wavelengths.  This is
+    # like nans.  Also, only fit within lam1 and lam2 wavelengths.  This is
     # particularly useful for ignoring the very ends, e.g. near dichroic.
     nlam = np.size(lam_t)
     for i in range(nlam):
-        if (np.isfinite(flux_t[i]) & (lam_t[i]>lam1)):
+        if np.isfinite(flux_t[i]) & (lam_t[i] > lam1):
             istart = i
             break
     for i in reversed(range(nlam)):
-        if (np.isfinite(flux_t[i]) & (lam_t[i]<lam2)):
+        if np.isfinite(flux_t[i]) & (lam_t[i] < lam2):
             iend = i
             break
 
     # check for other nans:
     nnan = 0
     for i in range(istart,iend):
-        if (np.isnan(flux_t[i])):
+        if np.isnan(flux_t[i]):
             #print(i,flux_t[i])
             nnan = nnan+1
 
-    if (nnan > 0):
-        print('WARNING: extra NaNs found in spectrum from FLUX_CALIBRATION extension: ',path)
+    if nnan > 0:
+        prRed('WARNING: extra NaNs found in spectrum from FLUX_CALIBRATION extension: ',path)
 
     # TODO: remove any extra nans!
         
-    if (verbose):
+    if verbose:
         print('first and last good pixels for secondary spectrum:',istart,iend)
 
     # specify good spectrum:
@@ -1701,7 +1797,7 @@ def fit_sec_template_ppxf(path,doplot=False,verbose=False,tempfile=hector_path+'
     logsigma = log_rebin(lamrange,sigma)[0]
     logsigma[np.isfinite(logsigma) == False] = np.nanmedian(logsigma)
     lam_gal = np.exp(loglam)
-    if (verbose):
+    if verbose:
         print('Velocity scale after log rebinning: ',velscale)
 
     # read model templates:
@@ -1738,7 +1834,7 @@ def fit_sec_template_ppxf(path,doplot=False,verbose=False,tempfile=hector_path+'
     # two spectra:
     c = 299792.458
     dv = np.log(lam_temp[0]/lam_gal[0])*c    # km/s
-    if (verbose):
+    if verbose:
         print('dv in km/s: ',dv)
     
     # starting guess for velocity and dispersion:
@@ -1754,18 +1850,18 @@ def fit_sec_template_ppxf(path,doplot=False,verbose=False,tempfile=hector_path+'
               plot=False, moments=2, mdegree=mdegree,quiet=True,
               degree=-1, vsyst=dv, clean=False, lam=lam_gal)
 
-        if (verbose):
+        if verbose:
             print(i,pp.chi2,model_teff[i],model_feh[i],model_g[i])
             
         chisq[i] = pp.chi2
-        if (chisq[i] < chimin):
+        if chisq[i] < chimin:
             ibest = i
             chimin = chisq[i]
 
     best_g = model_g[ibest]
     best_teff = model_teff[ibest]
     best_feh = model_feh[ibest]
-    if (verbose):
+    if verbose:
         print('best template:',ibest,chimin,model_teff[ibest],model_feh[ibest],model_g[ibest])
 
     # now identify the templates closest in temperature and metallicity to the
@@ -1774,7 +1870,7 @@ def fit_sec_template_ppxf(path,doplot=False,verbose=False,tempfile=hector_path+'
     # for that, particularly as we only have 2 gravities.  Then loop through
     # each of the other models and find thoose that are close in teff or [Fe/H]
     for i in range(temp_n):
-        if (model_g[i] == best_g):
+        if model_g[i] == best_g:
 
             # metallicity (which is [Fe/H]) steps are in 0.5.  Teff steps are in 250K
             # we want to find the next best in Teff and [Fe/H]
@@ -1782,18 +1878,18 @@ def fit_sec_template_ppxf(path,doplot=False,verbose=False,tempfile=hector_path+'
             d_feh = abs(model_feh[i]-best_feh)
             # check either side of best fit teff.  Find the one with the best chisq:
             chisq_best2 = 1.0e10
-            if ((d_teff < 300) & (d_teff>200) & (d_feh<0.2)):
-                if (chisq[i] < chisq_best2):
+            if (d_teff < 300) & (d_teff > 200) & (d_feh < 0.2):
+                if chisq[i] < chisq_best2:
                     best_chisq2 = chisq[i]
                     best_teff2 = model_teff[i]
             # check either side of best fit [FeH].  Find the one with the best chisq:
             chisq_best2 = 1.0e10
-            if ((d_feh < 0.6) & (d_feh>0.4) & (d_teff<200)):
-                if (chisq[i] < chisq_best2):
+            if (d_feh < 0.6) & (d_feh > 0.4) & (d_teff < 200):
+                if chisq[i] < chisq_best2:
                     best_chisq2 = chisq[i]
                     best_feh2 = model_feh[i]
 
-    if (verbose):
+    if verbose:
         print(best_teff,best_teff2,best_feh,best_feh2)
         
     # assign the 4 best templates around the best fit to an array for the
@@ -1802,21 +1898,21 @@ def fit_sec_template_ppxf(path,doplot=False,verbose=False,tempfile=hector_path+'
     nn_best = np.zeros(4,dtype=int)
     for i in range(temp_n):
         good = False
-        if (model_g[i] == best_g):
-            if ((model_teff[i] == best_teff) & (model_feh[i] == best_feh)):
+        if model_g[i] == best_g:
+            if (model_teff[i] == best_teff) & (model_feh[i] == best_feh):
                 good = True
-            if ((model_teff[i] == best_teff) & (model_feh[i] == best_feh2)):
+            if (model_teff[i] == best_teff) & (model_feh[i] == best_feh2):
                 good = True
-            if ((model_teff[i] == best_teff2) & (model_feh[i] == best_feh)):
+            if (model_teff[i] == best_teff2) & (model_feh[i] == best_feh):
                 good = True
-            if ((model_teff[i] == best_teff2) & (model_feh[i] == best_feh2)):
+            if (model_teff[i] == best_teff2) & (model_feh[i] == best_feh2):
                 good = True
 
-            if (good):
+            if good:
                 templates_kur3[:,n_best_temp] = templates[:,i]
                 nn_best[n_best_temp] = i
                 n_best_temp = n_best_temp + 1
-                if (verbose):
+                if verbose:
                     print(i,model_teff[i],model_feh[i])
 
     # redo the ppxf fitting with just the 4 best templates:
@@ -1824,7 +1920,7 @@ def fit_sec_template_ppxf(path,doplot=False,verbose=False,tempfile=hector_path+'
               plot=False, moments=2, mdegree=mdegree,quiet=True,
               degree=-1, vsyst=dv, clean=False, lam=lam_gal)
 
-    if (verbose):
+    if verbose:
         print('chisq for optimal fit:',pp.chi2)
         for i in range(n_best_temp):
             ii = nn_best[i]
@@ -1832,7 +1928,24 @@ def fit_sec_template_ppxf(path,doplot=False,verbose=False,tempfile=hector_path+'
 
     # normalize weights to sum of 1:
     norm_weights = pp.weights/np.nansum(pp.weights)
-            
+
+    ###############
+    # MLPG: Adding a diagnostic plot
+    # TODO: make the plot only when the user invoke debug
+    # fig = py.figure()
+    # ax = fig.add_subplot(111)
+    #
+    # final_template = np.zeros(np.size(templates_kur1[nn_best[0], :]))
+    # for ii in range(4):
+    #     final_template = final_template + pp.weights[ii] * templates_kur1[nn_best[ii], :]
+    #
+    # ax.plot(lam_temp, final_template, 'k', alpha=0.5, label="best-fit")
+    # ax.plot(lam, flux, 'c', alpha=0.5, label="flux")
+    # ax.set(xlabel='Wavelength (Ang.)', ylabel='Relative flux', title=f"{os.path.basename(path)} ppxf fits")
+    # ax.legend(loc='best')
+    # py.savefig(f"{os.path.basename(path)}_PPXF_fit.png", bbox_inches='tight')
+    ################
+
     # now write the template numbers and weights to the FLUX_CALIBRATION
     # header:
     hdulist = pf.open(path,'update')
@@ -1937,7 +2050,7 @@ def derive_secondary_tf(path_list,path_list2,path_out,tempfile=hector_path+'stan
     from ..manager import read_stellar_mags
     from ..qc.fluxcal import measure_band
 
-    print('Deriving secondary transfer function')
+    prGreen('Deriving secondary transfer function')
 
     # Read in the templates, weights and kinematics of the best solution
     # template.
@@ -1949,7 +2062,7 @@ def derive_secondary_tf(path_list,path_list2,path_out,tempfile=hector_path+'stan
     vel = header_tab['MTEMPVEL']
     sig = header_tab['MTEMPSIG']
 
-    if (verbose):
+    if verbose:
         print('templates and weights:',temp_used,temp_weights)
     
     # read in the templates:
@@ -1966,7 +2079,7 @@ def derive_secondary_tf(path_list,path_list2,path_out,tempfile=hector_path+'stan
     
     # make the best template from a linear combination of the templates.
     for i in range(np.size(temp_used)):
-        if (temp_weights[i] > 0.0):
+        if temp_weights[i] > 0.0:
             template_opt = template_opt + temp_weights[i] * templates_kur1[temp_used[i],:]
             
     # correct for velocity shift:
@@ -1976,14 +2089,14 @@ def derive_secondary_tf(path_list,path_list2,path_out,tempfile=hector_path+'stan
     # TODO - this is not vital at this stage, and we should arguably do this separately
     # for the red and blue arms that have different resolution.
         
-    # correct template for galactic extinction.  First need to get the the ra/dec of the
+    # correct template for galactic extinction.  First need to get the ra/dec of the
     # bundle for the star in question.  To do this, find the name of the star from the
     # FLUX_CALIBRATION header and then use the read_stellar_mags() function to get the
     # mags and the ra/dec:
     std_name = pf.getval(path_list[0],'STDNAME', 'FLUX_CALIBRATION')
     catalogue = read_stellar_mags()
     std_parameters = catalogue[std_name]
-    if (verbose):
+    if verbose:
         print('getting star parameters for: ',std_name)
         print(std_parameters)
     std_ra = std_parameters['ra']
@@ -1996,7 +2109,7 @@ def derive_secondary_tf(path_list,path_list2,path_out,tempfile=hector_path+'stan
         if name == 'planck':
             correction_t = dust.MilkyWayDustCorrection(lam_temp_opt, ebv)
 
-    if (verbose):
+    if verbose:
         print('std star: ',std_name,' coords:',std_ra,std_dec,theta,phi)
         print('Galactic extinction for std star, E(B-V): ',ebv)
 
@@ -2009,13 +2122,13 @@ def derive_secondary_tf(path_list,path_list2,path_out,tempfile=hector_path+'stan
     bands = 'ugriz'
     for band in bands:
         mag_temp[band] = measure_band(band,template_opt_ext,lam_temp_opt)
-        if (verbose):
+        if verbose:
             print(band,mag_temp[band],std_parameters[band],mag_temp[band]-std_parameters[band])
     
     # normalize template based on ab mags.  Do this based on the g and r bands as these are
     # the bands contained within the SAMI spectral range:
     deltamag = ((mag_temp['g']-std_parameters['g'])+ (mag_temp['r']-std_parameters['r']))/2.0
-    if (verbose):
+    if verbose:
         print('mean delta mag for g and r bands:',deltamag)
 
     fluxscale = 10**(-0.4*deltamag)
@@ -2028,7 +2141,7 @@ def derive_secondary_tf(path_list,path_list2,path_out,tempfile=hector_path+'stan
     mag_temp2 = {}
     for band in bands:
         mag_temp2[band] = measure_band(band,template_opt_ext_scale,lam_temp_opt)
-        if (verbose):
+        if verbose:
             print(band,mag_temp2[band],std_parameters[band],mag_temp2[band]-std_parameters[band])
         
         
@@ -2055,17 +2168,35 @@ def derive_secondary_tf(path_list,path_list2,path_out,tempfile=hector_path+'stan
     for index, path1 in enumerate(path_list):
 
         path2 = path_list2[index]
-        if (verbose):
+        if verbose:
             print('deriving TF for ',path1)
             print('and ',path2)
 
         # read the FLUX_CALIBRATION extension to get the star spectrum:
         lam_b,flux_b,sigma_b = read_flux_calibration_extension(path1,gettel=False)
-        lam_r,flux_r,sigma_r, tel_r = read_flux_calibration_extension(path2,gettel=True)
+        lam_r,flux_r,sigma_r,tel_r = read_flux_calibration_extension(path2,gettel=True)
+
+        ############
+        # MLPG: adding a debugging plot/write data-to-file
+        # prLightPurple("MLPG added a diagnostic plot/write-to-file to derive_secondary_tf in fluxcal2 (~L2181)")
+        # col1 = pf.Column(name='Lambda_blue', format='E', array=lam_b)
+        # col2 = pf.Column(name='flux_blue', format='E', array=flux_b)
+        # cols = pf.ColDefs([col1, col2])
+        # hdutab = pf.BinTableHDU.from_columns(cols, name='secondary_standard_star')
+        # hdutab.writeto(np.str(std_name) + '_' + np.str(index) + '.fits')
+        #
+        # fig = py.figure()
+        # ax = fig.add_subplot(111)
+        # ax.plot(lam_temp_opt, template_opt_ext_scale, 'r', alpha=0.7, label="optimal temp")
+        # ax.plot(lam_b, flux_b, 'c', alpha=0.5, label="data")
+        # ax.set(xlabel='Wavelength (Ang.)', ylabel='Relative flux', title=f"{os.path.basename(path1)}")
+        # fig.legend(loc='best')
+        # py.savefig(f"{os.path.basename(path1)}_SSS_bestfit_vs_data.png", bbox_inches='tight')
+        #############
 
         # if this is the first frame, set up arrays to hold different TFs and the
         # individual file names used:
-        if (index == 0):
+        if index == 0:
             tf_b = np.zeros((len(path_list),np.size(lam_b)))
             tf_r = np.zeros((len(path_list),np.size(lam_r)))
             files_b = np.empty(len(path_list),dtype='U256')
@@ -2073,7 +2204,7 @@ def derive_secondary_tf(path_list,path_list2,path_out,tempfile=hector_path+'stan
 
         # check for min exposure time:
         exposed = pf.getval(path1,'EXPOSED')
-        if (exposed < minexp):
+        if exposed < minexp:
             continue
         
         # assign file names to array:
@@ -2114,7 +2245,7 @@ def derive_secondary_tf(path_list,path_list2,path_out,tempfile=hector_path+'stan
         tf_r[nfiles,:] = ratio_sp_r
 
         # generate some diagnostic plots if needed:
-        if (doplot):
+        if doplot:
             fig1 = py.figure()
             ax1_1 = fig1.add_subplot(311)
 
@@ -2167,7 +2298,7 @@ def derive_secondary_tf(path_list,path_list2,path_out,tempfile=hector_path+'stan
 
         # write the TF to the individual frame.  We will write this to a binary table
         # as it makes it easier to know what the format is after the fact (i.e. all the
-        # columns have proper headings etc):
+        # columns have proper headings etc.):
         hdu_b = pf.open(path1,mode='update')
         # remove old version of the FLUX_CALIBRATION2 extension:
         try:
@@ -2249,7 +2380,7 @@ def derive_secondary_tf(path_list,path_list2,path_out,tempfile=hector_path+'stan
     hdu.close()
     
     # plot the combined TFs:
-    if (doplot):
+    if doplot:
         fig2 = py.figure()
         ax2_1 = fig2.add_subplot(111)
         ax2_1.axhline(1.0,color='k')
@@ -2273,11 +2404,11 @@ def apply_secondary_tf(path1,path2,path_out1,path_out2,use_av_tf_sec=False,verbo
     hdulist2 = pf.open(path2,mode='update')
 
     # if force=True, then we force the correction, even though its already been done.
-    if (not force):
+    if not force:
         # check to see if done already.
         try:
             seccor = hdulist1[0].header['SECCOR']
-            if (seccor):
+            if seccor:
                 if verbose:
                     print('SECCOR keyword is True.  Not correcting ',path1)
                 hdulist1.close()
@@ -2288,7 +2419,7 @@ def apply_secondary_tf(path1,path2,path_out1,path_out2,use_av_tf_sec=False,verbo
         # also check if the red frame has been corrected already:
         try:
             seccor = hdulist2[0].header['SECCOR']
-            if (seccor):
+            if seccor:
                 if verbose:
                     print('SECCOR keyword is True.  Not correcting ',path2)
                 hdulist2.close()
@@ -2299,14 +2430,14 @@ def apply_secondary_tf(path1,path2,path_out1,path_out2,use_av_tf_sec=False,verbo
         
     # read TF from FLUX_CALIBRATION2 extension.
     exposed = hdulist1[0].header['EXPOSED']
-    if (exposed < minexp):
+    if exposed < minexp:
         return
 
     tf_b = hdulist1['FLUX_CALIBRATION2'].data['transfer_fn']
     tf_r = hdulist2['FLUX_CALIBRATION2'].data['transfer_fn']
 
     # if needed, read average TF from TRANSFER2combined.fits file.
-    if (use_av_tf_sec):
+    if use_av_tf_sec:
         hdulist_tf1 = pf.open(path_out1,mode='update')
         tf_av_b = hdulist_tf1['TF_MEAN'].data['tf_average']
         lam_av_b = hdulist_tf1['TF_MEAN'].data['wavelength']
@@ -2340,7 +2471,7 @@ def apply_secondary_tf(path1,path2,path_out1,path_out2,use_av_tf_sec=False,verbo
         tf_av_b = tf_av_b * scale
         tf_av_r = tf_av_r * scale
         
-        if (verbose):
+        if verbose:
             print('scale_b: ',scale_b)
             print('scale_r: ',scale_r)
     
@@ -2351,7 +2482,7 @@ def apply_secondary_tf(path1,path2,path_out1,path_out2,use_av_tf_sec=False,verbo
     hdulist2[0].data /= tf_r
     hdulist2['VARIANCE'].data /= tf_r**2
         
-    # write FITS header keyword to say its done.
+    # write FITS header keyword to say it's done.
     hdulist1[0].header['SECCOR'] = (True,'Flag to indicate correction by secondary flux cal')
     hdulist2[0].header['SECCOR'] = (True,'Flag to indicate correction by secondary flux cal')
 
@@ -2423,7 +2554,7 @@ def read_kurucz(infile,doplot=False,plot_iter=False,verbose=False):
     # now read in the actual model spectra:
     model_flux = hdulist[0].data
     nmodel,nlam = np.shape(model_flux)
-    if (verbose):
+    if verbose:
         print('number of template models:',nmodel)
         print('number of template wavelength bins:',nlam)
 
@@ -2438,7 +2569,7 @@ def read_kurucz(infile,doplot=False,plot_iter=False,verbose=False):
     lam=L0+x*cdelt1
 
     # if plot requested, then do it:
-    if (doplot):
+    if doplot:
         fig1 = py.figure()
         ax1 = fig1.add_subplot(211)
         ax2 = fig1.add_subplot(212)
@@ -2450,13 +2581,13 @@ def read_kurucz(infile,doplot=False,plot_iter=False,verbose=False):
             ax1.plot(lam,model_flux[i,:])
             label = '[Fe/H]='+str(model_feh[i])+' Teff='+str(model_teff[i])+' G='+str(model_g[i]) 
             ax1.text(0.5,1.1,label,verticalalignment='center',transform=ax1.transAxes)
-            if (i<(nmodel-1)):
+            if i<(nmodel - 1):
                 label2 = '[Fe/H]='+str(model_feh[i+1])+' Teff='+str(model_teff[i+1])+' G='+str(model_g[i+1]) 
                 ax2.plot(lam,model_flux[i,:]/model_flux[i+1,:])
                 ax2.text(0.5,0.9,label+'/'+label2,verticalalignment='center',horizontalalignment='center',transform=ax2.transAxes)
 
             py.draw()
-            if (plot_iter):
+            if plot_iter:
                 yn=input('continue?')
 
     return lam, model_flux, model_feh, model_teff, model_g, model_mag
@@ -2478,7 +2609,7 @@ def resample_templates(temp_lam1,temp_kur1,nrebin=10,verbose=False):
     for i in range(n_kur):
         templates_kur1[i,:] = zoom(gaussian_filter1d(temp_kur1[i,:],float(nrebin)),zfact)
 
-    if (verbose):
+    if verbose:
         print('template wavelength binsize:',lam_temp[1]-lam_temp[0])
 
     return lam_temp,templates_kur1
