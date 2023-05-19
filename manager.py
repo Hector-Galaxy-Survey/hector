@@ -104,9 +104,6 @@ try:
 except ImportError:
     PATCH_AVAILABLE = False
 
-# MF_BIN_DIR = '/Users/madusha/molecfit_install/bin' # directory for molecfit binary files
-# MF_BIN_DIR = '/suphys/nscott/molecfit_install/bin' # directory for molecfit binary files
-#MF_BIN_DIR = '/Users/scroom/code/molecfit/bin/' # directory for molecfit binary files
 MF_BIN_DIR = hector_path[0:-7]+'molecfit_install/bin'
 
 if not os.path.exists(os.path.join(MF_BIN_DIR,'molecfit')):
@@ -3407,7 +3404,7 @@ class Manager:
         options = []
 
         # Define what the best choice is for a TLM:
-        if (self.use_twilight_tlm_blue and (fits.ccd == 'ccd_1') and
+        if (self.use_twilight_tlm_all or (self.use_twilight_tlm_blue and ((fits.ccd == 'ccd_1') or (fits.ccd == 'ccd_3'))) and
             (fits.plate_id_short != 'Y14SAR4_P007')):
             best_tlm = 'tlmap_mfsky'
         else:
@@ -3415,7 +3412,7 @@ class Manager:
 
         # Define what the best choice is for a FFLAT, in particular
         # if we are going to use a twilight flat:
-        if (self.use_twilight_flat_blue  and ((fits.ccd == 'ccd_1') or (fits.ccd == 'ccd_3'))): #marie adds ccd_3
+        if (self.use_twilight_flat_all or (self.use_twilight_flat_blue and ((fits.ccd == 'ccd_1') or (fits.ccd == 'ccd_3'))) ):	            
             best_fflat = 'fflat_mfsky'
         else:
             best_fflat = 'fflat'
