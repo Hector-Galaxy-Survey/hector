@@ -61,7 +61,7 @@ def sky_residuals(infile, fibstart=1, fibend=2000, allfib=False, verbose=False,
     try:
         sky = hdulist['SKY'].data
     except KeyError:
-        print("SKY extension not found!")
+        print("SKY extension not found from "+infile)
         raise IOError('No sky extension found')
 
     # get wavelength info:
