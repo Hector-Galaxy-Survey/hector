@@ -717,6 +717,7 @@ class IFUDuck(object):
         self.lambda_range = np.hstack((get_coords(hdulist_0[0].header, 3),
                                        get_coords(hdulist_1[0].header, 3)))
         self.naxis1 = len(self.lambda_range)
+        self.instrument = hdulist_0[0].header['INSTRUME']
         hdulist_0.close()
         hdulist_1.close()
         del hdulist_0
