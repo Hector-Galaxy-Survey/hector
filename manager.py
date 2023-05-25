@@ -1130,27 +1130,29 @@ class Manager:
             self.set_name(fits, trust_header=trust_header)
         else:
             self.set_name(fits, trust_header=trust_header)
-            print('Adding file: ', filename, fits.ndf_class, fits.plate_id, fits.name, fits.copy_reduced_filename)
+            print('Adding file: ', filename, fits.ndf_class, fits.plate_id, fits.name)
             f = open(self.abs_root+'/filelist.txt', 'a')
             f.write(filename+' '+fits.ndf_class+' '+(fits.plate_id or 'None')+' '+(fits.name or 'None')+' '+(str(fits.spectrophotometric) or 'None')+'\n')
             f.close()
             
-#        self.set_name(fits, trust_header=trust_header)
         fits.set_check_data()
         self.set_reduced_path(fits)
 
-        #to save the ccd_4 data from 26, 27 Apr 2023, where overscan region is different but header does not point the right pixels
-
-       # if (fits.ccd == 'ccd_4' and fits.epoch < 2024.  and ((fits.date == '230426') or (fits.date == '230427'))):
-        if (fits.ccd == 'ccd_4' and self.header['PORT_RO'] == 'B'):
-            print('over',fits.filename, fits.raw_path,)
-            #hdulist = pf.open(fits.raw_path, 'update')
-            #self.add_header_item('', name,
-         #                        'Object name set by Hector manager')
+        #ccd_4 data from 26, 27 Apr 2023, where overscan region is different but header does not point the right pixels
+        if (fits.ccd == 'ccd_4' and fits.header['RO_PORTS'] == 'B'):
+            fits.add_header_item('DETECXS', '41','First column of detectorm, set by Hector manager')
+            fits.add_header_item('DETECXE', '4136','Last column of detector, set by Hector manager')
+            fits.add_header_item('WINDOXS1', '41','First column of window 1, set by Hector manager')
+            fits.add_header_item('WINDOXE1', '4136','Last column of window 1, set by Hector manager')
+            fits.add_header_item('WINDOXS2', '1','First column of window 2, set by Hector manager')
+            fits.add_header_item('WINDOXE2', '40','Last column of window 2, set by Hector manager')
+            print('    DETECX? and WINDOX?? keywords have been modified having RO_PORTS=B from ',fits.filename)
+        if (fits.ccd != 'ccd_4' and fits.header['RO_PORTS'] == 'B'):
+            print('    Not excpect RO_PORTS=B for '+fits.filename+'. Should modify DETECX? and WINDOX?? to reduce this file.')
 
         if not fits.do_not_use:
             fits.make_reduced_link()
-        if fits.grating in self.gratlpmm: #This helps wavelength solution of SAMI. TODO: need to check for Spector
+        if fits.grating in self.gratlpmm: #This helps wavelength solution of SAMI. TODO: need to check GRATLPMM for Spector
             try:
                 fits.add_header_item('GRATLPMM', self.gratlpmm[fits.grating],'Grating Lines per mm, set by Hector manager')
             except IOError:
@@ -2716,7 +2718,7 @@ class Manager:
 
     def cube(self, overwrite=False, min_exposure=599.0, name='main',
              star_only=False, drop_factor=None, tag='', update_tol=0.02,
-             size_of_grid=70, output_pix_size_arcsec=0.5,
+             size_of_grid=80, output_pix_size_arcsec=0.5,
              min_transmission=0.333, max_seeing=4.0, min_frames=6, **kwargs):
         """Make datacubes from the given RSS files."""
         groups = self.group_files_by(
@@ -2754,8 +2756,8 @@ class Manager:
                     else:
                         drop_factor = 0.5
                 gridsize = size_of_grid
-                if((ccd == 'ccd_3') or ((ccd == 'ccd_3'))):
-                    gridsize = 50
+                if((ccd == 'ccd_3') or ((ccd == 'ccd_4'))):
+                    gridsize = 60
                 for objname in objects:
                     inputs_list.append(
                         (field_id, ccd, path_list, objname, cubed_root, drop_factor,
