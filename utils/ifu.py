@@ -39,7 +39,10 @@ class IFU:
         # Load all necessary metadata
         self.primary_header = hdulist['PRIMARY'].header
         self.fibre_table_header = hdulist['FIBRES_IFU'].header
-        self.reduction_arguments = hdulist['REDUCTION_ARGS'].data 
+        try:
+            self.reduction_arguments = hdulist['REDUCTION_ARGS'].data
+        except KeyError:
+            raise IOError('No REDUCTION_ARGS extension found: '+rss_filename)
 
         #TEMP - store full headers (Nic)
         self.primary_header = hdulist['PRIMARY'].header
@@ -59,6 +62,7 @@ class IFU:
         self.meanra = self.primary_header['MEANRA']
         self.meandec = self.primary_header['MEANDEC']
 
+        self.instrument = self.primary_header['INSTRUME'] 
 
         # Determine and store which spectrograph ARM this is from (red/blue)
 

@@ -509,6 +509,7 @@ def bin_cube(hdu,bin_mask, mode='', **kwargs):
             binned_cube[:,spaxel_coords[0,:],spaxel_coords[1,:]] = cube[:,spaxel_coords[0,:],spaxel_coords[1,:]]
             binned_var[:,spaxel_coords[0,:],spaxel_coords[1,:]] = var[:,spaxel_coords[0,:],spaxel_coords[1,:]]
         elif n_spaxels > 1:
+            print(hdu[0].header['NAME'], cube.shape, spaxel_coords.shape) #marie
             #binned_spectrum = np.nansum(cube[:,spaxel_coords[0,:],spaxel_coords[1,:]],axis=1)/n_spaxels
             binned_spectrum = np.nanmean(cube[:,spaxel_coords[0,:],spaxel_coords[1,:]],axis=1)
             binned_weighted_spectrum = np.nansum(weighted_cube[:,spaxel_coords[0,:],spaxel_coords[1,:]],axis=1)#/n_spaxels

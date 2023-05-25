@@ -1769,6 +1769,7 @@ def fit_sec_template_ppxf(path,doplot=False,verbose=False,tempfile=hector_path+'
         if np.isfinite(flux_t[i]) & (lam_t[i] < lam2):
             iend = i
             break
+    print(path, nlam)
 
     # check for other nans:
     nnan = 0
@@ -1883,6 +1884,7 @@ def fit_sec_template_ppxf(path,doplot=False,verbose=False,tempfile=hector_path+'
             d_teff = abs(model_teff[i]-best_teff)
             d_feh = abs(model_feh[i]-best_feh)
             # check either side of best fit teff.  Find the one with the best chisq:
+            best_feh2 = 0. # maire
             chisq_best2 = 1.0e10
             if (d_teff < 300) & (d_teff > 200) & (d_feh < 0.2):
                 if chisq[i] < chisq_best2:
@@ -2099,6 +2101,7 @@ def derive_secondary_tf(path_list,path_list2,path_out,tempfile=hector_path+'stan
     # bundle for the star in question.  To do this, find the name of the star from the
     # FLUX_CALIBRATION header and then use the read_stellar_mags() function to get the
     # mags and the ra/dec:
+    print(path_list[0])
     std_name = pf.getval(path_list[0],'STDNAME', 'FLUX_CALIBRATION')
     catalogue = read_stellar_mags()
     std_parameters = catalogue[std_name]

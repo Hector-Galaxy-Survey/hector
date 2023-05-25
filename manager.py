@@ -1130,7 +1130,7 @@ class Manager:
             self.set_name(fits, trust_header=trust_header)
         else:
             self.set_name(fits, trust_header=trust_header)
-            print('Adding file: ', filename, fits.ndf_class, fits.plate_id, fits.name)
+            print('Adding file: ', filename, fits.ndf_class, fits.plate_id, fits.name, fits.copy_reduced_filename)
             f = open(self.abs_root+'/filelist.txt', 'a')
             f.write(filename+' '+fits.ndf_class+' '+(fits.plate_id or 'None')+' '+(fits.name or 'None')+' '+(str(fits.spectrophotometric) or 'None')+'\n')
             f.close()
@@ -1138,13 +1138,23 @@ class Manager:
 #        self.set_name(fits, trust_header=trust_header)
         fits.set_check_data()
         self.set_reduced_path(fits)
+
+        #to save the ccd_4 data from 26, 27 Apr 2023, where overscan region is different but header does not point the right pixels
+
+       # if (fits.ccd == 'ccd_4' and fits.epoch < 2024.  and ((fits.date == '230426') or (fits.date == '230427'))):
+        if (fits.ccd == 'ccd_4' and self.header['PORT_RO'] == 'B'):
+            print('over',fits.filename, fits.raw_path,)
+            #hdulist = pf.open(fits.raw_path, 'update')
+            #self.add_header_item('', name,
+         #                        'Object name set by Hector manager')
+
         if not fits.do_not_use:
             fits.make_reduced_link()
-#        if fits.grating in self.gratlpmm: #why do we need to modify this in the header? It may require for SAMI?
-#            try:
-#                fits.add_header_item('GRATLPMM', self.gratlpmm[fits.grating],'Grating Lines per mm, set by Hector manager')
-#            except IOError:
-#                pass
+        if fits.grating in self.gratlpmm: #This helps wavelength solution of SAMI. TODO: need to check for Spector
+            try:
+                fits.add_header_item('GRATLPMM', self.gratlpmm[fits.grating],'Grating Lines per mm, set by Hector manager')
+            except IOError:
+                pass
         if fits.grating not in self.idx_files:
             # Without an idx file we would have no way to reduce this file
             self.disable_files([fits])
@@ -1913,7 +1923,8 @@ class Manager:
                 input_list = zip(file_list_tw,[overwrite]*len(file_list_tw))
                 self.map(wavecorr_frame,input_list)
                 print(nccd, file_list_tw)
-                wavecorr_av(file_list_tw,self.root)
+                if len(file_list_tw) > 0:
+                    wavecorr_av(file_list_tw,self.root)
             
                 kwargs_tmp = kwargs.copy()
                 if 'ccd' in kwargs_tmp:
@@ -2024,12 +2035,17 @@ class Manager:
 
         return new_fits
 
-    def copy_path(self, path):
+    def copy_path(self, path, ndf_class):
         """Return the path for a copy of the specified file."""
         directory = os.path.dirname(path)
         old_filename = os.path.basename(path)
         old_num = int(old_filename[6:10])
-        new_num = old_num + 1000 * (9 - (old_num // 1000))
+        key_num = 7
+        if(ndf_class == 'MFFFF'):
+            key_num = 9
+        if(ndf_class == 'MFSKY'):
+            key_num = 8
+        new_num = old_num + 1000 * (key_num - (old_num // 1000))
         new_filename = (
                 old_filename[:6] + '{:04d}'.format(int(new_num)) + old_filename[10:])
         new_path = os.path.join(directory, new_filename)
@@ -2738,7 +2754,7 @@ class Manager:
                     else:
                         drop_factor = 0.5
                 gridsize = size_of_grid
-                if((ccd == 'ccd_1') or ((ccd == 'ccd_2'))):
+                if((ccd == 'ccd_3') or ((ccd == 'ccd_3'))):
                     gridsize = 50
                 for objname in objects:
                     inputs_list.append(
@@ -2787,7 +2803,8 @@ class Manager:
                     pass
                 else: #insert NaN row to fulfil the data
                     print(file[0].header['NAME'],file[0].header['SPECTID'],'Resized...')
-                    for j0 in range(len(file)-1):
+#                    for j0 in range(len(file)-1): #marie
+                    for j0 in range(4):
                         x = file[j0].data
                         header = file[j0].header
                         print('Before resizing file',j0,np.shape(x))
@@ -2836,11 +2853,13 @@ class Manager:
             
                     #name of file to be written
                     filename = k0 + os.listdir(k0)[i]
-        
+
                     #Overwrite the files
+                    file.flush()
+                    file.close()
                     hdul.writeto(filename,overwrite=True)
                     hdul.close()
-                    print('Finish resizing ', file[0].header['NAME'],file[0].header['SPECTID'])
+#                    print('Finish resizing ', file[0].header['NAME'],file[0].header['SPECTID'])
         print('Finish resizing all cubes')
                    
         self.next_step('cube', print_message=True)
@@ -3578,7 +3597,7 @@ class Manager:
                     # twilight options first.  If they are not found, then default
                     # back to the normal tlmap route.
                     found = 0
-                    if (self.use_twilight_tlm_blue and (fits.ccd == 'ccd_1') and 
+                    if (self.use_twilight_tlm_blue and ((fits.ccd == 'ccd_1') or (fits.ccd == 'ccd_3')) and 
                         (fits.plate_id_short != 'Y14SAR4_P007')):
                         filename_match = self.match_link(fits, 'tlmap_mfsky')
                         if filename_match is None:
@@ -3646,7 +3665,7 @@ class Manager:
                     # back to the normal fflat route (this is a copy of the version
                     # for the TLM above - with minor changes):
                     found = 0
-                    if (self.use_twilight_flat_blue) and (fits.ccd == 'ccd_1' or fits.ccd == 'ccd_3'): #marie adds ccd_3
+                    if (self.use_twilight_flat_blue) and ((fits.ccd == 'ccd_1') or (fits.ccd == 'ccd_3')): #marie adds ccd_3
                         filename_match = self.match_link(fits, 'fflat_mfsky')
                         if filename_match is None:
                             filename_match = self.match_link(fits, 'fflat_mfsky_loose')
@@ -3866,9 +3885,9 @@ class Manager:
                       not os.path.exists(fits.reduced_path))) and
                     (copy_reduced is None or
                      (copy_reduced and os.path.exists(
-                         self.copy_path(fits.reduced_path))) or
+                         self.copy_path(fits.reduced_path,fits.ndf_class))) or
                      (not copy_reduced and not os.path.exists(
-                         self.copy_path(fits.reduced_path)))) and
+                         self.copy_path(fits.reduced_path,fits.ndf_class)))) and
                     (tlm_created is None or
                      (tlm_created and hasattr(fits, 'tlm_path') and
                       os.path.exists(fits.tlm_path)) or
@@ -4114,7 +4133,7 @@ class Manager:
         recent_reduction = lambda fits, fits_test: (
                 -1.0 * os.stat(fits_test.reduced_path).st_mtime)
         copy_recent_reduction = lambda fits, fits_test: (
-                -1.0 * os.stat(self.copy_path(fits_test.reduced_path)).st_mtime)
+                -1.0 * os.stat(self.copy_path(fits_test.reduced_path,fits_test.ndf_class)).st_mtime)
         # merit function that returns the best fluxlev value.  As the
         # general f-o-m selects objects if the f-o-m is LESS than other values
         # we should just multiple fluxlev by -1:
@@ -4444,8 +4463,8 @@ class Manager:
             raw_filename = fits_match.filename
             raw_dir = fits_match.raw_dir
         elif match_class.lower() == 'thput_fflat':
-            filename = self.copy_path(fits_match.reduced_filename)
-            raw_filename = self.copy_path(fits_match.filename)
+            filename = self.copy_path(fits_match.reduced_filename,fits_match.ndf_class)
+            raw_filename = self.copy_path(fits_match.filename,fits_match.ndf_class)
             raw_dir = fits_match.reduced_dir
         elif match_class.lower().startswith('fflat_mfsky'):
             # case of using twilight frame for fibre flat.  In this case
@@ -4942,7 +4961,8 @@ class FITSFile:
         # as a MFFFF:
         elif self.ndf_class == 'MFSKY':
             old_num = int(self.filename_root[6:10])
-            new_num = old_num + 1000 * (9 - (old_num // 1000))
+            key_num = 8
+            new_num = old_num + 1000 * (key_num - (old_num // 1000))
             new_filename_root = (self.filename_root[:6] + '{:04d}'.format(int(new_num)) + self.filename_root[10:])
             self.tlm_filename = new_filename_root + 'tlm.fits'
             # If the file is a copy, then we'll also need to set the copy name as
@@ -4961,9 +4981,9 @@ class FITSFile:
         and 06mar18001red.fits for fake twilight rather than 06mar10001red.fits"""
         key_num = 7
         if(self.ndf_class == 'MFFFF'):
-            key_num = 8
-        if(self.ndf_class == 'MFSKY'):
             key_num = 9
+        if(self.ndf_class == 'MFSKY'):
+            key_num = 8
         self.copy_reduced_filename = self.filename_root + 'red.fits'
         old_num = int(self.filename_root[6:10])
         new_num = old_num + 1000 * (key_num - (old_num // 1000))
@@ -5883,6 +5903,9 @@ def read_hector_tiles():
     if len(not_in_list):
         # Check to see if the number of columns and their names match by comparing the headers
         ss_header = pd.read_csv(f"{base_path}/{file_names[1]}", nrows=0).columns
+        for abs_path in not_in_list:
+            print(abs_path)
+            pd.read_csv(abs_path, nrows=0, header=11).columns
         cols = [pd.read_csv(abs_path, nrows=0, header=11).columns for abs_path in not_in_list]
         cols_identical = [all(ss_header == colx) for colx in cols]
         assert all(cols_identical), f"Tile file header mis-match. The required column names are: {headerList}"
