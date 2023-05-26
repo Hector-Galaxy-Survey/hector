@@ -66,17 +66,12 @@ def correct_bad_fibres(path_list,debug=False):
                 mean_residual + 4*sig_residual)
         n_bad_fibres = len(still_bad_fibres_index[0])
         i = i+1
-        print('loop',bad_fibres_index)
 
     # Replace all bad fibres with the average for that fibre
     bad_fibres_index = np.squeeze(bad_fibres_index)
-    print('should remove this from dr/fflat.py',bad_fibres_index.shape, fflats_fixed.shape, avg_fixed.shape)
-    print(bad_fibres_index)
-    print(bad_fibres_index[0,:])
     fflats_fixed[bad_fibres_index[:,0],bad_fibres_index[:,1],:] = avg_fixed[bad_fibres_index[:,1],:]
 
     # Write new fibre flat field values to file
-
     edited_files = np.unique(bad_fibres_index[:,0])
     for index in range(len(edited_files)):
         hdulist = pf.open(path_list[index],mode='update')

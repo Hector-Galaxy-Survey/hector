@@ -1130,7 +1130,7 @@ class Manager:
             self.set_name(fits, trust_header=trust_header)
         else:
             self.set_name(fits, trust_header=trust_header)
-            print('Adding file: ', filename, fits.ndf_class, fits.plate_id, fits.name)
+            print('Adding file: ', filename, fits.ndf_class, fits.plate_id, fits.name, fits.copy_reduced_filename)
             f = open(self.abs_root+'/filelist.txt', 'a')
             f.write(filename+' '+fits.ndf_class+' '+(fits.plate_id or 'None')+' '+(fits.name or 'None')+' '+(str(fits.spectrophotometric) or 'None')+'\n')
             f.close()
@@ -1140,15 +1140,13 @@ class Manager:
 
         #ccd_4 data from 26, 27 Apr 2023, where overscan region is different but header does not point the right pixels
         if (fits.ccd == 'ccd_4' and fits.header['RO_PORTS'] == 'B'):
-            fits.add_header_item('DETECXS', '41','First column of detectorm, set by Hector manager')
-            fits.add_header_item('DETECXE', '4136','Last column of detector, set by Hector manager')
-            fits.add_header_item('WINDOXS1', '41','First column of window 1, set by Hector manager')
-            fits.add_header_item('WINDOXE1', '4136','Last column of window 1, set by Hector manager')
-            fits.add_header_item('WINDOXS2', '1','First column of window 2, set by Hector manager')
-            fits.add_header_item('WINDOXE2', '40','Last column of window 2, set by Hector manager')
-            print('    DETECX? and WINDOX?? keywords have been modified having RO_PORTS=B from ',fits.filename)
-        if (fits.ccd != 'ccd_4' and fits.header['RO_PORTS'] == 'B'):
-            print('    Not excpect RO_PORTS=B for '+fits.filename+'. Should modify DETECX? and WINDOX?? to reduce this file.')
+            fits.add_header_item('DETECXS', 41,'First column of detectorm, set by Hector manager')
+            fits.add_header_item('DETECXE', 4136,'Last column of detector, set by Hector manager')
+            fits.add_header_item('WINDOXS1', 41,'First column of window 1, set by Hector manager')
+            fits.add_header_item('WINDOXE1', 4136,'Last column of window 1, set by Hector manager')
+            fits.add_header_item('WINDOXS2', 1,'First column of window 2, set by Hector manager')
+            fits.add_header_item('WINDOXE2', 40,'Last column of window 2, set by Hector manager')
+            print('    DETECX? and WINDOX?? keywords have been modified having RO_PORTS=B from',fits.filename)
 
         if not fits.do_not_use:
             fits.make_reduced_link()
@@ -1883,7 +1881,7 @@ class Manager:
 
                 # Identify bad fibres and replace with an average over all other twilights
                 if len(reduced_twilights) >= 3:
-                    path_list = [os.path.join(fits.reduced_dir, fits.copy_reduced_filename) for fits in reduced_twilights]
+                    path_list = [os.path.join(fits.reduced_dir, fits.filename) for fits in reduced_twilights]
                     correct_bad_fibres(path_list)
 
         # now we will process the normal MFFFF files
@@ -2162,9 +2160,17 @@ class Manager:
         # Create dummy output if pipeline is being run in dummy mode
         if self.dummy:
             create_dummy_output(reduced_files, tlm=tlm, overwrite=overwrite)
-                
+
+        # Data we could not reduced within timeout of 600s
+        tdfail = str(self.abs_root)+'/tdfdr_failure.txt'
+        if os.path.exists(tdfail):
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                timeout = np.loadtxt(str(self.abs_root)+'/tdfdr_failure.txt',dtype='U')
+                if len(timeout) > 0:
+                    print('Could not reduce files listed in '+str(self.abs_root)+'/tdfdr_failure.txt')
+
         # Return a list of fits objects that were reduced
-        
         return reduced_files
 
     def target_path(self, fits, tlm=False):
@@ -2761,7 +2767,7 @@ class Manager:
                 for objname in objects:
                     inputs_list.append(
                         (field_id, ccd, path_list, objname, cubed_root, drop_factor,
-                         tag, update_tol, size_of_grid, output_pix_size_arcsec,
+                         tag, update_tol, gridsize, output_pix_size_arcsec,
                          overwrite))
 
         with open(failed_qc_file, "w") as outfile:
@@ -3804,7 +3810,6 @@ class Manager:
         return options
 
     def determine_tlm_shift(self,fits,twilight_fits,flat_fits):
-
         twilight_fits = os.path.join(fits.reduced_dir,twilight_fits)
         flat_fits = os.path.join(fits.reduced_dir,flat_fits)
         
@@ -3831,15 +3836,10 @@ class Manager:
         print('Combining files to create', output_path)
         tdfdr.run_2dfdr_combine(input_path_list, output_path, idx_file, self.dummy)
 
-
-
-
-
         # Create dummy output if pipeline is being run in dummy mode
         if self.dummy:
             reduced_files = [fits for fits in file_iterable_dummy]
             create_dummy_combine(input_path_list[0], output_path, reduced_files[0].ndf_class)
-
         return
 
     def files(self, ndf_class=None, date=None, plate_id=None,
@@ -4029,24 +4029,6 @@ class Manager:
         other_fits = self.fits_file(
             other_filename, include_linked_managers=include_linked_managers)
         return other_fits
-
-#marie do I really need this routine?
-#    def other_spec(self, fits, include_linked_managers=False):
-#        """Return the FITSFile from the other spectrograph of the same arm."""
-#        if fits.ccd == 'ccd_1':
-#            other_number = '3'
-#        elif fits.ccd == 'ccd_2':
-#            other_number = '4'
-#        elif fits.ccd == 'ccd_3':
-#            other_number = '1'
-#        elif fits.ccd == 'ccd_4':
-#            other_number = '2'
-#        else:
-#            raise ValueError('Unrecognised CCD: ' + fits.ccd)
-#        other_filename = fits.filename[:5] + other_number + fits.filename[6:]
-#        other_fits = self.fits_file(
-#            other_filename, include_linked_managers=include_linked_managers)
-#        return other_fits
 
     def cubed_path(self, name, arm, fits_list, field_id, gzipped=False,
                    exists=False, tag=None, **kwargs):
