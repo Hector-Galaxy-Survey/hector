@@ -38,7 +38,7 @@ import matplotlib.gridspec as gridspec
 
 
 # The Hector package Sam developed
-from hop.hexabundle_allocation.hector import constants
+#from hop.hexabundle_allocation.hector import constants
 
 from ..utils.ifu import IFU
 from ..utils.mc_adr import parallactic_angle, adr_r
@@ -150,8 +150,8 @@ def get_cvd_parameters(path_list, star_match, max_sep_arcsec=60.0,
         psf_params_lambda.append(np.nanmean(chunked_lambda))
 
 
-    av_xref_cen = np.mean(psf_params_xcen)
-    av_yref_cen = np.mean(psf_params_ycen)
+    av_xref_cen = np.nanmean(psf_params_xcen)
+    av_yref_cen = np.nanmean(psf_params_ycen)
     av_xref_cen_adjust = psf_params_xcen
     av_yref_cen_adjust = psf_params_ycen
     wavelengths = np.array(psf_params_lambda)
