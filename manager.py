@@ -1922,7 +1922,6 @@ class Manager:
                         file_list_tw.append(f)
                 input_list = zip(file_list_tw,[overwrite]*len(file_list_tw))
                 self.map(wavecorr_frame,input_list)
-                print(nccd, file_list_tw)
                 if len(file_list_tw) > 0:
                     wavecorr_av(file_list_tw,self.root)
             

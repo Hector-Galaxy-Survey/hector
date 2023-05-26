@@ -5,7 +5,7 @@ blue twilight frames then applies this back to the arcs
 This code runs on blue reduced twilight sky frames and is called as part
 of the reduce_sky() pipeline command. For each blue twilight frame it derives
 an offset in angstroms between the nominal wavelength solution for that frame
-and the 'true' wavelenght solution determined by correlating with a high
+and the 'true' wavelength solution determined by correlating with a high
 resolution solar spectrum.
 
 After individual solutions are calculated for each twilight, this code determines
@@ -144,10 +144,8 @@ def prepare_fibre_spectrum(fibre_spec, fibre_wav, solar_wav):
 	hr_wav = np.copy(solar_wav)
 	
 	return hr_spec, hr_wav
-
 	
 def record_wavelength_offsets(twilight_hdulist,offsets):
-
     # Save the derived wavelength offsets for a given twilight frame to
     # a new 'WAVECORR' extension or replace values if extension already exists
 
@@ -164,7 +162,6 @@ def record_wavelength_offsets(twilight_hdulist,offsets):
     twilight_hdulist.flush()
     
 def wavecorr_av(file_list,root_dir):
-
     # For all reduced twilight sky frames with 'WAVECORR' extensions:
     # 1) Read in their 'WAVECORR' offsets array
     # 2) Fit and subtract a linear shape term to 
@@ -188,15 +185,13 @@ def wavecorr_av(file_list,root_dir):
     tb.write(os.path.join(root_dir,'average_blue_wavelength_offset_ccd_'+str(file_list[0].reduced_path[-13:-12])+'.dat'),format='ascii.commented_header',overwrite=True)
     
 def apply_wavecorr(path,root_dir):
-
     # Uses a stored average wavelength offset derived from multiple twilight sky frames
     # and corrects all blue arc frames by adjusting the 'SHIFTS' array
     
     # Offsets are ADDED I think (NS)
 
-    if not os.path.isfile(os.path.join(root_dir,'average_blue_wavelength_offset.dat')):
-        print('No average wavelength correction file found.') 
-        print('Wavelength correction not applied')
+    if not os.path.isfile(os.path.join(root_dir,'average_blue_wavelength_offset_ccd_'+str(path[-13:-12])+'.dat')):
+        print('apply_wavecorr: No average wavelength correction file found. Wavelength correction not applied.') 
         return
     tb = Table.read(os.path.join(root_dir,'average_blue_wavelength_offset_ccd_'+str(path[-13:-12])+'.dat'),format='ascii.commented_header')
     offsets = tb['Offset'].data
