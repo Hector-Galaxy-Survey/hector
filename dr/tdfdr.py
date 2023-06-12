@@ -165,21 +165,20 @@ def call_2dfdr_reduce(dirname, root=None, options=None, dummy=False):
                 message = "2dfdr did not run to completion for command: %s" % " ".join(command_line)
                 print("Error has occured! Should check "+root+"/tdfdr_failure.txt")
                 print("   "+message)
-                f = open(root+'/tdfdr_failure.txt', 'a')
                 if os.path.exists(root+'/tdfdr_failure.txt'):
-                    line = open(root+'/tdfdr_failure.txt','r')
-                    lines = np.array(line.rstrip())
-                 
-                    #lines = np.array([line.rstrip() for line in open(root+'/tdfdr_failure.txt')])
+                    lines = []
+                    with open(root+'/tdfdr_failure.txt', 'r') as fail:
+                        lines = np.array([line.rstrip() for line in fail])
                     sub = np.where(message.rstrip() == lines)
                     if len(sub[0]) == 0:
+                        f = open(root+'/tdfdr_failure.txt', 'a')
                         f.write(message+'\n')
-                    line.close()
+                        f.close()
                 else:
-                    f.write(message+'\n')
-                f.close() #when multiprocessing it occasionally causes error?
+                    fn = open(root+'/tdfdr_failure.txt', 'a')
+                    fn.write(message+'\n')
+                    fn.close()
                 #raise TdfdrException(message)
-
 
 def call_2dfdr_gui(dirname, options=None):
     """Call 2dfdr in GUI mode using `drcontrol`"""
