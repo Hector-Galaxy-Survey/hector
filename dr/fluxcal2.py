@@ -1876,25 +1876,26 @@ def fit_sec_template_ppxf(path,doplot=False,verbose=False,tempfile=hector_path+'
     # at once.  First decide on which gravity to use.  Just use the best fit model
     # for that, particularly as we only have 2 gravities.  Then loop through
     # each of the other models and find thoose that are close in teff or [Fe/H]
+    chisq_best2_teff = 1.0e10
+    chisq_best2_feh  = 1.0e10
+    best_teff2 = 0.
+    best_feh2 = 0.
     for i in range(temp_n):
+        print('fluxcal2.',path,best_g,best_teff,best_feh,model_g[i],model_teff[i],model_feh[i],abs(model_teff[i]-best_teff),abs(model_feh[i]-best_feh))
         if model_g[i] == best_g:
-
             # metallicity (which is [Fe/H]) steps are in 0.5.  Teff steps are in 250K
             # we want to find the next best in Teff and [Fe/H]
             d_teff = abs(model_teff[i]-best_teff)
             d_feh = abs(model_feh[i]-best_feh)
             # check either side of best fit teff.  Find the one with the best chisq:
-            best_feh2 = 0. # maire
-            chisq_best2 = 1.0e10
             if (d_teff < 300) & (d_teff > 200) & (d_feh < 0.2):
-                if chisq[i] < chisq_best2:
-                    best_chisq2 = chisq[i]
+                if chisq[i] < chisq_best2_teff:
+                    chisq_best2_teff = chisq[i]
                     best_teff2 = model_teff[i]
             # check either side of best fit [FeH].  Find the one with the best chisq:
-            chisq_best2 = 1.0e10
             if (d_feh < 0.6) & (d_feh > 0.4) & (d_teff < 200):
-                if chisq[i] < chisq_best2:
-                    best_chisq2 = chisq[i]
+                if chisq[i] < chisq_best2_feh:
+                    chisq_best2_feh = chisq[i]
                     best_feh2 = model_feh[i]
 
     if verbose:
