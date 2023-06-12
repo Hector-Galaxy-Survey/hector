@@ -1648,7 +1648,7 @@ class Manager:
 
         # check if ccd keyword argument is set, as we need to account for the
         # fact that it is also set for the twilight reductions (ccd1 only).
-        self.disable_files() #do not use diabled file listed in disable.txt
+#        self.disable_files() #do not use diabled file listed in disable.txt
         do_twilight = True
         if ('ccd' in kwargs):
             if ((kwargs['ccd'] == 'ccd_1') or (kwargs['ccd'] == 'ccd_3')):
@@ -1783,12 +1783,11 @@ class Manager:
                     f.write('       Take new dome flat with shorter exposure time. No need to continue to the next check point. \n')
                 else:
                     f.write('     Check point: This frame is not saturated. Continue to the next check point.\n')
-                    if len(fib_spec_id[sub]) > 10: # check focus when not saturated but catastrophic failure
-                        f.write('     Check point: visually check the focus: hector@aatlxe:~$ ds9 '+fits.reduced_dir+'/'+str(fits.filename)+' -zoom 4&\n')
-                        f.write('       Do you clearly see a contrast (~ 10000 count) between the signal and gap? If not, it is out of focus.\n')
-                        f.write('       If it is out of focus, disable it adding '+str(fits.filename)[0:-5]+' on '+str(self.abs_root)+'/disable.txt\n')
-                        f.write('       You need to add all other (arc, object) frames that are out of focus. \n')
-                        f.write('       Do check the focus values. No need to continue to the next check point.\n')
+                f.write('     Check point: visually check the focus: hector@aatlxe:~$ ds9 '+fits.reduced_dir+'/'+str(fits.filename)+' -zoom 4 -zscale&\n')
+                f.write('       Do you clearly see a contrast (> 5000 counts) between the signal and gap? If not, it is out of focus.\n')
+                f.write('       If it is out of focus, disable it adding '+str(fits.filename)[0:-5]+' on '+str(self.abs_root)+'/disable.txt\n')
+                f.write('       You need to add all other (arc, object) frames that are out of focus. \n')
+                f.write('       Do check the focus values. No need to continue to the next check point.\n')
                 f.write('     Check point: check how the other arm ('+otherfilename[0:-5]+') is doing. You may find a solution there. \n')
                 f.write('     Check point: visually check tlm:\n') # load drcontrol qui to visually check tlm
                 f.write('       In the ipython shell    In [1]: mngr.load_2dfdr_gui("'+fits.reduced_dir+'")\n')
@@ -2106,6 +2105,8 @@ class Manager:
         # Although 'skylines' is requested, these will be throughput calibrated
         # by matching to long exposures, because they will be recognised as
         # short
+        print('file_iterable_sky_lines',file_iterable_sky_lines,overwrite)
+        print('file_iterable_default',file_iterable_default,overwrite)
         reduced_files.extend(self.reduce_file_iterable(
             file_iterable_sky_lines, overwrite=overwrite,
             throughput_method='skylines', check='OBJ'))
@@ -2160,14 +2161,16 @@ class Manager:
         if self.dummy:
             create_dummy_output(reduced_files, tlm=tlm, overwrite=overwrite)
 
-        # Data we could not reduced within timeout of 600s
+        # Data with error or  we could not reduced within timeout of 600s
         tdfail = str(self.abs_root)+'/tdfdr_failure.txt'
         if os.path.exists(tdfail):
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore")
-                timeout = np.loadtxt(str(self.abs_root)+'/tdfdr_failure.txt',dtype='U')
+                ftimeout = open(str(self.abs_root)+'/tdfdr_failure.txt')
+                timeout = ftimeout.read()
                 if len(timeout) > 0:
                     print('Could not reduce files listed in '+str(self.abs_root)+'/tdfdr_failure.txt')
+                ftimeout.close()
 
         # Return a list of fits objects that were reduced
         return reduced_files
@@ -4879,8 +4882,8 @@ class FITSFile:
 
         self.set_lamp()
         self.set_central_wavelength()
-#        self.set_do_not_use() #TODO: marie: this should be activated when SPECTOR has the keyword of 'SPEED' in their header
-        self.do_not_use = False #marie: this should be removed when SPECTOR has the keyword of 'SPEED' in their header
+        self.set_do_not_use() #TODO: marie: this should be activated when SPECTOR has the keyword of 'SPEED' in their header
+#        self.do_not_use = False #marie: this should be removed when SPECTOR has the keyword of 'SPEED' in their header
 
         self.set_coords_flags()
         self.set_copy()
@@ -5275,7 +5278,10 @@ class FITSFile:
             self.do_not_use = self.header['DONOTUSE']
         except KeyError:
             # By default, don't use fast readout files
-            self.do_not_use = (self.header['SPEED'] != 'NORMAL')
+            if self.header['INSTRUME'] == 'SPECTOR':
+                self.do_not_use = (self.header['SPEED'] != 'MEDIUM')
+            else:
+                self.do_not_use = (self.header['SPEED'] != 'NORMAL')
         return
 
     def set_coords_flags(self):
