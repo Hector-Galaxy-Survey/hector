@@ -257,7 +257,8 @@ if __name__ == "__main__":
     tile_file = open(object_tile_file, "rt")
     uttime_config = tile_file.readlines()[7].strip('UTTIME, #Target observing time\n') # Extract UT TIME from the header of the tile file.
     tile_file.close()
-
+    tile_name = config['robot_file_name'].replace("Robot", "Tile")[0:-4]
+    
 
     if config['red_or_blue'] == 'blue':
         hector_ccd, aaomega_ccd = [3], [1]
@@ -277,8 +278,8 @@ if __name__ == "__main__":
 
     object_spec_Asum, object_spec_Hsum, flats = [], [], ""
     for i in range(np.size(hector_ccd)):
-        flat_file_Hector = Path(config['data_dir']) / f"reduced/{datestamp}/1/1_F0/calibrators" / f"ccd_{hector_ccd[i]}" / f"{config['file_prefix']}{hector_ccd[i]}{flat_obs_number:04}.fits"
-        flat_file_AAOmega = Path(config['data_dir']) / f"reduced/{datestamp}/1/1_F0/calibrators" / f"ccd_{aaomega_ccd[i]}" / f"{config['file_prefix']}{aaomega_ccd[i]}{flat_obs_number:04}.fits"
+        flat_file_Hector = Path(config['data_dir']) / f"reduced/{datestamp}/{tile_name}/{tile_name}_F0/calibrators" / f"ccd_{hector_ccd[i]}" / f"{config['file_prefix']}{hector_ccd[i]}{flat_obs_number:04}.fits"
+        flat_file_AAOmega = Path(config['data_dir']) / f"reduced/{datestamp}/{tile_name}/{tile_name}_F0/calibrators" / f"ccd_{aaomega_ccd[i]}" / f"{config['file_prefix']}{aaomega_ccd[i]}{flat_obs_number:04}.fits"
 
         if config['spectrograph_not_used'] != 'None': locals()['flat_file_' + config['spectrograph_not_used']] = 'None'
         flats = flats + f"{str(flat_file_AAOmega)[-15:-5]} {str(flat_file_Hector)[-15:-5]} "
