@@ -21,6 +21,7 @@ import scipy as sp
 
 import pylab as py
 
+# import pyfits
 import astropy.io.fits as pf
 from astropy.io import fits
 
@@ -156,9 +157,9 @@ def is_ferule_aligned_to_fibres(Probename, rotated_xpos, rotated_ypos, fiber_num
     # dist = np.cross(P2 - P1, P1 - P3) / np.linalg.norm(P2 - P1)
 
     # The cross product is +ve for the left-fibre, and -ve for the right-fibre
-    if Probename is not "T":
-        assert determine_left_or_right(fiber_num, orientation[Probename][0]) is "left", f"Fiber {orientation[Probename][0]} is NOT to the LEFT of the ferule in Probe-{Probename}"
-        assert determine_left_or_right(fiber_num, orientation[Probename][1]) is "right", f"Fiber {orientation[Probename][0]} is NOT to the RIGHT of the ferule in Probe-{Probename}"
+    if Probename != "T":
+        assert determine_left_or_right(fiber_num, orientation[Probename][0]) == "left", f"Fiber {orientation[Probename][0]} is NOT to the LEFT of the ferule in Probe-{Probename}"
+        assert determine_left_or_right(fiber_num, orientation[Probename][1]) == "right", f"Fiber {orientation[Probename][0]} is NOT to the RIGHT of the ferule in Probe-{Probename}"
 
     return
 
@@ -177,6 +178,7 @@ if __name__ == "__main__":
     parser.add_argument("--robot_file_name", default=None, type=str, help='The robot file name')
     parser.add_argument("--spectrograph_not_used", default=None, type=str, help='Specify if you are NOT using one of the two spectrographs')
     parser.add_argument("--red_or_blue", default=None, type=str, help='Specify if you are only using red or blue or both arms. Default is both')
+    parser.add_argument("--no_centroid", action='store_true', help='Turn-off centroid-fitting')
 
     parser.add_argument("--config-file", default=None, help="A .yaml file which contains parameters and filenames for the code. See hector_display_config.yaml for an example")
     # parser.add_argument("--outfile", help='Filename to save the plot to. If not given, display the plot instead')
@@ -227,6 +229,7 @@ if __name__ == "__main__":
     # -------------------------------- Load some options
     # - data_type (options "raw" or "tramline_map")
     data_type = config['data_type']
+    print(f"DATA TYPE = {data_type}")
     if not data_type:
         data_type = args.data_type
 
@@ -237,8 +240,8 @@ if __name__ == "__main__":
 
     # - Centroid-fitting related keywords
     centroid = config['centroid']
-    # if not centroid:
-    #     centroid = args.centroid
+    if args.no_centroid:
+        centroid = False
 
     centroider = config['centroider']
     sami_centroider = config['sami_centroider']
@@ -258,7 +261,7 @@ if __name__ == "__main__":
     uttime_config = tile_file.readlines()[7].strip('UTTIME, #Target observing time\n') # Extract UT TIME from the header of the tile file.
     tile_file.close()
     tile_name = config['robot_file_name'].replace("Robot", "Tile")[0:-4]
-    
+    tile_dir = tile_name.replace("Tile_", "")
 
     if config['red_or_blue'] == 'blue':
         hector_ccd, aaomega_ccd = [3], [1]
@@ -278,8 +281,8 @@ if __name__ == "__main__":
 
     object_spec_Asum, object_spec_Hsum, flats = [], [], ""
     for i in range(np.size(hector_ccd)):
-        flat_file_Hector = Path(config['data_dir']) / f"reduced/{datestamp}/{tile_name}/{tile_name}_F0/calibrators" / f"ccd_{hector_ccd[i]}" / f"{config['file_prefix']}{hector_ccd[i]}{flat_obs_number:04}.fits"
-        flat_file_AAOmega = Path(config['data_dir']) / f"reduced/{datestamp}/{tile_name}/{tile_name}_F0/calibrators" / f"ccd_{aaomega_ccd[i]}" / f"{config['file_prefix']}{aaomega_ccd[i]}{flat_obs_number:04}.fits"
+        flat_file_Hector = Path(config['data_dir']) / f"reduced/{datestamp}/{tile_dir}/{tile_dir}_F0/calibrators" / f"ccd_{hector_ccd[i]}" / f"{config['file_prefix']}{hector_ccd[i]}{flat_obs_number:04}.fits"
+        flat_file_AAOmega = Path(config['data_dir']) / f"reduced/{datestamp}/{tile_dir}/{tile_dir}_F0/calibrators" / f"ccd_{aaomega_ccd[i]}" / f"{config['file_prefix']}{aaomega_ccd[i]}{flat_obs_number:04}.fits"
 
         if config['spectrograph_not_used'] != 'None': locals()['flat_file_' + config['spectrograph_not_used']] = 'None'
         flats = flats + f"{str(flat_file_AAOmega)[-15:-5]} {str(flat_file_Hector)[-15:-5]} "
@@ -320,6 +323,34 @@ if __name__ == "__main__":
     if not os.path.exists(save_files):
         os.makedirs(save_files)
 
+    # Get the hexabundle probe lists based on the user inputs
+    if config['spectrograph_not_used'] == 'AAOmega':
+        prRed('Using Hector spectrograph')
+        plist = list(string.ascii_uppercase[8:21].replace('M', ''))
+        object_header = object_header_H
+
+    elif config['spectrograph_not_used'] == 'Hector':
+        plist = list(string.ascii_uppercase[:8])
+        prRed('Using AAOmega spectrograph')
+        object_header = object_header_A
+
+    else:
+        assert config['spectrograph_not_used'] == 'None', f"The spectrograph_not_used keyword is set to {config['spectrograph_not_used']}. It must be one of 'None', 'Hector' or 'AAOmega'"
+        plist = list(string.ascii_uppercase[:21].replace('M', ''))  # Hexa-M is not working
+        object_header = object_header_A
+
+    # For a spectrophotometric standard observation, ask the user to assign the bundle
+    try:
+        spectrophotometric_header = object_header['MNGRSPMS']
+        if spectrophotometric_header:
+            standard = str(input("A spectrophotometric standard observation, enter probe name: "))
+            assert standard.upper() in plist, f"Standard star probe does not belong to the specified spectrograph"
+            plist = standard.upper()
+            centroid = False
+            prCyan(f"--> By default, the centroid-fitting will be turned off to increase the processing speed...\n")
+    except KeyError:
+        spectrophotometric_header = None
+
     # Prepare for centroid-fitting
     if centroid:
         if centroider: mode = 'GCAM'
@@ -338,22 +369,6 @@ if __name__ == "__main__":
 
     scale_factor = 18
     hexabundle_tail_length = scale_factor * 1000
-
-    # Get the hexabundle probe lists
-    if config['spectrograph_not_used'] == 'AAOmega':
-        prRed('Using Hector spectrograph')
-        plist = list(string.ascii_uppercase[8:21].replace('M',''))
-        object_header = object_header_H
-
-    elif config['spectrograph_not_used'] == 'Hector':
-        plist = list(string.ascii_uppercase[:8])
-        prRed('Using AAOmega spectrograph')
-        object_header = object_header_A
-
-    else:
-        assert config['spectrograph_not_used'] == 'None', f"The spectrograph_not_used keyword is set to {config['spectrograph_not_used']}. It must be one of 'None', 'Hector' or 'AAOmega'"
-        plist = list(string.ascii_uppercase[:21].replace('M','')) # Hexa-M is not working
-        object_header = object_header_A
 
     fig = plt.figure(figsize=(10,9.8))
     supltitle = f"{config['file_prefix']} frame {obs_number} (flats: {flats}) \n" \
@@ -435,13 +450,14 @@ if __name__ == "__main__":
     ax.add_patch(Wedge((robot_centre_in_mm[1], robot_centre_in_mm[0]), green_radius, 0, 360., width=10, color='lightgreen',alpha=0.3))
 
     # Add the guides
-    # if object_guidetab is not None:
-    #     ax = utils.display_guides(ax, object_guidetab, scale_factor=scale_factor, tail_length=hexabundle_tail_length)
-
-    # And add some N/E arrows
-    # ax = utils.add_NE_arrows(ax)
+    if object_robottab is not None:
+        ax = utils.display_guides_robotCoor(ax, object_robottab, scale_factor=scale_factor, tail_length=hexabundle_tail_length)
 
     ax.invert_yaxis()
+
+    # And add some N/E arrows
+    ax = utils.add_NE_arrows(ax)
+    # Add the x/y labels
     ax.set_ylabel("Robot $x$ coordinate")
     ax.set_xlabel("Robot $y$ coordinate")
 

@@ -873,7 +873,8 @@ def get_alive_fibres_from_tlm(flat_file, object_file, robot_file, IFU="unknown",
     # object_spec = object_cut_sum[tram_loc]
     # spec_id_alive = None
 
-    cut_locs = [0.25, 0.5, 0.75]
+    # cut_locs = [0.25, 0.5, 0.75]
+    cut_locs = [0.5]
     object_spec = []
     for cut_loc in cut_locs:
 
@@ -1118,11 +1119,11 @@ def add_NE_arrows(ax):
     Add North and East directions to the plot
     Thankfully they're easy because N is down and E is R
     """
-    arrow_centre_x = 200000
-    arrow_centre_y = 260000
+    arrow_centre_x = 450000
+    arrow_centre_y = 520000
     arrow_length = 30000
-    ax.arrow(arrow_centre_x,arrow_centre_y,0,-arrow_length, facecolor="#aa0000", edgecolor='#aa0000', width=1000)
-    ax.annotate('North', xy=(arrow_centre_x,arrow_centre_y - arrow_length - 2000), xytext=(0, -5), verticalalignment="top", horizontalalignment='center', textcoords='offset points')
+    ax.arrow(arrow_centre_x,arrow_centre_y,0,arrow_length, facecolor="#aa0000", edgecolor='#aa0000', width=1000)
+    ax.annotate('North', xy=(arrow_centre_x,arrow_centre_y + arrow_length + 2000), xytext=(0, -5), verticalalignment="top", horizontalalignment='center', textcoords='offset points')
 
     ax.arrow(arrow_centre_x,arrow_centre_y,arrow_length,0, facecolor="#aa0000", edgecolor='#aa0000', width=1000)
     ax.annotate('East', xy=(arrow_centre_x + arrow_length + 2000,arrow_centre_y), xytext=(5, 0), verticalalignment="center", horizontalalignment='left', textcoords='offset points')
@@ -1144,6 +1145,34 @@ def display_guides(ax, object_guidetab, scale_factor, tail_length):
         ax.text(hexabundle_x, hexabundle_y, f"G{probe_number - 21}",
                 verticalalignment='center', horizontalalignment='center', zorder=10)
         line_hexabundle_tail = [(hexabundle_x, hexabundle_y), (hexabundle_x + tail_length * np.sin(rotation_angle), hexabundle_y - tail_length * np.cos(rotation_angle))]
+        ax.plot(*zip(*line_hexabundle_tail), c='k', linewidth=1, zorder=1)
+
+    return ax
+
+def display_guides_robotCoor(ax, object_robot_tab, scale_factor, tail_length):
+
+    """
+    Display the guides
+    """
+    for guide_number in range(1, 7):
+        Probename = f"GS{guide_number}"
+        # For each hexabundle, get its circular and rectangular magnet (comes directly from the robot file)
+        cm = object_robot_tab.loc[(object_robot_tab['Hexabundle'] == Probename) & (object_robot_tab['#Magnet'] == 'circular_magnet')]
+        rm = object_robot_tab.loc[(object_robot_tab['Hexabundle'] == Probename) & (object_robot_tab['#Magnet'] == 'rectangular_magnet')]
+
+        mean_magX = cm.Center_y
+        mean_magX = mean_magX[mean_magX.index[0]] * 1.0E3
+        mean_magY = cm.Center_x
+        mean_magY = mean_magY[mean_magY.index[0]] * 1.0E3
+
+        # The angle of the rectangular magnet- 270 minus the robot holding angle minus the robot placing angle
+        rotation_angle_magnet = np.radians(270.0 - rm.rot_holdingPosition - rm.rot_platePlacing)
+        rotation_angle_magnet = rotation_angle_magnet[rotation_angle_magnet.index[0]]
+
+        ax.add_patch(Circle((mean_magX, mean_magY), scale_factor*400, edgecolor='#009900', facecolor='#009900', zorder=5))
+        ax.text(mean_magX, mean_magY, f"{Probename.replace('S', '')}", verticalalignment='center', horizontalalignment='center', zorder=10)
+        line_hexabundle_tail = [(mean_magX, mean_magY), (mean_magX + tail_length * np.sin(rotation_angle_magnet),
+                                                         mean_magY + tail_length * np.cos(rotation_angle_magnet))]
         ax.plot(*zip(*line_hexabundle_tail), c='k', linewidth=1, zorder=1)
 
     return ax
