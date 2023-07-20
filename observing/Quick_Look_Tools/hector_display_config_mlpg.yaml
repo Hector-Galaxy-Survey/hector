@@ -4,7 +4,7 @@ robot_file_name : "Robot_FinalFormat_H01_tile_101_CONFIGURED_correct_header.csv"
 
 # Load the data files
 # Absolute path to the data directory
-data_dir : "/Users/madusha/Documents/PycharmProjects/DATA_REDUCTION/Hector/Hector_Data/"
+data_dir : "/Users/madusha/Documents/PycharmProjects/DATA_REDUCTION/Hector-Data-Reduction-Temporary-2/Data/"
 
 # The prefix of every file- probably the date, e.g. 12jan
 file_prefix : "25oct"
