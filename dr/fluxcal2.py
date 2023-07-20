@@ -1959,6 +1959,9 @@ def fit_sec_template_ppxf(path,doplot=False,verbose=False,tempfile=hector_path+'
     # header:
     hdulist = pf.open(path,'update')
     header = hdulist['FLUX_CALIBRATION'].header
+    nn_best=np.nan_to_num(nn_best)
+    norm_weights=np.nan_to_num(norm_weights) #Todo: Sree: this is not the best way to go but to remove nan. should check 230427 data
+
     header['TEMP1'] = (nn_best[0],'Best fit template to secondary std 1')
     header['TEMP2'] = (nn_best[1],'Best fit template to secondary std 2')
     header['TEMP3'] = (nn_best[2],'Best fit template to secondary std 3')

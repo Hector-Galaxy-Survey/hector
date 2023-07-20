@@ -831,10 +831,25 @@ def read_stellar_spectrum(file_pair):
     wavelength = []
     for path in file_pair:
         hdulist = pf.open(path)
-        flux.append(hdulist['FLUX_CALIBRATION'].data[0, :])
-        noise.append(hdulist['FLUX_CALIBRATION'].data[2, :])
         header = hdulist[0].header
         wavelength.append(get_coords(header, 1))
+        flux.append(hdulist['FLUX_CALIBRATION'].data[0, :])
+        noise.append(hdulist['FLUX_CALIBRATION'].data[2, :])
+
+    if np.max(wavelength[0]) > np.min(wavelength[1]): # This is for Spector which doesn't have a gap!
+        wavelength_mid = np.min(wavelength[1])+(np.max(wavelength[0])-np.min(wavelength[1]))/2.
+        goodblue = np.where(wavelength[0] < wavelength_mid-100)
+        goodred = np.where(wavelength[1] > wavelength_mid+100)
+        nwavelength = list(wavelength[0][goodblue])
+        nwavelength.append(list(wavelength[1][goodred]))
+        nflux = list(flux[0][goodblue])
+        nflux.append(list(flux[1][goodred]))
+        nnoise = list(noise[0][goodblue])
+        nnoise.append(list(noise[1][goodred]))
+        flux = nflux
+        wavelength = nwavelength
+        noise = nnoise
+
     flux = np.hstack(flux)
     noise = np.hstack(noise)
     wavelength = np.hstack(wavelength)
@@ -967,6 +982,7 @@ def interpolate_arms(flux, noise, wavelength, good=None, n_pix_fit=300):
     #  * There are at least 300 pixels in each arm to fit to
     # TODO: Clean up to remove these assumptions, particularly the second one
     # Establish basic facts about which pixels we should look at
+    # TODO: Spector doesn't have a gap...
     n_pix = len(wavelength)
     if good is None:
         good = np.arange(n_pix)
@@ -983,10 +999,10 @@ def interpolate_arms(flux, noise, wavelength, good=None, n_pix_fit=300):
     index_fit = np.hstack((index_blue, index_red))
     poly_params = np.polyfit(wavelength[index_fit], flux[index_fit], 1,
                              w=1.0/noise[index_fit]**2)
-    wavelength_start = wavelength[middle-1] + delta_wave_blue
+    wavelength_start = wavelength[middle-2] + delta_wave_blue
     n_pix_insert_blue = int(np.round(
         (wavelength_middle - wavelength_start) / delta_wave_blue))
-    wavelength_end = wavelength[middle]
+    wavelength_end = wavelength[middle+1]
     n_pix_insert_red = int(np.round(
         (wavelength_end - wavelength_middle) / delta_wave_red))
     n_pix_insert = n_pix_insert_red + n_pix_insert_blue

@@ -1071,7 +1071,7 @@ class Manager:
 
         if os.path.exists(self.abs_root):
             f = open(self.abs_root+'/filelist.txt', 'w')
-            f.write('#filename  ndfclass  field  object  standrad\n')
+            f.write('#filename  ndfclass  field  object  standrad  disabled\n')
             f.close()
 
         for fits in fits_list:
@@ -1132,7 +1132,7 @@ class Manager:
             self.set_name(fits, trust_header=trust_header)
             print('Adding file: ', filename, fits.ndf_class, fits.plate_id, fits.name, fits.copy_reduced_filename)
             f = open(self.abs_root+'/filelist.txt', 'a')
-            f.write(filename+' '+fits.ndf_class+' '+(fits.plate_id or 'None')+' '+(fits.name or 'None')+' '+(str(fits.spectrophotometric) or 'None')+'\n')
+            f.write(filename+' '+fits.ndf_class+' '+(fits.plate_id or 'None')+' '+(fits.name or 'None')+' '+(str(fits.spectrophotometric) or 'None')+' '+(str(fits.do_not_use) or 'None')+'\n')
             f.close()
             
         fits.set_check_data()
@@ -2529,6 +2529,8 @@ class Manager:
         # object frames and the best templates are written to the header
         # of the frame.  Also write a header keyword to signify that the
         # secondary correction has been done - keyword is SECCOR.
+        #os.remove(str(hector.__path__[0])+'/standards/secondary/Hector_tiles/Hector*.csv')
+        hector.manager.read_hector_tiles()
         inputs_list = []
         ccds = ['ccd_1', 'ccd_3']
         prGreen('Fitting models to star observations')
@@ -2647,8 +2649,9 @@ class Manager:
         # First make the list of file pairs to scale
         inputs_list = []
         frames_list = []
+
         for fits_2 in self.files(ndf_class='MFOBJECT', do_not_use=False,
-                                 spectrophotometric=False, ccd='ccd_2',
+                                 spectrophotometric=False, ccd=['ccd_2','ccd_4'],
                                  telluric_corrected=True, name='main',
                                  **kwargs):
             if (not overwrite and 'RESCALE' in
@@ -3312,6 +3315,7 @@ class Manager:
     def qc_throughput_frame(self, path):
         """Calculate and save the relative throughput for an object frame."""
 
+        print(path)
         try:
             median_relative_throughput = (
                 pf.getval(pf.getval(path, 'FCALFILE'),
@@ -5861,19 +5865,19 @@ def read_hector_tiles():
         os.makedirs(base_path)
 
     # Check if the files holding the tile list and secondary standards exists. If not, create.
-    if not os.path.exists(f"{base_path}/{file_names[0]}"):
-        with open(f"{base_path}/{file_names[0]}", 'w') as filelist:
-            filelist.write("Hector_Tile_List \n")  # create hector-tile-list file
+#    if not os.path.exists(f"{base_path}/{file_names[0]}"):
+    with open(f"{base_path}/{file_names[0]}", 'w') as filelist:
+        filelist.write("Hector_Tile_List \n")  # create hector-tile-list file
 
-        with open(f"{base_path}/{file_names[1]}", 'w') as filelist:
-            dw = csv.DictWriter(filelist, delimiter=',', fieldnames=headerList)
-            dw.writeheader() # create hector standard star list file. This contains all information in the tile file
-            del dw
+    with open(f"{base_path}/{file_names[1]}", 'w') as filelist:
+        dw = csv.DictWriter(filelist, delimiter=',', fieldnames=headerList)
+        dw.writeheader() # create hector standard star list file. This contains all information in the tile file
+        del dw
 
-        with open(f"{base_path}/{file_names[2]}", 'w') as filelist:
-            dw = csv.DictWriter(filelist, delimiter=',', fieldnames=headerNew)
-            dw.writeheader() # create hector standard star list file. This contains a subset of information in the tile file
-            del dw
+    with open(f"{base_path}/{file_names[2]}", 'w') as filelist:
+        dw = csv.DictWriter(filelist, delimiter=',', fieldnames=headerNew)
+        dw.writeheader() # create hector standard star list file. This contains a subset of information in the tile file
+        del dw
 
     prRed(f"Please ensure that the relevant tile file is present in {base_path} \n "
           f"If not, add the file run hector.manager.read_hector_tiles(), again")
