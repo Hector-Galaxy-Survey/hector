@@ -1696,7 +1696,7 @@ class Manager:
         self.next_step('make_tlm', print_message=True)
         return
 
-    def check_tramline(self, overwrite=False, **kwargs):
+    def check_tramline(self, check_focus=False, overwrite=False, **kwargs):
         """Automatically detect tramline failure. It will properly work after running make_tlm(),reduce_arc(),and reduce_fflat()."""
         self.disable_files() #do not use diabled file listed in disable.txt
         file_iterable = self.files(ndf_class='MFFFF', do_not_use=False, reduced=True,**kwargs)
@@ -1709,10 +1709,32 @@ class Manager:
         f.write('  3. failed tlm maps sometimes show tlms not in numerical order\n\n')
         f.write('  Find '+hector_path+'observing/check_tramline_example.pdf for examples.\n\n')
 
-        nfail = 0
+        typical_contrast = [6500,12500,5500,20000]
+#        typical_contrast = [65000,12500,5500,200000]
+
+        f.write('Also, check_tramline(check_focus=True) automatically checks the spectral focus based on the contrast btw the gap and signal.\n')
+        f.write('Note that the typical contrast for each ccds are ccd1:'+str(typical_contrast[0])+' ccd2:'+str(typical_contrast[1])+' ccd3:'+str(typical_contrast[2])+' ccd4:'+str(typical_contrast[3])+'\n\n')
+
+
+        nfail = 0; nfile = 0
         for fits in file_iterable:
-            exfile = pf.open(fits.reduced_path[0:-8]+'ex.fits')
-            ex = exfile['PRIMARY'].data
+            nfile = nfile+1
+            exfile = pf.open(fits.reduced_path[0:-8]+'ex.fits'); ex = exfile['PRIMARY'].data
+            ccd = int(fits.reduced_path[-13])
+            
+            #examine contrast for checking focusing 
+            if check_focus:
+                with pf.open(fits.reduced_path[0:-8] + '.fits') as flatfile:
+                    flathdr = flatfile['PRIMARY'].header
+                    data = flatfile['PRIMARY'].data
+#                    y_start, y_end = 1000, -1000
+                    x_center = round(flathdr['NAXIS1'] / 2); y_center = round(flathdr['NAXIS2'] / 2)
+                    x_start, x_end = x_center - 100, x_center + 100; y_start, y_end = y_center - 200, y_center + 200
+                    ystrip = data[y_start:y_end, x_start:x_end]
+                midcount = np.median(ystrip)
+                maxcount = np.median(ystrip[np.where(ystrip > midcount)]); maxcount = np.median(ystrip[np.where(ystrip > maxcount)])
+                contrast = maxcount - np.median(ystrip[np.where((ystrip < midcount) & (ystrip > 700.))])
+
             fibtab = pf.getdata(fits.reduced_path[0:-8]+'.fits', 'MORE.FIBRES_IFU')
             fib_spec_id = fibtab.field('SPEC_ID'); fib_type = fibtab.field('TYPE'); fib_name = fibtab.field('SPAX_ID')
             thput = np.nanmedian(ex,1); thput = thput/np.nanmedian(thput[np.where((fib_type == 'P') | (fib_type == 'S'))])
@@ -1752,6 +1774,7 @@ class Manager:
             if len(fib_spec_id[sub]) > 0: #tlm failure is detected
                 rawfile = pf.open(fits.reduced_path[0:-8]+'.fits'); raw = rawfile['PRIMARY'].data
                 f.write('\n========== '+str(fits.filename)+': Failure detected ==========\n')
+                print('\n========== '+str(fits.filename)+': Failure detected ==========\n')
                 if len(fib_spec_id[sub]) > 10:
                     f.write('     * Catastrophic failure. Tramline fails for more than 10 fibres. \n')
                 else:
@@ -1784,7 +1807,7 @@ class Manager:
                 else:
                     f.write('     Check point: This frame is not saturated. Continue to the next check point.\n')
                 f.write('     Check point: visually check the focus: hector@aatlxe:~$ ds9 '+fits.reduced_dir+'/'+str(fits.filename)+' -zoom 4 -zscale&\n')
-                f.write('       Do you clearly see a contrast (> 5000 counts) between the signal and gap? If not, it is out of focus.\n')
+                f.write('       Do you clearly see a contrast (>~ '+str(typical_contrast[ccd-1])+' counts) between the signal and gap? If not, it is out of focus.\n')
                 f.write('       If it is out of focus, disable it adding '+str(fits.filename)[0:-5]+' on '+str(self.abs_root)+'/disable.txt\n')
                 f.write('       You need to add all other (arc, object) frames that are out of focus. \n')
                 f.write('       Do check the focus values. No need to continue to the next check point.\n')
@@ -1802,22 +1825,40 @@ class Manager:
                     f.write('       They stay until 4 pm. If it is too late, resolve this the next day and add a comment to the '+str(fits.ccd)+' frames of the day: \n')
                     f.write('       In the ipython shell    In [1]: mngr.add_comment(["filename"])         e.g. mngr.add_comment(["'+str(fits.filename)+'"])\n')
                     f.write('         Please enter a comment (type n to abort): \n')
-                    f.write('         tlm cutoff: fibre '+cutoff_fib+' at the '+cutoff_pos+' corner \n')
-                if (np.max(tlmfail) < 40.) | ((np.max(tlmfail) > 40.) & (len(sub[0]) != 1)): #not tlm cut-off issue
+
                     f.write('       Once the failure is confirmed, you immediately report this to Sree Oh (sree.oh@anu.edu.au), Madusha Gunawardhana (madusha.gunawardhana@sydney.edu.au), and Scott Croom (scott.croom@sydney.edu.au) and also send the raw file ('+str(fits.filename)+') and this text file (flm_failure.txt).\n')
                     f.write('       It may require a modification of 2dfdr, which takes some time. You may take another dome flat with different exposure time and telescope pointing. If failed again, try a flap flat.\n')
                 nfail = nfail + 1
             else:
-                f.write(str(fits.filename)+'  checked. No failure found.\n')
+                f.write('\n'+str(fits.filename)+'  checked. No tlm failure found.')
+                print(str(fits.filename)+'  checked. No tlm failure found.')
 
-        print('\nNote that this task properly works after running mngr.make_tlm(), mngr.reduce_arc(),and mngr.reduce_fflat()')
+            nfocus = 0
+            if check_focus:
+                if contrast < typical_contrast[ccd-1]:
+                    nfocus = 1
+                    print('  ** Check the focus!!! Expected contrast is '+str(typical_contrast[ccd-1])+', and the contrast of this frame is '+str(contrast))
+                    f.write('\n  ** Check the focus of this frame!!! Expected contrast is '+str(typical_contrast[ccd-1])+', and the contrast of this frame is '+str(contrast)+'\n')
+                    f.write('     Visually check the focus: hector@aatlxe:~$ ds9 '+fits.reduced_dir+'/'+str(fits.filename)+' -zoom 4 -zscale&\n')
+                else:
+                    f.write(' It also shows a reasonable focus (contrast='+str(contrast)+').')
+#                    print(' It also shows a reasonable focus (contrast='+str(contrast)+').\n')
+
+        print('\nNote that this task properly works after running mngr.make_tlm(), mngr.reduce_arc(), and mngr.reduce_fflat()')
         if nfail > 0:
             f.write('\n=======\nUnfortunately tramline failures are detected. Follow the steps.\n')
             f.write('Once you go through all the check points, you run mngr.check_tramline() again. \n')
             print('\nUnfortunately tramline failures are detected. \nOpen '+str(self.abs_root)+'/tlm_failure.txt and follow the steps.\n')
+        elif nfile == 0:
+            f.write('\nNo tlm files found. Do mngr.make_tlm();mngr.reduce_arc();mngr.reduce_fflat() \n')
+            print('\nNo tlm files found. Do mngr.make_tlm();mngr.reduce_arc();mngr.reduce_fflat()')
         else:
             print('\nCongratulations! No tramline failures are detected.\nFind list of frames checked: '+str(self.abs_root)+'/tlm_failure.txt\n')
             f.write('\n=======\nCongratulations! No tramline failures are detected.\n')
+
+        if nfocus > 0:
+            print('However, you may need to check focus of frame(s). Find the details from tlm_failure.txt\n')
+            f.write('\n=======\nHowever, some issue on focus are detected. Fine the details above.\n')
         f.close()
         #self.next_step('make_tlm', print_message=True)
         return
