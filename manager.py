@@ -1696,7 +1696,7 @@ class Manager:
         self.next_step('make_tlm', print_message=True)
         return
 
-    def check_tramline(self, check_focus=False, overwrite=False, **kwargs):
+    def check_tramline(self, check_focus=True, overwrite=False, **kwargs):
         """Automatically detect tramline failure. It will properly work after running make_tlm(),reduce_arc(),and reduce_fflat()."""
         self.disable_files() #do not use diabled file listed in disable.txt
         file_iterable = self.files(ndf_class='MFFFF', do_not_use=False, reduced=True,**kwargs)
@@ -1709,14 +1709,12 @@ class Manager:
         f.write('  3. failed tlm maps sometimes show tlms not in numerical order\n\n')
         f.write('  Find '+hector_path+'observing/check_tramline_example.pdf for examples.\n\n')
 
-        typical_contrast = [6500,12500,5500,20000]
-#        typical_contrast = [65000,12500,5500,200000]
+        typical_contrast = [5700,10500,5500,16900]
 
         f.write('Also, check_tramline(check_focus=True) automatically checks the spectral focus based on the contrast btw the gap and signal.\n')
-        f.write('Note that the typical contrast for each ccds are ccd1:'+str(typical_contrast[0])+' ccd2:'+str(typical_contrast[1])+' ccd3:'+str(typical_contrast[2])+' ccd4:'+str(typical_contrast[3])+'\n\n')
+        f.write('Note that the typical contrast for each ccds are ccd1(60s):'+str(typical_contrast[0])+' ccd2(60s):'+str(typical_contrast[1])+' ccd3(50s):'+str(typical_contrast[2])+' ccd4(25s):'+str(typical_contrast[3])+'\n\n')
 
-
-        nfail = 0; nfile = 0
+        nfail = 0; nfile = 0; nfocus = 0
         for fits in file_iterable:
             nfile = nfile+1
             exfile = pf.open(fits.reduced_path[0:-8]+'ex.fits'); ex = exfile['PRIMARY'].data
@@ -1833,12 +1831,12 @@ class Manager:
                 f.write('\n'+str(fits.filename)+'  checked. No tlm failure found.')
                 print(str(fits.filename)+'  checked. No tlm failure found.')
 
-            nfocus = 0
             if check_focus:
                 if contrast < typical_contrast[ccd-1]:
                     nfocus = 1
-                    print('  ** Check the focus!!! Expected contrast is '+str(typical_contrast[ccd-1])+', and the contrast of this frame is '+str(contrast))
+                    print('  ** Check the focus!!! Expected contrast is above '+str(typical_contrast[ccd-1])+', and the contrast of this frame is '+str(contrast))
                     f.write('\n  ** Check the focus of this frame!!! Expected contrast is '+str(typical_contrast[ccd-1])+', and the contrast of this frame is '+str(contrast)+'\n')
+                    f.write('     If the contrast is way too below the expected one, consider refocusing. \n')
                     f.write('     Visually check the focus: hector@aatlxe:~$ ds9 '+fits.reduced_dir+'/'+str(fits.filename)+' -zoom 4 -zscale&\n')
                 else:
                     f.write(' It also shows a reasonable focus (contrast='+str(contrast)+').')
