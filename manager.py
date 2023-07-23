@@ -1381,6 +1381,10 @@ class Manager:
                     if os.path.exists(tmp_path):
                         # The import was abandoned; delete the temporary copy
                         os.remove(tmp_path)
+                if 'Tile' in filename: #Tile is stored in the raw/date/ directory. 
+                    src_path = os.path.join(dirname, filename)
+                    dest_path = os.path.join(self.abs_root, 'raw', filename)
+                    shutil.copy(src_path, dest_path)
         if os.path.exists(self.tmp_dir) and len(os.listdir(self.tmp_dir)) == 0:
             os.rmdir(self.tmp_dir)
         return
@@ -1711,7 +1715,7 @@ class Manager:
 
         typical_contrast = [5700,10500,5500,16900]
 
-        f.write('Also, check_tramline(check_focus=True) automatically checks the spectral focus based on the contrast btw the gap and signal.\n')
+        f.write('Also, check_tramline(check_focus=True) automatically checks the spectral focus based on the contrast btw the gap and signal at the centre of each flat.\n')
         f.write('Note that the typical contrast for each ccds are ccd1(60s):'+str(typical_contrast[0])+' ccd2(60s):'+str(typical_contrast[1])+' ccd3(50s):'+str(typical_contrast[2])+' ccd4(25s):'+str(typical_contrast[3])+'\n\n')
 
         nfail = 0; nfile = 0; nfocus = 0
@@ -1855,8 +1859,8 @@ class Manager:
             f.write('\n=======\nCongratulations! No tramline failures are detected.\n')
 
         if nfocus > 0:
-            print('However, you may need to check focus of frame(s). Find the details from tlm_failure.txt\n')
-            f.write('\n=======\nHowever, some issue on focus are detected. Fine the details above.\n')
+            print('You may need to check focus of frame(s). Find the details from tlm_failure.txt\n')
+            f.write('\n=======\nSome issue on focus are detected. Fine the details above.\n')
         f.close()
         #self.next_step('make_tlm', print_message=True)
         return
@@ -2569,7 +2573,7 @@ class Manager:
         # of the frame.  Also write a header keyword to signify that the
         # secondary correction has been done - keyword is SECCOR.
         #os.remove(str(hector.__path__[0])+'/standards/secondary/Hector_tiles/Hector*.csv')
-        hector.manager.read_hector_tiles()
+        hector.manager.read_hector_tiles(abs_root=self.abs_root)
         inputs_list = []
         ccds = ['ccd_1', 'ccd_3']
         prGreen('Fitting models to star observations')
@@ -5874,16 +5878,17 @@ def assign_true_mag(path_pair, name, catalogue=None, hdu=0):
         hdulist.close()
     return True
 
-def read_hector_tiles():
+def read_hector_tiles(abs_root=None):
     """ reads in a hector tiling file, and extracts the magnitude information """
-    # MLPG: A new function added to extract the magnitude information from tiling files
-    # To work, the user is requried to download the hector tile files to the "Hector_tiles" folder.
-    # Ideally, an automated download would be good, however, the data central cloud requires
-    # user password, thus not secure.
-    # TODO: MLPG: the tile file download part should preferrably be automated.
-    # How to run: import hector
-    #             hector.manager.read_hector_tiles()
-    #
+    # MLPG: A new function added to extract the magnitude information from tiling files.
+    # From June 2023, Tile files are stored in the raw directory, which are automatically copied into
+    # hector/standards/secondary/Hector_tiles/.
+    # The user may be requried to download the hector tile files before June 2023 from the data central could
+    # /Hector/DR/DR_pipeline_resources/tile to the "Hector_tiles" folder.
+    # This function is automated, being called by fluxcal_secondary().
+    # How to manually run: import hector
+    #                      hector.manager.read_hector_tiles()
+    # TODO: Sree: do we want to place Hector_tiles directory in the hector git folder??
     from pathlib import Path
 
     headerList = ['#probe', 'ID', 'x', 'y', 'rads', 'angs', 'azAngs', 'angs_azAng', 'RA', 'DEC', 'g_mag', 'r_mag',
@@ -5895,6 +5900,7 @@ def read_hector_tiles():
     headerNew = ['ID', 'x', 'y', 'rads', 'angs', 'azAngs', 'angs_azAng', 'RA', 'DEC', 'u_mag', 'g_mag', 'r_mag',
                  'i_mag', 'z_mag', 'GAIA_g_mag', 'GAIA_bp_mag', 'GAIA_rp_mag']
 
+
     # setup file paths
     base_path = Path(hector_path) / f"standards/secondary/Hector_tiles"
     file_names = ["Hector_tiles.csv", "Hector_secondary_standards.csv", "Hector_secondary_standards_shortened.csv"]
@@ -5902,6 +5908,16 @@ def read_hector_tiles():
     # Check if the director exists, if not create
     if not os.path.isdir(base_path):
         os.makedirs(base_path)
+
+    # grab new Hector tiles from the raw folder
+    if abs_root is not None:
+        tile_dir = abs_root + f'/raw/'
+        for root, dirs, files in os.walk(tile_dir):
+            for file in files:
+                if 'Tile' in file:
+                    src_path = os.path.join(root, file)
+                    dest_path = os.path.join(base_path, file)
+                    shutil.copy(src_path, dest_path)
 
     # Check if the files holding the tile list and secondary standards exists. If not, create.
 #    if not os.path.exists(f"{base_path}/{file_names[0]}"):

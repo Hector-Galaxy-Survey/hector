@@ -2061,6 +2061,7 @@ def derive_secondary_tf(path_list,path_list2,path_out,tempfile=hector_path+'stan
 
     from ..manager import read_stellar_mags
     from ..qc.fluxcal import measure_band
+    import sys
 
     prGreen('Deriving secondary transfer function')
 
@@ -2108,7 +2109,12 @@ def derive_secondary_tf(path_list,path_list2,path_out,tempfile=hector_path+'stan
     print(path_list[0])
     std_name = pf.getval(path_list[0],'STDNAME', 'FLUX_CALIBRATION')
     catalogue = read_stellar_mags()
-    std_parameters = catalogue[std_name]
+    try:
+        std_parameters = catalogue[std_name]
+    except KeyError:
+        print('Tile file with the secondary star '+std_name+' is not found in hector/standards/secondary/Hector_tiles/')
+#        stop
+#    std_parameters = catalogue[std_name]
     if verbose:
         print('getting star parameters for: ',std_name)
         print(std_parameters)
