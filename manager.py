@@ -2436,7 +2436,7 @@ class Manager:
                      continue
                  fits_1 = self.other_arm(fits_2)
 
-                 if (fits_2.epoch < 2013.0) | (fits_2.epoch > 2021.0):
+                 if (fits_2.epoch < 2013.0) or ((fits_2.epoch > 2021.0) and (fits_2.epoch < 2022.75)):
                      # SAMI v1 had awful throughput at blue end of blue, need to
                      # trim that data.
                      n_trim = 3
@@ -2455,7 +2455,7 @@ class Manager:
                          'TRANSFERcombined.fits')
                      # For September 2012, secondary stars were often not in the
                      # hexabundle at all, so use the theoretical airmass scaling
-                     if (fits_2.epoch < 2012.75) | (fits_2.epoch > 2021.0):
+                     if (fits_2.epoch < 2012.75) or ((fits_2.epoch > 2021.0) and (fits_2.epoch < 2022.75)):
                          scale_PS_by_airmass = True
                      else:
                          scale_PS_by_airmass = False
