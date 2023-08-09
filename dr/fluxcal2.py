@@ -73,6 +73,7 @@ from astropy.coordinates import SkyCoord, EarthLocation, AltAz
 from scipy.special import erfc
 from scipy.stats import binned_statistic
 from shutil import copyfile
+import datetime
  
 # required for test plotting:
 import pylab as py
@@ -1792,9 +1793,10 @@ def fit_sec_template_ppxf(path,doplot=False,verbose=False,tempfile=hector_path+'
     sigma = sigma_t[istart:iend]
             
     # divide by median flux to avoid possible numerical issues with fitting:
-    medflux = np.nanmedian(flux)
+    medflux = np.nanmedian(flux[np.where(flux > 0.)])
     flux = flux/medflux
     sigma = sigma/medflux
+
 
     # log rebin input spectrum using the ppxf log_rebin() function.
     # Returns the natural log (not log_10!!!) of wavelength values
@@ -1803,6 +1805,7 @@ def fit_sec_template_ppxf(path,doplot=False,verbose=False,tempfile=hector_path+'
     logflux, loglam, velscale = log_rebin(lamrange,flux)
     logsigma = log_rebin(lamrange,sigma)[0]
     logsigma[np.isfinite(logsigma) == False] = np.nanmedian(logsigma)
+
     lam_gal = np.exp(loglam)
     if verbose:
         print('Velocity scale after log rebinning: ',velscale)
@@ -1823,7 +1826,8 @@ def fit_sec_template_ppxf(path,doplot=False,verbose=False,tempfile=hector_path+'
         
     # now log rebinning of templates.  Do it for one to start with, so we know the number
     # of bins to use:
-    tmp_tmp = log_rebin(lamRange_temp,templates_kur1[0,:],velscale=velscale)[0]
+    tmp_tmp, loglam_tmp = log_rebin(lamRange_temp,templates_kur1[0,:],velscale=velscale)[0:2]
+    lam_tmp = np.exp(loglam_tmp)
     templates_kur2 = np.zeros((n_kur,np.size(tmp_tmp)))
     # also define an array that will just contain the best few fitted templates:
     templates_kur3 = np.zeros((np.size(tmp_tmp),4))
@@ -1855,8 +1859,7 @@ def fit_sec_template_ppxf(path,doplot=False,verbose=False,tempfile=hector_path+'
     for i in range(temp_n):
         pp = ppxf(templates[:,i],logflux,logsigma, velscale, start,
               plot=False, moments=2, mdegree=mdegree,quiet=True,
-              degree=-1, vsyst=dv, clean=False, lam=lam_gal)
-
+              degree=-1, clean=False, lam=lam_gal, lam_temp=lam_tmp)
         if verbose:
             print(i,pp.chi2,model_teff[i],model_feh[i],model_g[i])
             
@@ -1881,7 +1884,7 @@ def fit_sec_template_ppxf(path,doplot=False,verbose=False,tempfile=hector_path+'
     best_teff2 = 0.
     best_feh2 = 0.
     for i in range(temp_n):
-        print('fluxcal2.',path,best_g,best_teff,best_feh,model_g[i],model_teff[i],model_feh[i],abs(model_teff[i]-best_teff),abs(model_feh[i]-best_feh))
+#        print('fluxcal2.',path,best_g,best_teff,best_feh,model_g[i],model_teff[i],model_feh[i],abs(model_teff[i]-best_teff),abs(model_feh[i]-best_feh))
         if model_g[i] == best_g:
             # metallicity (which is [Fe/H]) steps are in 0.5.  Teff steps are in 250K
             # we want to find the next best in Teff and [Fe/H]
@@ -1927,7 +1930,7 @@ def fit_sec_template_ppxf(path,doplot=False,verbose=False,tempfile=hector_path+'
     # redo the ppxf fitting with just the 4 best templates:
     pp = ppxf(templates_kur3,logflux,logsigma, velscale, start,
               plot=False, moments=2, mdegree=mdegree,quiet=True,
-              degree=-1, vsyst=dv, clean=False, lam=lam_gal)
+              degree=-1, clean=False, lam=lam_gal, lam_temp=lam_tmp)
 
     if verbose:
         print('chisq for optimal fit:',pp.chi2)

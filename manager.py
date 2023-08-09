@@ -2573,6 +2573,7 @@ class Manager:
         # of the frame.  Also write a header keyword to signify that the
         # secondary correction has been done - keyword is SECCOR.
         #os.remove(str(hector.__path__[0])+'/standards/secondary/Hector_tiles/Hector*.csv')
+
         hector.manager.read_hector_tiles(abs_root=self.abs_root)
         inputs_list = []
         ccds = ['ccd_1', 'ccd_3']
@@ -2839,83 +2840,97 @@ class Manager:
                 #Resize the cropped blue and red cubes of the same object to get equal dimension
 
         print('Start resizing the cubes...') #Susie's code resizing cubes
-        for k0 in glob(cubed_root + '/*/'):
-            print('Processing file ',k0)
-            axis_b = pf.getheader(k0 + os.listdir(k0)[0])['NAXIS1']
-            axis_r = pf.getheader(k0 + os.listdir(k0)[1])['NAXIS1']
-            #Set the condition to follow the larger values
-            if axis_b > axis_r:
-                axis = axis_b
-            elif axis_b < axis_r:
-                axis = axis_r
-            else:
-                axis = axis_b
-            for i in range(2):
-                #open file
-                file = pf.open(k0 + os.listdir(k0)[i])
-                length = file[0].header['NAXIS1']
-                if length==axis: #no need to change
-                    print(file[0].header['NAME'],file[0].header['SPECTID'],'Unchanged...')
-                    pass
-                else: #insert NaN row to fulfil the data
-                    print(file[0].header['NAME'],file[0].header['SPECTID'],'Resized...')
-#                    for j0 in range(len(file)-1): #marie
-                    for j0 in range(4):
-                        x = file[j0].data
-                        header = file[j0].header
-                        print('Before resizing file',j0,np.shape(x))
-                        if j0 < len(file)-2:
-                            n0 = int(1)
-                            n1 = int(2)
-                        else:
-                            n0 = int(3)
-                            n1 = int(4)
-                        j1 = 0
-                        while j1 < int((axis-length)/2):
-                            x = np.insert(x, (0,(np.shape(x)[n0])), np.nan , axis=n0)
-                            j1 = j1 + 1
-                        j2 = 0
-                        while j2 < int((axis-length)/2):
-                            x = np.insert(x, (0,(np.shape(x)[n1])), np.nan , axis=n1)
-                            j2 = j2 + 1
-                            
-                        print('After resizing file',j0,np.shape(x))
-                        print('Writing a new .fits file...')
-                                        
-                        if j0==0:
-                            header['EXTNAME'] = ('PRIMARY','extension name')
-                            header['NAXIS1'] = axis
-                            header['NAXIS2'] = axis
-                            header['CRPIX1'] = (header['CRPIX1'] + int((axis-length)/2),'Pixel coordinate of reference point')
-                            header['CRPIX2'] = (header['CRPIX2'] + int((axis-length)/2),'Pixel coordinate of reference point')
-                            p0 = pf.PrimaryHDU(x, header)
-                        elif j0==1:
-                            header['EXTNAME'] = ('VARIANCE','extension name')
-                            p1 = pf.ImageHDU(x , header)
-                        elif j0==2:
-                            header['EXTNAME'] = ('WEIGHT','extension name')
-                            p2 = pf.ImageHDU(x , header)
-                        else:
-                            header['EXTNAME'] = ('COVAR','extension name')
-                            p3 = pf.ImageHDU(x , header)
-        
-                    #unchanged throughout the process
-                    header4 = file[4].header
-                    header4['EXTNAME'] = ('QC','extension name')
-                    p4 = pf.BinTableHDU(file[4].data , header4)
-        
-                    #combine HDUList
-                    hdul = pf.HDUList([p0,p1,p2,p3,p4])
-            
-                    #name of file to be written
-                    filename = k0 + os.listdir(k0)[i]
+	#Be careful of cubes of identical objects being produced by different tiles!
+        #Here we need to add the suffix of tile while searching for cubes before resizing
 
-                    #Overwrite the files
-                    file.flush()
-                    file.close()
-                    hdul.writeto(filename,overwrite=True)
-                    hdul.close()
-#                    print('Finish resizing ', file[0].header['NAME'],file[0].header['SPECTID'])
+        for k in glob(cubed_root + '/*/'):
+            k2 = []
+            for k1 in glob(k + '*'):
+                name00 = ((k1.split('/')[-1]).split('.')[0]).split('_')[2:]
+                name0x = name00[0]
+                for n in range(len(name00))[1:]:
+                    name0y = name0x + '_' + name00[n]
+                    name0x = name0y
+                k2.append(name0x)
+                
+            for k3 in np.unique(k2):
+                k0 = glob(k + '*' + k3 + '*')
+                axis_b = pf.getheader(k0[0])['NAXIS1']
+                axis_r = pf.getheader(k0[1])['NAXIS1']
+                #Set the condition to follow the larger values
+                if axis_b > axis_r:
+                    axis = axis_b
+                elif axis_b < axis_r:
+                    axis = axis_r
+                else:
+                    axis = axis_b
+                for i in range(2):
+                    #open file
+                    file = pf.open(k0[i])
+                    length = file[0].header['NAXIS1']
+                    if length==axis: #no need to change
+                        print(file[0].header['NAME'],file[0].header['SPECTID'],'Unchanged...')
+                        pass
+                    else: #insert NaN row to fulfil the data
+                        print(file[0].header['NAME'],file[0].header['SPECTID'],'Resized...')
+
+                            #for j0 in range(len(file)-1): #marie
+                        for j0 in range(4):
+                            x = file[j0].data
+                            header = file[j0].header
+                            print('Before resizing file',j0,np.shape(x))
+                            if j0==3:
+                                n0 = int(3)
+                                n1 = int(4)
+                            else:
+                                n0 = int(1)
+                                n1 = int(2)
+                            j1 = 0
+                            while j1 < int((axis-length)/2):
+                                x = np.insert(x, (0,(np.shape(x)[n0])), np.nan , axis=n0)
+                                j1 = j1 + 1
+                            j2 = 0
+                            while j2 < int((axis-length)/2):
+                                x = np.insert(x, (0,(np.shape(x)[n1])), np.nan , axis=n1)
+                                j2 = j2 + 1
+                                
+                            print('After resizing file',j0,np.shape(x))
+                            print('Writing a new .fits file...')
+
+                            if j0==0:
+                                header['EXTNAME'] = ('PRIMARY','extension name')
+                                header['NAXIS1'] = axis
+                                header['NAXIS2'] = axis
+                                header['CRPIX1'] = (header['CRPIX1'] + int((axis-length)/2),'Pixel coordinate of reference point')
+                                header['CRPIX2'] = (header['CRPIX2'] + int((axis-length)/2),'Pixel coordinate of reference point')
+                                p0 = pf.PrimaryHDU(x, header)
+                            elif j0==1:
+                                header['EXTNAME'] = ('VARIANCE','extension name')
+                                p1 = pf.ImageHDU(x , header)
+                            elif j0==2:
+                                header['EXTNAME'] = ('WEIGHT','extension name')
+                                p2 = pf.ImageHDU(x , header)
+                            else:
+                                header['EXTNAME'] = ('COVAR','extension name')
+                                p3 = pf.ImageHDU(x , header)
+
+                        #unchanged throughout the process
+                        header4 = file[4].header
+                        header4['EXTNAME'] = ('QC','extension name')
+                        p4 = pf.BinTableHDU(file[4].data , header4)
+
+                        #combine HDUList
+                        hdul = pf.HDUList([p0,p1,p2,p3,p4])
+
+                        #name of file to be written
+                        filename = k0[i]
+
+	                #Overwrite the files
+                        file.flush()
+                        file.close()
+                        hdul.writeto(filename,overwrite=True)
+                        hdul.close()
+
         print('Finish resizing all cubes')
                    
         self.next_step('cube', print_message=True)
@@ -3044,8 +3059,61 @@ class Manager:
                         if not skip:
                             path_pair_list.append(path_pair)
             self.map(bin_cubes_pair, path_pair_list)
+        self.check_extensions(n=14) 
         self.next_step('bin_cubes', print_message=True)
         return
+
+    def check_extensions(self,cubed_root=None,n=14):    
+        '''
+        Check the number of extensions in a cube - V02 (31st May 2023)
+        Contact Susie Tuntipong (stun4076@uni.sydney.edu.au) for details.
+        cubed_root is the directory of cubed files, i.e. '*/test/cubed/
+        n is the expected number of extensions for complete cubes
+        n = 14 before 'record_dust' ('DUST' extension has not been produced yet)
+        n = 15 after 'record_dust' ('DUST' extension has already been produced)
+        '''
+
+        print('\nChecking the number of extension...')
+        if cubed_root is None:
+            cubed_root = self.abs_root+'/cubed'
+        data = glob(cubed_root + '/*/*')
+    
+        zero_dimension = []
+        other_problems = []
+        nwrong = 0
+
+        f0 = open(cubed_root[0:-6] + '/missing_cube_extensions.txt', 'w')
+        f0.write('# cube  number_of_extension  expected_number_of_extension  plate_id  probe\n')
+        for d in data:
+            x = pf.open(d)
+            #count the number of extensions
+            extension = len(np.array(x.info(0),dtype=object))
+
+            #check the condition
+            if extension==n:
+                #full extensions satified
+                #print('Complete extensions')
+                f0.write(d.split('/')[-1] +' '+str(extension)+' '+str(n)+' '+pf.getheader(d)['PLATEID']+' '+pf.getheader(d)['IFUPROBE']+'\n')
+                pass
+            else:
+                #incomplete extensions, can be divided into two cases
+                nwrong=nwrong+1
+                if pf.getheader(d)['NAXIS1']==0:
+                    #case 1 - zero dimension
+                    print(' '+d.split('/')[-1]+' ** Zero dimensions')
+                    f0.write(d.split('/')[-1] +' 0 '+str(n)+' '+pf.getheader(d)['PLATEID']+' '+pf.getheader(d)['IFUPROBE']+'\n')
+                else:
+                    #case 2 - non-zero dimension, may suffer from other issues
+                    print(' '+d.split('/')[-1]+' ** Incomplete dimensions, # of dimensions='+str(extension))
+                    f0.write(d.split('/')[-1] +' '+str(extension)+' '+str(n)+' '+pf.getheader(d)['PLATEID']+' '+pf.getheader(d)['IFUPROBE']+'\n')
+        f0.close()
+
+        if(nwrong > 0):
+            print('Incomplete cubes are detected. Should check missing_cube_extensions.txt')
+        else:
+            print('Checking the number of extensions done. No missing extensions.')
+        return
+
 
     def bin_aperture_spectra(self, overwrite=False, min_exposure=599.0, name='main',
                              min_transmission=0.333, max_seeing=4.0, tag=None, 
@@ -3107,7 +3175,7 @@ class Manager:
                         if path:
                             if '.gz' not in path:
                                 dust.dustCorrectHectorCube(path, overwrite=overwrite)
-
+        self.check_extensions(n=15)
         self.next_step('record_dust',print_message=True)
         return
 
