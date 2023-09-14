@@ -1082,7 +1082,7 @@ class Manager:
 
             #modify header or fibre table following modified_frames.txt
             if os.path.exists(str(self.abs_root)+'/modified_frames_'+str(self.abs_root)[-13:]+'.txt'): 
-                moditem = np.loadtxt(str(self.abs_root)+'/modified_frames_'+str(self.abs_root)[-13:]+'.txt',delimiter=',',dtype={'names': ('frame','ext','type','key','fibre','value','comment','reason'), 'formats': ('U10','U20','U10','U20','U20','U20','U100','U100')})
+                moditem = np.loadtxt(str(self.abs_root)+'/modified_frames_'+str(self.abs_root)[-13:]+'.txt',delimiter=',',dtype={'names': ('frame','type','key','fibre','value','comment','reason'), 'formats': ('U10','U10','U20','U20','U20','U100','U100')})
                 if (fits.filename[0:10] in moditem['frame']): #the name is on it
                     sub = np.where(moditem['frame'] == fits.filename[0:10])
                     for ind in sub[0]:
@@ -1090,7 +1090,7 @@ class Manager:
                         if(mtype.strip() == 'header'): #change primary header
                             fits.add_header_item(mkey,mvalue.strip(),mcomment)
                             print('  Change the header keyword '+mkey+' to be '+mvalue)
-                        if(mtype.strip() == 'table'): #change fibre table
+                        if(mtype.strip() == 'ftable'): #change fibre table
                             hdulist=pf.open(fits.raw_path,'update')
                             tab=hdulist['MORE.FIBRES_IFU'].data
                             tab[mkey][int(mfibre)-1] = mvalue
