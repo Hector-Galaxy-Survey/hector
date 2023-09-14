@@ -1071,7 +1071,7 @@ class Manager:
 
         if os.path.exists(self.abs_root):
             f = open(self.abs_root+'/filelist.txt', 'w')
-            f.write('#filename  ndfclass  field  object  standrad  disabled\n')
+            f.write('#filename  ndfclass  field  object  standrad  disabled  exposure\n')
             f.close()
 
         for fits in fits_list:
@@ -1079,6 +1079,26 @@ class Manager:
                              trust_header=trust_header,
                              copy_files=copy_files,
                              move_files=move_files)
+
+            #modify header or fibre table following modified_frames.txt
+            if os.path.exists(str(self.abs_root)+'/modified_frames_'+str(self.abs_root)[-13:]+'.txt'): 
+                moditem = np.loadtxt(str(self.abs_root)+'/modified_frames_'+str(self.abs_root)[-13:]+'.txt',delimiter=',',dtype={'names': ('frame','ext','type','key','fibre','value','comment','reason'), 'formats': ('U10','U20','U10','U20','U20','U20','U100','U100')})
+                if (fits.filename[0:10] in moditem['frame']): #the name is on it
+                    sub = np.where(moditem['frame'] == fits.filename[0:10])
+                    for ind in sub[0]:
+                        mtype = moditem['type'][ind]; mkey = moditem['key'][ind]; mvalue = moditem['value'][ind]; mcomment = moditem['comment'][ind];mfibre= moditem['fibre'][ind]
+                        if(mtype.strip() == 'header'): #change primary header
+                            fits.add_header_item(mkey,mvalue.strip(),mcomment)
+                            print('  Change the header keyword '+mkey+' to be '+mvalue)
+                        if(mtype.strip() == 'table'): #change fibre table
+                            hdulist=pf.open(fits.raw_path,'update')
+                            tab=hdulist['MORE.FIBRES_IFU'].data
+                            tab[mkey][int(mfibre)-1] = mvalue
+                            print('  Change the '+mkey+' of fibre '+mfibre+' to be '+mvalue)
+                            hdulist.flush(); hdulist.close()
+
+
+
 
     def file_filter(self, filename):
         """Return True if the file should be added."""
@@ -1130,9 +1150,9 @@ class Manager:
             self.set_name(fits, trust_header=trust_header)
         else:
             self.set_name(fits, trust_header=trust_header)
-            print('Adding file: ', filename, fits.ndf_class, fits.plate_id, fits.name, fits.copy_reduced_filename)
+            print('Adding file: ', filename, fits.ndf_class, fits.plate_id, fits.name)
             f = open(self.abs_root+'/filelist.txt', 'a')
-            f.write(filename+' '+fits.ndf_class+' '+(fits.plate_id or 'None')+' '+(fits.name or 'None')+' '+(str(fits.spectrophotometric) or 'None')+' '+(str(fits.do_not_use) or 'None')+'\n')
+            f.write(filename+' '+fits.ndf_class+' '+(fits.plate_id or 'None')+' '+(fits.name or 'None')+' '+(str(fits.spectrophotometric) or 'None')+' '+(str(fits.do_not_use) or 'None')+' '+fits.exposure_str+'\n')
             f.close()
             
         fits.set_check_data()
@@ -1713,8 +1733,7 @@ class Manager:
         f.write('  3. failed tlm maps sometimes show tlms not in numerical order\n\n')
         f.write('  Find '+hector_path+'observing/check_tramline_example.pdf for examples.\n\n')
 
-        typical_contrast = [5700,10500,5500,16900]
-
+        typical_contrast = [5700,10500,5000,15000]
         f.write('Also, check_tramline(check_focus=True) automatically checks the spectral focus based on the contrast btw the gap and signal at the centre of each flat.\n')
         f.write('Note that the typical contrast for each ccds are ccd1(60s):'+str(typical_contrast[0])+' ccd2(60s):'+str(typical_contrast[1])+' ccd3(50s):'+str(typical_contrast[2])+' ccd4(25s):'+str(typical_contrast[3])+'\n\n')
 
@@ -1855,8 +1874,8 @@ class Manager:
             f.write('\nNo tlm files found. Do mngr.make_tlm();mngr.reduce_arc();mngr.reduce_fflat() \n')
             print('\nNo tlm files found. Do mngr.make_tlm();mngr.reduce_arc();mngr.reduce_fflat()')
         else:
-            print('\nCongratulations! No tramline failures are detected.\nFind list of frames checked: '+str(self.abs_root)+'/tlm_failure.txt\n')
-            f.write('\n=======\nCongratulations! No tramline failures are detected.\n')
+            print('\nNo tramline failures are detected.\nFind list of frames checked: '+str(self.abs_root)+'/tlm_failure.txt\n')
+            f.write('\n=======\nNo tramline failures are detected.\n')
 
         if nfocus > 0:
             print('You may need to check focus of frame(s). Find the details from tlm_failure.txt\n')
@@ -2162,6 +2181,7 @@ class Manager:
 
         self.next_step('reduce_object', print_message=True)
         return
+
 
     def reduce_file_iterable(self, file_iterable, throughput_method='default',
                              overwrite=False, tlm=False, leave_reduced=True,
@@ -2653,6 +2673,7 @@ class Manager:
                     hdulist2 = pf.open(path_out2, 'update')
                     hdu = 'TEMPLATE_OPT'
                     for band in 'ugriz':
+                        print('ugriz',path1,path_out,path_out2)
                         starmag = pf.getval(path1,'CATMAG'+ band.upper(),extname='FLUX_CALIBRATION')
                         hdulist1[hdu].header['CATMAG' + band.upper()] = (starmag, band + ' mag from catalogue')
                         hdulist2[hdu].header['CATMAG' + band.upper()] = (starmag, band + ' mag from catalogue')
@@ -2813,11 +2834,25 @@ class Manager:
                 gridsize = size_of_grid
                 if((ccd == 'ccd_3') or ((ccd == 'ccd_4'))):
                     gridsize = 60
+                
+
                 for objname in objects:
                     inputs_list.append(
                         (field_id, ccd, path_list, objname, cubed_root, drop_factor,
                          tag, update_tol, gridsize, output_pix_size_arcsec,
                          overwrite))
+
+                #TODO: wavelength cropping here??? marie
+
+                #    crval1 = ifu_list[0].crval1; cdelt1 = ifu_list[0].cdelt1; crpix1 = ifu_list[0].crpix1; naxis1 = ifu_list[0].naxis1
+                #    x=np.arange(naxis1)+1; lam=(crval1-crpix1*cdelt1) + x*cdelt1 #wavelength
+                #    w0 = 0; w1 = int(ifu_list[0].naxis1)
+                #    if ifu_list[0].gratid == 'VPH-1099-484': # ccd3
+                #         w1 = max(np.where(lam < 5840.)[0]) # maximum index where wavelength < 5840A, this is arbitrary
+                #    if ifu_list[0].gratid == 'VPH-1178-679': # ccd4
+                #         w0 = min(np.where(lam > 5840.)[0]) # minimum index where wavelength > 5840A, this is arbitrary   
+
+
 
         with open(failed_qc_file, "w") as outfile:
             failed_fields = [field + '\n' for field in failed_fields]
@@ -2842,21 +2877,26 @@ class Manager:
         print('Start resizing the cubes...') #Susie's code resizing cubes
 	#Be careful of cubes of identical objects being produced by different tiles!
         #Here we need to add the suffix of tile while searching for cubes before resizing
+        #Sree: I also added codes for triming wavelengths of Spector to prevent wavelength overlaps btw ccd3 and ccd4 
 
         for k in glob(cubed_root + '/*/'):
             k2 = []
             for k1 in glob(k + '*'):
                 name00 = ((k1.split('/')[-1]).split('.')[0]).split('_')[2:]
-                name0x = name00[0]
-                for n in range(len(name00))[1:]:
-                    name0y = name0x + '_' + name00[n]
-                    name0x = name0y
-                k2.append(name0x)
+                if (len(name00) > 0):
+                    name0x = name00[0]    
+                    for n in range(len(name00))[1:]:
+                        name0y = name0x + '_' + name00[n]
+                        name0x = name0y
+                    k2.append(name0x)
                 
             for k3 in np.unique(k2):
                 k0 = glob(k + '*' + k3 + '*')
                 axis_b = pf.getheader(k0[0])['NAXIS1']
                 axis_r = pf.getheader(k0[1])['NAXIS1']
+                cube_grating = pf.getheader(k0[0])['GRATID'] #ccd3 grating=VPH-1099-484 & ccd4 grating=VPH-1178-679
+                cube_inst = pf.getheader(k0[0])['INSTRUME']
+
                 #Set the condition to follow the larger values
                 if axis_b > axis_r:
                     axis = axis_b
@@ -2865,59 +2905,77 @@ class Manager:
                 else:
                     axis = axis_b
                 for i in range(2):
-                    #open file
-                    file = pf.open(k0[i])
-                    length = file[0].header['NAXIS1']
-                    if length==axis: #no need to change
-                        print(file[0].header['NAME'],file[0].header['SPECTID'],'Unchanged...')
+                    cfile = pf.open(k0[i]) #open file
+                    length = cfile[0].header['NAXIS1']
+                    if (length==axis): #no need to change
+                        print(cfile[0].header['NAME'],cfile[0].header['SPECTID'],'Unchanged...')
                         pass
-                    else: #insert NaN row to fulfil the data
-                        print(file[0].header['NAME'],file[0].header['SPECTID'],'Resized...')
-
-                            #for j0 in range(len(file)-1): #marie
-                        for j0 in range(4):
-                            x = file[j0].data
-                            header = file[j0].header
-                            print('Before resizing file',j0,np.shape(x))
-                            if j0==3:
-                                n0 = int(3)
-                                n1 = int(4)
-                            else:
-                                n0 = int(1)
-                                n1 = int(2)
-                            j1 = 0
-                            while j1 < int((axis-length)/2):
-                                x = np.insert(x, (0,(np.shape(x)[n0])), np.nan , axis=n0)
-                                j1 = j1 + 1
-                            j2 = 0
-                            while j2 < int((axis-length)/2):
-                                x = np.insert(x, (0,(np.shape(x)[n1])), np.nan , axis=n1)
-                                j2 = j2 + 1
-                                
-                            print('After resizing file',j0,np.shape(x))
-                            print('Writing a new .fits file...')
-
-                            if j0==0:
-                                header['EXTNAME'] = ('PRIMARY','extension name')
-                                header['NAXIS1'] = axis
-                                header['NAXIS2'] = axis
-                                header['CRPIX1'] = (header['CRPIX1'] + int((axis-length)/2),'Pixel coordinate of reference point')
-                                header['CRPIX2'] = (header['CRPIX2'] + int((axis-length)/2),'Pixel coordinate of reference point')
-                                p0 = pf.PrimaryHDU(x, header)
-                            elif j0==1:
-                                header['EXTNAME'] = ('VARIANCE','extension name')
-                                p1 = pf.ImageHDU(x , header)
-                            elif j0==2:
-                                header['EXTNAME'] = ('WEIGHT','extension name')
-                                p2 = pf.ImageHDU(x , header)
-                            else:
-                                header['EXTNAME'] = ('COVAR','extension name')
+                    else:
+                        print(cfile[0].header['NAME'],cfile[0].header['SPECTID'],'Resized...')
+                        if length!=axis:  #insert NaN row to fulfil the data
+                            for j0 in range(4):
+                                x = cfile[j0].data; header = cfile[j0].header
+                                print('Before resizing file',j0,np.shape(x))
+                                if j0==3:
+                                    n0 = int(3); n1 = int(4)
+                                else:
+                                    n0 = int(1); n1 = int(2)
+                                j1 = 0
+                                while j1 < int((axis-length)/2):
+                                    x = np.insert(x, (0,(np.shape(x)[n0])), np.nan , axis=n0)
+                                    j1 = j1 + 1
+                                j2 = 0
+                                while j2 < int((axis-length)/2):
+                                    x = np.insert(x, (0,(np.shape(x)[n1])), np.nan , axis=n1)
+                                    j2 = j2 + 1
+                                    
+                                print('After resizing file',j0,np.shape(x))
+                                print('Writing a new .fits file...')
+    
+                                if j0==0:
+                                    header['EXTNAME'] = ('PRIMARY','extension name')
+                                    header['NAXIS1'] = axis
+                                    header['NAXIS2'] = axis
+                                    header['CRPIX1'] = (header['CRPIX1'] + int((axis-length)/2),'Pixel coordinate of reference point')
+                                    header['CRPIX2'] = (header['CRPIX2'] + int((axis-length)/2),'Pixel coordinate of reference point')
+                                    p0 = pf.PrimaryHDU(x, header)
+                                elif j0==1:
+                                    header['EXTNAME'] = ('VARIANCE','extension name')
+                                    p1 = pf.ImageHDU(x , header)
+                                elif j0==2:
+                                    header['EXTNAME'] = ('WEIGHT','extension name')
+                                    p2 = pf.ImageHDU(x , header)
+                                else:
+                                    header['EXTNAME'] = ('COVAR','extension name')
                                 p3 = pf.ImageHDU(x , header)
 
+                 #       if cube_inst=='SPECTOR':
+                 #           crval3=cfile[0].header['CRVAL3']; cdelt3=cfile[0].header['CDELT3']; crpix3=cfile[0].header['CRPIX3']; naxis3=cfile[0].header['NAXIS3']
+                 #           x=np.arange(naxis3)+1
+                 #           L0=crval3-crpix3*cdelt3 #Lc-pix*dL
+                 #           lam=L0+x*cdelt3
+                 #           w0 = 0; w1 = naxis3 - 1
+
+                  #          cube_grating = pf.getheader(k0[0])['GRATID'] #ccd3 grating=VPH-1099-484 & ccd4 grating=VPH-1178-679
+                  #          if cube_grating == 'VPH-1099-484': #ccd3
+                  #              w1 = max(np.where(lam < 5840.)[0]) # 5840 A is a little arbitrary but the point where ccd3 and ccd4 roughly cross each other
+                  #          else: #ccd4
+                  #              w0 = min(np.where(lam > 5840.)[0]) 
+                  #          print(cube_inst, cube_grating, w0, w1, lam[w0],lam[w1])
+
+#                            for j0 in range(4):
+#                                x = cfile[j0].data; header = cfile[j0].header
+#                                if j0==3:
+#                                    n0 = int(3); n1 = int(4)
+#                                else:
+#                                    n0 = int(1); n1 = int(2)
+
+
+
                         #unchanged throughout the process
-                        header4 = file[4].header
+                        header4 = cfile[4].header
                         header4['EXTNAME'] = ('QC','extension name')
-                        p4 = pf.BinTableHDU(file[4].data , header4)
+                        p4 = pf.BinTableHDU(cfile[4].data , header4)
 
                         #combine HDUList
                         hdul = pf.HDUList([p0,p1,p2,p3,p4])
@@ -2926,12 +2984,13 @@ class Manager:
                         filename = k0[i]
 
 	                #Overwrite the files
-                        file.flush()
-                        file.close()
+                        cfile.flush()
+                        cfile.close()
                         hdul.writeto(filename,overwrite=True)
                         hdul.close()
 
         print('Finish resizing all cubes')
+
                    
         self.next_step('cube', print_message=True)
         return
@@ -3426,11 +3485,13 @@ class Manager:
     def qc_throughput_frame(self, path):
         """Calculate and save the relative throughput for an object frame."""
 
-        print(path)
+        print('qc_throughput_frame',path,(pf.getval(path, 'FCALFILE')))
         try:
             median_relative_throughput = (
                 pf.getval(pf.getval(path, 'FCALFILE'),
                           'MEDRELTH', 'THROUGHPUT'))
+            print('median_relative_throughput1',median_relative_throughput)
+
         except KeyError:
             # Not all the data is available
             print("Warning: 'combine_transfer_function' required to calculate transmission.")
@@ -3438,10 +3499,13 @@ class Manager:
         try:
             median_relative_throughput /= (
                 pf.getval(path, 'RESCALE', 'FLUX_CALIBRATION'))
+            print('median_relative_throughput2',median_relative_throughput, pf.getval(path, 'RESCALE', 'FLUX_CALIBRATION'))
+
         except KeyError:
             # Not all the data is available
             print('Warning: Flux calibration required to calculate transmission.')
             return
+
 
         if not np.isfinite(median_relative_throughput):
             median_relative_throughput = -1.0
@@ -3543,6 +3607,10 @@ class Manager:
             text += '+' * 75 + '\n'
             text += '\n'
         pager(text)
+
+        f = open(self.abs_root+'/qc_summary_'+self.abs_root[-13:]+'.txt', 'w')
+        f.write(text)
+        f.close()
         return
 
     def tdfdr_options(self, fits, throughput_method='default', tlm=False):
@@ -5985,7 +6053,8 @@ def read_hector_tiles(abs_root=None):
                 if 'Tile' in file:
                     src_path = os.path.join(root, file)
                     dest_path = os.path.join(base_path, file)
-                    shutil.copy(src_path, dest_path)
+                    if not os.path.exists(dest_path):
+                        shutil.copy(src_path, dest_path)
 
     # Check if the files holding the tile list and secondary standards exists. If not, create.
 #    if not os.path.exists(f"{base_path}/{file_names[0]}"):
