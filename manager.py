@@ -1409,45 +1409,53 @@ class Manager:
             os.rmdir(self.tmp_dir)
         return
 
+
     def import_aat(self, username=None, password=None, date=None,
                    server='aatlxa', path='/data_liu/aatobs/OptDet_data'):
         """Import from the AAT data disks."""
+        if os.path.exists(self.abs_root):
+            current_run_file =  self.abs_root
+            start_date, end_date = current_run_file.split('/')[-1].split('_')
         if os.path.exists(path):
             # Assume we are on a machine at the AAT which has direct access to
             # the data directories
             if date is None:
-                date_options = [s for s in os.listdir(path)
+                whole_survey = [s for s in os.listdir(path)
                                 if (re.match(r'\d{6}', s) and
                                     os.path.isdir(os.path.join(path, s)))]
-                date = sorted(date_options)[-1]
-            self.import_dir(os.path.join(path, date))
+                date_options = [x for x in whole_survey for y in range(int(start_date),int(end_date)+1) if str(y) in x]
+            for date in date_options:
+                self.import_dir(os.path.join(path, date))
             return
-
+ 
         # Otherwise, it is necessary to SCP!
         with self.connection(server=server, username=username,
                              password=password) as srv:
             if srv is None:
                 return
             if date is None:
-                date_options = [s for s in srv.listdir(path)
+                whole_survey = [s for s in srv.listdir(path)
                                 if re.match(r'\d{6}', s)]
-                date = sorted(date_options)[-1]
+                date_options = [x for x in whole_survey for y in range(int(start_date),int(end_date)+1) if str(y) in x]
+ 
             if not os.path.exists(self.tmp_dir):
                 os.makedirs(self.tmp_dir)
-            for ccd in ['ccd_1', 'ccd_2','ccd_3', 'ccd_4']:
-                dirname = os.path.join(path, date, ccd)
-                filename_list = sorted(srv.listdir(dirname))
-                for filename in filename_list:
-                    if self.file_filter(filename):
-                        srv.get(os.path.join(dirname, filename),
-                                localpath=os.path.join(self.tmp_dir, filename))
-                        self.import_file(
-                            os.path.join(self.tmp_dir, filename),
-                            trust_header=False, copy_files=False,
-                            move_files=True)
+            for date in date_options:
+                for ccd in ['ccd_1', 'ccd_2','ccd_3', 'ccd_4']:
+                    dirname = os.path.join(path, date, ccd)
+                    filename_list = sorted(srv.listdir(dirname))
+                    for filename in filename_list:
+                        if self.file_filter(filename):
+                            srv.get(os.path.join(dirname, filename),
+                                    localpath=os.path.join(self.tmp_dir, filename))
+                            self.import_file(
+                                os.path.join(self.tmp_dir, filename),
+                                trust_header=False, copy_files=False,
+                                move_files=True)
         if os.path.exists(self.tmp_dir) and len(os.listdir(self.tmp_dir)) == 0:
             os.rmdir(self.tmp_dir)
         return
+
 
     def fits_file(self, filename, include_linked_managers=False):
         """Return the FITSFile object that corresponds to the given filename."""
@@ -1795,7 +1803,7 @@ class Manager:
             if len(fib_spec_id[sub]) > 0: #tlm failure is detected
                 rawfile = pf.open(fits.reduced_path[0:-8]+'.fits'); raw = rawfile['PRIMARY'].data
                 f.write('\n========== '+str(fits.filename)+': Failure detected ==========\n')
-                print('\n========== '+str(fits.filename)+': Failure detected ==========\n')
+                prRed(f'\n========== '+str(fits.filename)+': tlm Failure detected ==========\n')
                 if len(fib_spec_id[sub]) > 10:
                     f.write('     * Catastrophic failure. Tramline fails for more than 10 fibres. \n')
                 else:
@@ -1857,7 +1865,7 @@ class Manager:
             if check_focus:
                 if contrast < typical_contrast[ccd-1]:
                     nfocus = 1
-                    print('  ** Check the focus!!! Expected contrast is above '+str(typical_contrast[ccd-1])+', and the contrast of this frame is '+str(contrast))
+                    prYellow(f'  ** Check the focus!!! Expected contrast is above '+str(typical_contrast[ccd-1])+', and the contrast of this frame is '+str(contrast))
                     f.write('\n  ** Check the focus of this frame!!! Expected contrast is '+str(typical_contrast[ccd-1])+', and the contrast of this frame is '+str(contrast)+'\n')
                     f.write('     If the contrast is way too below the expected one, consider refocusing. \n')
                     f.write('     Visually check the focus: hector@aatlxe:~$ ds9 '+fits.reduced_dir+'/'+str(fits.filename)+' -zoom 4 -zscale&\n')
@@ -1975,7 +1983,8 @@ class Manager:
         # Send all the sky frames to the improved wavecal routine then
         # apply correction to all the blue arcs
         if  self.improve_blue_wavecorr:
-            ccdname = ['ccd_1','ccd_3']
+           # ccdname = ['ccd_1','ccd_3']
+            ccdname = ['ccd_1'] #TODO: the correction make it worst for Spector. Now it is turned off for Spector but I will revisit this.
             for nccd in ccdname:
                 file_list_tw = []
                 for f in file_list:
@@ -2872,10 +2881,47 @@ class Manager:
                         break
                 if fits:
                     update_checks('CUB', [fits], False)
-                #Resize the cropped blue and red cubes of the same object to get equal dimension
+
+
+        # Sree: there was a mistake on tile file which swap bundles B & T in the catalogue
+        # 901006735001769 should have been allocated to T in the observed tile file
+        # TODO: move this to post processing code for data release.. 
+        swap_id = ['901006735001769','901006999103632']; swap_bundle = ['T', 'B']
+        if(str(self.abs_root)[-13:] == '230710_230724'):
+            if(os.path.exists(cubed_root+'/'+swap_id[0]+'/')):
+                frames = glob(cubed_root + '/'+swap_id[0]+'/*')
+                if(pf.getheader(frames[0], 'IFUPROBE') != 'T'):
+                    shutil.move(cubed_root+'/'+swap_id[0]+'/'+swap_id[0]+'*.fits', cubed_root+'/'+swap_id[1]+'/')
+                    shutil.move(cubed_root+'/'+swap_id[1]+'/'+swap_id[1]+'*.fits', cubed_root+'/'+swap_id[0]+'/')
+                    for sid in swap_id: 
+                        for k in glob(cubed_root + '/'+sid+'/*'):
+                            tmp = k.split('/')[-1].split('_')
+                            tmp[0] = sid
+                            newname = cubed_root + '/'+sid+'/'+'_'.join(tmp)
+                            shutil.move(k,newname)
+
+                    frames0 = glob(cubed_root + '/'+swap_id[0]+'/*')
+                    frames1 = glob(cubed_root + '/'+swap_id[1]+'/*')
+
+                    hdulist0 = pf.open(frames0, 'update', do_not_scale_image_data=True)
+                    hdulist1 = pf.open(frames1, 'update', do_not_scale_image_data=True)
+                    crval1  = [hdulist1[0].header['CRVAL1'],hdulist0[0].header['CRVAL1']]
+                    crval2  = [hdulist1[0].header['CRVAL2'],hdulist0[0].header['CRVAL2']]
+                    catara  = [hdulist1[0].header['CATARA'],hdulist0[0].header['CATARA']]
+                    catadec = [hdulist1[0].header['CATADEC'],hdulist0[0].header['CATADEC']]
+
+                    hdulist0[0].header['CRVAL1']  = crval1[0] ; hdulist1[0].header['CRVAL1']  = crval1[1]
+                    hdulist0[0].header['CRVAL2']  = crval2[0] ; hdulist1[0].header['CRVAL2']  = crval2[1]
+                    hdulist0[0].header['CATARA']  = catara[0] ; hdulist1[0].header['CATARA']  = catara[1]
+                    hdulist0[0].header['CATADEC'] = catadec[0]; hdulist1[0].header['CATADEC'] = catadec[1]
+                    hdulist0[0].header['NAME'] = swap_id[0]; hdulist1[0].header['NAME'] = swap_id[1]
+                    hdulist0.flush();hdulist0.close()
+                    hdulist1.flush();hdulist1.close()
+
 
         print('Start resizing the cubes...') #Susie's code resizing cubes
-	#Be careful of cubes of identical objects being produced by different tiles!
+        #Resize the cropped blue and red cubes of the same object to get equal dimension
+        #Be careful of cubes of identical objects being produced by different tiles!
         #Here we need to add the suffix of tile while searching for cubes before resizing
         #Sree: I also added codes for triming wavelengths of Spector to prevent wavelength overlaps btw ccd3 and ccd4 
 
@@ -2894,25 +2940,34 @@ class Manager:
                 k0 = glob(k + '*' + k3 + '*')
                 axis_b = pf.getheader(k0[0])['NAXIS1']
                 axis_r = pf.getheader(k0[1])['NAXIS1']
-                cube_grating = pf.getheader(k0[0])['GRATID'] #ccd3 grating=VPH-1099-484 & ccd4 grating=VPH-1178-679
-                cube_inst = pf.getheader(k0[0])['INSTRUME']
+#                cube_grating = pf.getheader(k0[0])['GRATID'] #ccd3 grating=VPH-1099-484 & ccd4 grating=VPH-1178-679
+#                cube_inst = pf.getheader(k0[0])['INSTRUME']
 
-                #Set the condition to follow the larger values
-                if axis_b > axis_r:
-                    axis = axis_b
-                elif axis_b < axis_r:
-                    axis = axis_r
+                #Delete cubes with zero dimension (from inactive hexabundles)
+                if (axis_b == 0) and (axis_r == 0):
+                    print(pf.getheader(k0[0])['NAME'],' Tile ',pf.getheader(k0[0])['PLATEID'],' Hexabundle ',pf.getheader(k0[0])['IFUPROBE'],' has zero dimension')
+                    print('Delete the files...')
+                    for i in range(len(k0)):
+                        os.remove(k0[i])
+                
+                #Non-zero dimension, so continue the process
                 else:
-                    axis = axis_b
-                for i in range(2):
-                    cfile = pf.open(k0[i]) #open file
-                    length = cfile[0].header['NAXIS1']
-                    if (length==axis): #no need to change
-                        print(cfile[0].header['NAME'],cfile[0].header['SPECTID'],'Unchanged...')
-                        pass
+                    #Set the condition to follow the larger values
+                    if axis_b > axis_r:
+                        axis = axis_b
+                    elif axis_b < axis_r:
+                        axis = axis_r
                     else:
-                        print(cfile[0].header['NAME'],cfile[0].header['SPECTID'],'Resized...')
-                        if length!=axis:  #insert NaN row to fulfil the data
+                        axis = axis_b
+                    for i in range(2):
+                        cfile = pf.open(k0[i]) #open file
+                        length = cfile[0].header['NAXIS1']
+                        if (length==axis): #no need to change
+                            print(cfile[0].header['NAME'],cfile[0].header['SPECTID'],'Unchanged...')
+                            cfile.flush(); cfile.close()
+                            pass
+                        else:  #insert NaN row to fulfil the data
+                            print(cfile[0].header['NAME'],cfile[0].header['SPECTID'],'Resized...')
                             for j0 in range(4):
                                 x = cfile[j0].data; header = cfile[j0].header
                                 print('Before resizing file',j0,np.shape(x))
@@ -2928,10 +2983,10 @@ class Manager:
                                 while j2 < int((axis-length)/2):
                                     x = np.insert(x, (0,(np.shape(x)[n1])), np.nan , axis=n1)
                                     j2 = j2 + 1
-                                    
+
                                 print('After resizing file',j0,np.shape(x))
                                 print('Writing a new .fits file...')
-    
+
                                 if j0==0:
                                     header['EXTNAME'] = ('PRIMARY','extension name')
                                     header['NAXIS1'] = axis
@@ -2947,7 +3002,22 @@ class Manager:
                                     p2 = pf.ImageHDU(x , header)
                                 else:
                                     header['EXTNAME'] = ('COVAR','extension name')
-                                p3 = pf.ImageHDU(x , header)
+                                    p3 = pf.ImageHDU(x , header)
+
+                            #unchanged throughout the process
+                            header4 = cfile[4].header
+                            header4['EXTNAME'] = ('QC','extension name')
+                            p4 = pf.BinTableHDU(cfile[4].data , header4)
+
+                            #combine HDUList
+                            hdul = pf.HDUList([p0,p1,p2,p3,p4])
+
+                            #name of file to be written
+                            filename = k0[i]
+
+	                    #Overwrite the files
+                            cfile.flush(); cfile.close()
+                            hdul.writeto(filename,overwrite=True); hdul.close()
 
                  #       if cube_inst=='SPECTOR':
                  #           crval3=cfile[0].header['CRVAL3']; cdelt3=cfile[0].header['CDELT3']; crpix3=cfile[0].header['CRPIX3']; naxis3=cfile[0].header['NAXIS3']
@@ -2963,31 +3033,18 @@ class Manager:
                   #              w0 = min(np.where(lam > 5840.)[0]) 
                   #          print(cube_inst, cube_grating, w0, w1, lam[w0],lam[w1])
 
-#                            for j0 in range(4):
-#                                x = cfile[j0].data; header = cfile[j0].header
-#                                if j0==3:
-#                                    n0 = int(3); n1 = int(4)
-#                                else:
-#                                    n0 = int(1); n1 = int(2)
+                            
 
-
-
-                        #unchanged throughout the process
-                        header4 = cfile[4].header
-                        header4['EXTNAME'] = ('QC','extension name')
-                        p4 = pf.BinTableHDU(cfile[4].data , header4)
-
-                        #combine HDUList
-                        hdul = pf.HDUList([p0,p1,p2,p3,p4])
-
-                        #name of file to be written
-                        filename = k0[i]
-
-	                #Overwrite the files
-                        cfile.flush()
-                        cfile.close()
-                        hdul.writeto(filename,overwrite=True)
-                        hdul.close()
+        #Delete the directory if there is no item in it
+        print('\n')
+        print('Identifying empty directories...')
+        for k in glob(cubed_root + '/*/'):
+            if len(glob(k + '*'))==0:
+                print('No cubes for the directory ',k.split('/')[-2])
+                print('Delete the directory...')
+                os.rmdir(k)  
+            else:
+                pass
 
         print('Finish resizing all cubes')
 
