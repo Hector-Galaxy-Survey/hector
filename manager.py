@@ -51,6 +51,7 @@ waiting for the actual data reduction to happen.
 """
 from __future__ import absolute_import, division, print_function, unicode_literals
 
+import sys
 from typing import List, Tuple, Dict, Sequence
 
 import shutil
@@ -104,16 +105,20 @@ try:
 except ImportError:
     PATCH_AVAILABLE = False
 
+# MLPG: remove my path to molecfit
+# MF_BIN_DIR = '/Users/madusha/' +'molecfit_install/bin'  # hector_path[0:-7]+'molecfit_install/bin'
 MF_BIN_DIR = hector_path[0:-7]+'molecfit_install/bin'
 
 if not os.path.exists(os.path.join(MF_BIN_DIR,'molecfit')):
         warnings.warn('molecfit not found from '+MF_BIN_DIR+'; Disabling improved telluric subtraction')
         MOLECFIT_AVAILABLE = False
 else:
+        # print("Note to MLPG: Remove my path to molecfit")
         MOLECFIT_AVAILABLE = True
 
 from .utils.other import find_fibre_table, gzip, ungzip
 from .utils import IFU
+from .utils.term_colours import *
 from .general.cubing import dithered_cubes_from_rss_list, get_object_names
 from .general.cubing import dithered_cube_from_rss_wrapper
 from .general.cubing import scale_cube_pair, scale_cube_pair_to_mag
@@ -147,16 +152,6 @@ elif ASTROPY_VERSION[:2] == (0, 3):
 else:
     def ICRS(*args, **kwargs):
         return coord.SkyCoord(*args, frame='icrs', **kwargs)
-
-# Print colours in python terminal --> https://www.geeksforgeeks.org/print-colors-python-terminal/
-def prRed(skk): print("\033[91m {}\033[00m" .format(skk))
-def prGreen(skk): print("\033[92m {}\033[00m" .format(skk))
-def prYellow(skk): print("\033[93m {}\033[00m" .format(skk))
-def prLightPurple(skk): print("\033[94m {}\033[00m" .format(skk))
-def prPurple(skk): print("\033[95m {}\033[00m" .format(skk))
-def prCyan(skk): print("\033[96m {}\033[00m" .format(skk))
-def prLightGray(skk): print("\033[97m {}\033[00m" .format(skk))
-def prBlack(skk): print("\033[98m {}\033[00m" .format(skk))
 
 #below are for SAMI
 #IDX_FILES_SLOW = {'580V': 'sami580V_v1_7.idx',
@@ -5819,6 +5814,7 @@ def telluric_correct_pair(inputs):
 @safe_for_multiprocessing
 def measure_offsets_group(group):
     """Measure offsets between a set of dithered observations."""
+    # MLPG - 23/09/2023: Adding "do_cvd_correct=True" to find_dither function
     field, fits_list, copy_to_other_arm, fits_list_other_arm = group
     print('Measuring offsets for field ID: {}'.format(field[0]))
     path_list = [best_path(fits) for fits in fits_list]
@@ -5829,8 +5825,11 @@ def measure_offsets_group(group):
         # Can't measure offsets for a single file
         print('Only one file so no offsets to measure!')
         return
+
+    prLightPurple(f"PlateCentre in CvD modelling is assumed to be at (0.0, 0.0), i.e. at phyiscal centre given by robot coordinates")
     find_dither(path_list, path_list[0], centroid=True,
-                remove_files=True, do_dar_correct=True)
+                remove_files=True, do_dar_correct=False, do_cvd_correct=True)
+
     if copy_to_other_arm:
         for fits, fits_other_arm in zip(fits_list, fits_list_other_arm):
             hdulist_this_arm = pf.open(best_path(fits))
@@ -5887,7 +5886,7 @@ def cube_object(inputs):
         root=cubed_root, overwrite=overwrite, do_dar_correct=False, do_cvd_correct=True, clip=False,
         do_clip_by_fibre=True, drop_factor=drop_factor, update_tol=update_tol,
         size_of_grid=size_of_grid,
-        output_pix_size_arcsec=output_pix_size_arcsec)
+        output_pix_size_arcsec=output_pix_size_arcsec, plateCentre=None)
 
 
 def best_path(fits):
@@ -6081,6 +6080,7 @@ def read_hector_tiles(abs_root=None):
     # This function is automated, being called by fluxcal_secondary().
     # How to manually run: import hector
     #                      hector.manager.read_hector_tiles()
+    # MLPG - 24/09/2023: Changed the tile/robot file location to "hector/Tiles/"
     # TODO: Sree: do we want to place Hector_tiles directory in the hector git folder??
     from pathlib import Path
 
@@ -6095,12 +6095,16 @@ def read_hector_tiles(abs_root=None):
 
 
     # setup file paths
+    tile_path = Path(hector_path) / f"Tiles/Tile_files"
     base_path = Path(hector_path) / f"standards/secondary/Hector_tiles"
     file_names = ["Hector_tiles.csv", "Hector_secondary_standards.csv", "Hector_secondary_standards_shortened.csv"]
 
-    # Check if the director exists, if not create
+    # Check if the directory exists, if not create
     if not os.path.isdir(base_path):
         os.makedirs(base_path)
+    if not os.path.isdir(tile_path):
+        os.makedirs(tile_path)
+        os.makedirs(Path(str(tile_path).replace('Tile_', 'Robot_')))
 
     # grab new Hector tiles from the raw folder
     if abs_root is not None:
@@ -6109,9 +6113,10 @@ def read_hector_tiles(abs_root=None):
             for file in files:
                 if 'Tile' in file:
                     src_path = os.path.join(root, file)
-                    dest_path = os.path.join(base_path, file)
+                    dest_path = os.path.join(tile_path, file)
                     if not os.path.exists(dest_path):
                         shutil.copy(src_path, dest_path)
+                        shutil.copy(src_path.replace('Tile', 'Robot'), dest_path.replace('Tile', 'Robot'))
 
     # Check if the files holding the tile list and secondary standards exists. If not, create.
 #    if not os.path.exists(f"{base_path}/{file_names[0]}"):
@@ -6128,19 +6133,19 @@ def read_hector_tiles(abs_root=None):
         dw.writeheader() # create hector standard star list file. This contains a subset of information in the tile file
         del dw
 
-    prRed(f"Please ensure that the relevant tile file is present in {base_path} \n "
+    prRed(f"Please ensure that the relevant tile file is present in {tile_path} \n "
           f"If not, add the file run hector.manager.read_hector_tiles(), again")
 
     # Loop through and check whether the tile files present in the directory are all listed in "Hector_Tile_List".
     # If not add them to "Hector_Tile_List", as well as keep a record in "not_in_list"
-    filenames = [file_name for file_name in os.listdir(base_path) if "Tile" in file_name]
+    filenames = [file_name for file_name in os.listdir(tile_path) if "Tile" in file_name]
     not_in_list = []
     with open(f"{base_path}/{file_names[0]}", 'r+') as file:
         content = file.read() # read all content from a file using read()
         for afile in filenames:
             if afile not in content:
                 file.write(afile + "\n")
-                not_in_list.append(f"{base_path}/{afile}")
+                not_in_list.append(f"{tile_path}/{afile}")
 
     if len(not_in_list):
         # Check to see if the number of columns and their names match by comparing the headers

@@ -403,11 +403,59 @@ def other_arm(filename):
         raise ValueError('Unrecognised CCD: ' + filename)
 
 
-def cvd_correct(ifu_list, files, xfibre_all, yfibre_all, update_rss=False):
+def cvd_correct(ifu_list, files, xfibre_all, yfibre_all, update_rss=False, plateCentre=None):
     """
     Update the fiber positions as a function of wavelength to reflect CvD correction.
     """
-    # MLPG: brand new function to call and apply cvd corrections. CvD corrections are applied in microns now.
+    # MLPG: brand-new function to call and apply cvd corrections. CvD corrections are applied in microns now.
+
+    from ..dr.cvd_model import get_cvd_parameters
+
+    ARCSEC_TO_MICRON = 105.0 / 1.6  # 105 microns = 1.6 arcseconds
+
+    if plateCentre is None: plateCentre = [0.0, 0.0]
+
+    n_obs, n_fibres, n_slices = xfibre_all.shape
+    star_match = {'name': ifu_list[0].hexabundle_name[0], 'probenum': ifu_list[0].ifu}
+    prGreen(f"--> cvd correcting....{star_match}")
+
+    # Iterate over observations
+    # Iterate over observations
+    cvd_parameters_xarray, cvd_parameters_yarray = np.zeros((n_obs, 3)) + np.NaN, np.zeros((n_obs, 3)) + np.NaN
+    for i_obs in range(n_obs):
+        # Get CvD parameters from the polynomial fits to the centroid varations in x-, y-directions
+        cvd_parameters = get_cvd_parameters(other_arm(files[i_obs]), star_match['probenum'])
+        cvd_parameters_xarray[i_obs, :] = cvd_parameters[1]
+        cvd_parameters_yarray[i_obs, :] = cvd_parameters[2]
+
+        del cvd_parameters
+
+    # cvd_measureX = np.nanmedian(cvd_parameters_yarray, axis=0) # Switch x- and y-
+    # cvd_measureY = np.nanmedian(cvd_parameters_xarray, axis=0)
+    prRed('MLPG: for iter4 unchanged x- and y- swap')
+    cvd_measureX = np.nanmedian(cvd_parameters_xarray, axis=0)  # for --iter4 ----
+    cvd_measureY = np.nanmedian(cvd_parameters_yarray, axis=0)
+    wavelength_array = ifu_list[0].lambda_range
+
+    # Iterate over wavelength slices
+    for l in range(n_slices):
+
+        # Iterate over observations
+        for i_obs in range(n_obs):
+            # For iter4
+            cvd_crrX = 1.0 * (np.polyval(cvd_measureX, wavelength_array[l])) * ARCSEC_TO_MICRON
+            cvd_crrY = 1.0 * (np.polyval(cvd_measureY, wavelength_array[l])) * ARCSEC_TO_MICRON
+            xfibre_all[i_obs, :, l] = xfibre_all[i_obs, :, l] + cvd_crrX
+            yfibre_all[i_obs, :, l] = yfibre_all[i_obs, :, l] + cvd_crrY
+            # xfibre_all[i_obs, :, l] = xfibre_all[i_obs, :, l] + np.polyval(cvd_measureX, wavelength_array[l]) * ARCSEC_TO_MICRON
+            # yfibre_all[i_obs, :, l] = yfibre_all[i_obs, :, l] + np.polyval(cvd_measureY, wavelength_array[l]) * ARCSEC_TO_MICRON
+
+
+def cvd_correct_old(ifu_list, files, xfibre_all, yfibre_all, update_rss=False):
+    """
+    Update the fiber positions as a function of wavelength to reflect CvD correction.
+    """
+    # MLPG: brand-new function to call and apply cvd corrections. CvD corrections are applied in microns now.
 
     from ..dr.cvd_model import get_cvd_parameters
 
@@ -442,7 +490,6 @@ def cvd_correct(ifu_list, files, xfibre_all, yfibre_all, update_rss=False):
 
             xfibre_all[i_obs, :, l] = xfibre_all[i_obs, :, l] - cvd_x
             yfibre_all[i_obs, :, l] = yfibre_all[i_obs, :, l] - cvd_y
-
 
 
 def dithered_cubes_from_rss_files(inlist, **kwargs):
@@ -494,7 +541,7 @@ def dithered_cube_from_rss_wrapper(files, name, size_of_grid=50,
                                    nominal=False, root='', overwrite=False,
                                    offsets='file', covar_mode='optimal',
                                    do_dar_correct=False, do_cvd_correct=True, clip_throughput=True,
-                                   update_tol=0.02):
+                                   update_tol=0.02, plateCentre=None):
     """Cubes and saves a single object."""
     # MLPG: added "files" to "dithered_cube_from_rss" function call. I've set "do_dar_correct=False"
     n_files = len(files)
@@ -545,7 +592,7 @@ def dithered_cube_from_rss_wrapper(files, name, size_of_grid=50,
             drop_factor=drop_factor, clip=clip, do_clip_by_fibre=do_clip_by_fibre, plot=plot,
             offsets=offsets, covar_mode=covar_mode,
             do_dar_correct=do_dar_correct, do_cvd_correct=do_cvd_correct, clip_throughput=clip_throughput,
-            update_tol=update_tol)
+            update_tol=update_tol, plateCentre=plateCentre)
 
     #except Exception:
     #    print "Cubing Failed."
@@ -632,7 +679,8 @@ def dithered_cube_from_rss_wrapper(files, name, size_of_grid=50,
 
 def dithered_cube_from_rss(ifu_list, files, size_of_grid=50, output_pix_size_arcsec=0.5, drop_factor=0.5,
                            clip=False, do_clip_by_fibre=True, plot=True, offsets='file', covar_mode='optimal',
-                           do_dar_correct=False, do_cvd_correct=True, clip_throughput=True, update_tol=0.02):
+                           do_dar_correct=False, do_cvd_correct=True, clip_throughput=True, update_tol=0.02,
+                           plateCentre=None):
     # MLPG: adding a cvd_correct functional call in place of dar_correct. added do_cvd_correct keyword to
     # the above functional call
     diagnostic_info = {}
@@ -797,9 +845,9 @@ def dithered_cube_from_rss(ifu_list, files, size_of_grid=50, output_pix_size_arc
     #     updates the fibre positions in place.
 
 
-    prCyan(f"do_cvd_correct is set to {do_cvd_correct} and do_dar_correct is set to {do_dar_correct}")
+    prCyan(f"do_cvd_correct is {do_cvd_correct} and do_dar_correct is {do_dar_correct}")
     if do_cvd_correct and (ifu_list[0].hexabundle_name[0] != "M"):
-        cvd_correct(ifu_list, files, xfibre_all, yfibre_all)
+        cvd_correct(ifu_list, files, xfibre_all, yfibre_all, plateCentre=plateCentre)
     else:
         prRed("WARNING: Hexabundle M is excluded from cvd modelling...")
 

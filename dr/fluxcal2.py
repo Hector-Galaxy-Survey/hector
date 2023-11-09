@@ -56,7 +56,7 @@ import warnings
 
 import numpy as np
 from scipy.optimize import leastsq, curve_fit
-from scipy.interpolate import LSQUnivariateSpline
+from scipy.interpolate import LSQUnivariateSpline, interp1d
 from scipy.ndimage.filters import median_filter, gaussian_filter1d
 from scipy.ndimage import zoom
 
@@ -81,6 +81,7 @@ import pylab as py
 from ..utils.ifu import IFU
 from ..utils.mc_adr import parallactic_angle, adr_r
 from ..utils.other import saturated_partial_pressure_water
+from ..utils.term_colours import *
 from ..config import millibar_to_mmHg
 from ..utils.fluxcal2_io import read_model_parameters, save_extracted_flux
 from .telluric2 import TelluricCorrectPrimary as telluric_correct_primary
@@ -102,7 +103,6 @@ from ppxf.ppxf_util import log_rebin
 #from ppxf_util import log_rebin
 
 import hector
-
 
 # Get the astropy version as a tuple of integers
 ASTROPY_VERSION = tuple(int(x) for x in ASTROPY_VERSION.split('.'))
@@ -341,7 +341,7 @@ def first_guess_parameters(datatube, vartube, xfibre, yfibre, wavelength,
     # MLPG: Adding the new model ref_centre_alpha_circ_hdr_cvd
     par_0 = {}
     #weighted_data = np.sum(datatube / vartube, axis=1)
-    if (np.ndim(datatube)>1):
+    if np.ndim(datatube)>1:
         weighted_data = np.nansum(datatube, axis=1)
         (nf, nc) = np.shape(datatube)
         #print(nf,nc)
@@ -352,6 +352,7 @@ def first_guess_parameters(datatube, vartube, xfibre, yfibre, wavelength,
         #print(nf)
     weighted_data[weighted_data < 0] = 0.0
     weighted_data /= np.sum(weighted_data)
+
     if model_name == 'ref_centre_alpha_angle':
         par_0['flux'] = np.nansum(datatube, axis=0)
         par_0['background'] = np.zeros(len(par_0['flux']))
@@ -404,6 +405,17 @@ def first_guess_parameters(datatube, vartube, xfibre, yfibre, wavelength,
         par_0['alpha_ref'] = 1.0
         par_0['beta'] = 4.0
     elif model_name == 'ref_centre_alpha_circ_hdr_cvd':
+        # We need to restrict the range of the weighted datacube to be 5500 to 6500\AA
+        # as the cvd model is constructed relative to 6000\AA
+        waveslice_mask = (wavelength >= 5500.0) & (wavelength <=6000.0)
+        if np.ndim(datatube) > 1:
+            del weighted_data
+            weighted_data = np.nansum(datatube[:, waveslice_mask], axis=1)
+        else:
+            raise Exception("Wavelength axis is required for CvD modelling!")
+        weighted_data[weighted_data < 0] = 0.0
+        weighted_data /= np.sum(weighted_data)
+
         par_0['flux'] = np.nansum(datatube, axis=0)
         par_0['background'] = np.zeros(len(par_0['flux']))
         par_0['xcen_ref'] = np.sum(xfibre * weighted_data)
@@ -627,13 +639,30 @@ def parameters_dict_to_array(parameters_dict, wavelength, model_name, cvd_parame
             parameters_array['flux'] = parameters_dict['flux']
         if len(parameters_dict['background']) == len(parameters_array):
             parameters_array['background'] = parameters_dict['background']
-    elif model_name == 'ref_centre_alpha_circ_hdr_cvd':
+    elif model_name == 'ref_centre_alpha_circ_hdr_cvd_old':
         parameters_array['xcen'] = (
             parameters_dict['xcen_ref'] -
             np.polyval(cvd_parameters[0], wavelength))
         parameters_array['ycen'] = (
             parameters_dict['ycen_ref'] -
             np.polyval(cvd_parameters[1], wavelength))
+        parameters_array['alphax'] = (
+            alpha(wavelength, parameters_dict['alpha_ref']))
+        parameters_array['alphay'] = (
+            alpha(wavelength, parameters_dict['alpha_ref']))
+        parameters_array['beta'] = parameters_dict['beta']
+        parameters_array['rho'] = np.zeros(lw)
+        if len(parameters_dict['flux']) == len(parameters_array):
+            parameters_array['flux'] = parameters_dict['flux']
+        if len(parameters_dict['background']) == len(parameters_array):
+            parameters_array['background'] = parameters_dict['background']
+    elif model_name == 'ref_centre_alpha_circ_hdr_cvd':
+        # The correction for xfibre positions, uses the y-cvd interpolation
+        parameters_array['xcen'] = interp_cvd(parameters_dict['xcen_ref'],
+                                              cvd_parameters[2], wavelength, plateCentre=0.0)
+        # The correction for yfibre positions, uses the x-cvd interpolation
+        parameters_array['ycen'] = interp_cvd(parameters_dict['ycen_ref'],
+                                              cvd_parameters[1], wavelength, plateCentre=0.0)
         parameters_array['alphax'] = (
             alpha(wavelength, parameters_dict['alpha_ref']))
         parameters_array['alphay'] = (
@@ -693,6 +722,14 @@ def dar(wavelength, zenith_distance, temperature=None, pressure=None,
 #                          / ( 1. + 0.003661 * temperature ) ) * vapour_pressure
 #     return 1e-6 * (seaLevelDry * altitudeCorrection - vapourCorrection) + 1
 
+def interp_cvd(cen_data, f_cvd, wavelength, plateCentre=None):
+    # MLPG - 23/09/2023: Adding this function which interpolate the information from cvd_model
+    # xfibre and yfibre positions in arcsec relative to the field centre, assumed to be at the plate centre
+    if plateCentre is None: plateCentre = 0.0
+    cvd_pos = cen_data + np.polyval(f_cvd, wavelength)
+
+    return cvd_pos
+
 def derive_transfer_function(path_list, max_sep_arcsec=60.0,
                              catalogues=STANDARD_CATALOGUES,
                              model_name='ref_centre_alpha_circ_hdr_cvd',
@@ -721,7 +758,8 @@ def derive_transfer_function(path_list, max_sep_arcsec=60.0,
     trim_chunked_data(chunked_data, n_trim)
 
     # Get CvD parameters from the polynomial fits to the centroid varations in x-, y-directions
-    cvd_parameters = get_cvd_parameters(path_list_tel, star_match)
+    prRed(f"probeName = {star_match['probename']}")
+    cvd_parameters = get_cvd_parameters(path_list_tel, star_match['probenum'])
 
     # Fit the PSF
     fixed_parameters = set_fixed_parameters(
@@ -749,17 +787,24 @@ def derive_transfer_function(path_list, max_sep_arcsec=60.0,
         # the data reduction location
         # TODO: make this plot only if the user invokes debug command
         # fig = py.figure()
-        # ax = fig.add_subplot(111)
+        # ax1 = fig.add_subplot(211)
+        # ax2 = fig.add_subplot(212)
         #
         # data, wavelength = ifu.data, ifu.lambda_range
         # good_fibre = (ifu.fib_type == 'P')
         # data = data[good_fibre, :]
         # data = nansum(data, axis=0)
         #
-        # ax.plot(wavelength, data, 'b', alpha=0.5, label='Summed')
-        # ax.plot(ifu.lambda_range, observed_flux, 'r', alpha=0.5, label='Extracted')
+        # ax1.plot(wavelength, data, 'b', alpha=0.5, label='Summed')
+        # ax1.plot(ifu.lambda_range, observed_flux, 'r', alpha=0.5, label='Extracted')
+        #
+        # f = interp1d(wavelength, data)
+        # ax2.plot(ifu.lambda_range, observed_flux/f(ifu.lambda_range), 'g', alpha=0.5, label='Extracted/Summed')
+        # ax2.plot(ifu.lambda_range, np.repeat(1.0, len(ifu.lambda_range)), 'k--', alpha=0.5, label='Extracted/Summed')
+        # ax2.set_ylim(-0.8, 2.5)
+        #
         # fig.legend(loc='best')
-        # ax.set(xlabel='Wavelength (Ang.)', ylabel='flux', title=os.path.basename(path))
+        # ax1.set(xlabel='Wavelength (Ang.)', ylabel='flux', title=os.path.basename(path))
         # py.savefig(f"{os.path.basename(path)}_derive_TF.png", bbox_inches='tight')
         #######################
 
@@ -776,6 +821,7 @@ def derive_transfer_function(path_list, max_sep_arcsec=60.0,
             smooth=smooth,
             mf_av=molecfit_available,
             tell_corr_primary=tell_corr_primary)
+
         save_transfer_function(path2, transfer_function)
     return
 
@@ -803,6 +849,7 @@ def match_standard_star(filename, max_sep_arcsec=60.0,
             if star_match is not None:
                 # Let's assume there will only ever be one match
                 star_match['probenum'] = probenum
+                star_match['probename'] = fibre_table['PROBENAME'][this_probe][0] # MLPG: adding probename
                 return star_match
     # Uh-oh, should have found a star by now. Return None and let the outer
     # code deal with it.
@@ -2109,7 +2156,7 @@ def derive_secondary_tf(path_list,path_list2,path_out,tempfile=hector_path+'stan
     # bundle for the star in question.  To do this, find the name of the star from the
     # FLUX_CALIBRATION header and then use the read_stellar_mags() function to get the
     # mags and the ra/dec:
-    print(path_list[0])
+    # print(path_list[0])
     std_name = pf.getval(path_list[0],'STDNAME', 'FLUX_CALIBRATION')
     catalogue = read_stellar_mags()
     try:

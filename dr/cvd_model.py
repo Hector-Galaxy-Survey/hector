@@ -40,6 +40,7 @@ import matplotlib.gridspec as gridspec
 # The Hector package Sam developed
 #from hop.hexabundle_allocation.hector import constants
 
+from ..utils.term_colours import *
 from ..utils.ifu import IFU
 from ..utils.mc_adr import parallactic_angle, adr_r
 from ..utils.other import saturated_partial_pressure_water
@@ -86,7 +87,6 @@ TELLURIC_BANDS = np.array([[6850, 6960],
 
 ARCSEC_IN_MICRONS = 105.0/1.6  # 105 microns = 1.6 arcseconds
 
-
 def generate_subgrid(fibre_radius, n_inner=6, n_rings=10, wt_profile=False):
     """Generate a subgrid of points within a fibre."""
     radii = np.arange(0., n_rings) + 0.5
@@ -118,15 +118,126 @@ def generate_subgrid(fibre_radius, n_inner=6, n_rings=10, wt_profile=False):
 XSUB, YSUB, WSUB= generate_subgrid(FIBRE_RADIUS)
 N_SUB = len(XSUB)
 
+MICRONS_TO_ARCSEC = 1.5/103
 
-def get_cvd_parameters(path_list, star_match, max_sep_arcsec=60.0,
+def get_cvd_parameters(path_list, probenum, max_sep_arcsec=60.0,
+                             catalogues=STANDARD_CATALOGUES,
+                             model_name='ref_centre_alpha_dist_circ_hdratm',   # NEED to change the name here
+                             n_trim=0, smooth='spline', molecfit_available=False,
+                             molecfit_dir='', speed='', tell_corr_primary=False):
+
+    def func(meanX, meanY):
+        # Robot center positions
+        robot_centre_in_microns = [324470.0, 297834.0] # [constants.robot_center_x * 1.0E3, constants.robot_center_y * 1.0E3]
+        plate_radius = 226.0 * 1.0E3 # constants.HECTOR_plate_radius (from Sam Vaughan's HOP package)
+        robotCentreX, robotCentreY = robot_centre_in_microns[1], robot_centre_in_microns[0]  # switch, since y is x, and x is y
+
+        # Best-fitting plate centre from CVD modelling (originally, robotCentreX, robotCentreY assumed as the plate centre coordinates)
+        # plateCentre_microns = [325508.93894568, 316861.50305806] # bestfit_plateCentre_microns
+        plateCentre_microns = [robotCentreX, robotCentreY]  #
+
+        # Coefficients relative to lambda=6000Ang.
+        distortModel_coeffs = [ 1.92596410e-42, -2.57109951e-38,  8.41650182e-35, -1.24150088e-31,
+                                1.66263366e-27, -5.46127489e-24,  3.17913580e-21, -4.46188558e-17,
+                                1.52220616e-13, -7.05097402e-11,  1.05661104e-06, -3.77980140e-03]
+
+        # Modelling wavelength range, in bins of 100A
+        wave = np.arange(3000.0, 8000.0, 100.0) # Create a lambda array
+
+        # The distortion model functional fit
+        A7 = (distortModel_coeffs[0] * wave ** 2.0) + (distortModel_coeffs[1] * wave) + distortModel_coeffs[2]
+        A5 = (distortModel_coeffs[3] * wave ** 2.0) + (distortModel_coeffs[4] * wave) + distortModel_coeffs[5]
+        A3 = (distortModel_coeffs[6] * wave ** 2.0) + (distortModel_coeffs[7] * wave) + distortModel_coeffs[8]
+        A1 = (distortModel_coeffs[9] * wave ** 2.0) + (distortModel_coeffs[10] * wave) + distortModel_coeffs[11]
+
+        # alphar - radius from the plate Centre, which is a vector, with the top of the plate (in robot orientation) being -ve,
+        xval, yval = meanX - plateCentre_microns[0], meanY - plateCentre_microns[1]
+        r_plateCentre_probeCentre = np.sqrt( xval ** 2.0 + yval ** 2.0 )
+        if meanY < plateCentre_microns[1]: alphar = r_plateCentre_probeCentre * -1.0
+        else: alphar = r_plateCentre_probeCentre
+
+        Angle = np.rad2deg(np.arctan2(yval, xval)) # Angle is anti-clockwise from the plate Centre
+        Angle = 180.0 - np.abs(Angle) # But we need the angle about the hexabundle (so, subtract from 180)
+        # if Angle < 0: Angle = 360.0 + Angle
+
+        A = (A7 * alphar ** 7.0) + (A5 * alphar ** 5.0) + (A3 * alphar ** 3.0) + (A1 * alphar)
+        fractional_r = A / r_plateCentre_probeCentre
+
+        deltaX, deltaY = np.zeros(len(A)) - 99999.9, np.zeros(len(A)) - 99999.9
+        mask = A < 0
+        if alphar > 0: # Bottom-half of the plate (meanY > plateCentre) in robot coordinates
+            Angle = Angle * -1.0
+            deltaX[mask] = np.abs(A[mask]) * MICRONS_TO_ARCSEC * np.cos(np.deg2rad(Angle))
+            deltaX[~mask] = np.abs(A[~mask]) * MICRONS_TO_ARCSEC * np.cos(np.deg2rad(180.0 - np.abs(Angle)))
+
+            deltaY[mask] = np.abs(A[mask]) * MICRONS_TO_ARCSEC * np.sin(np.deg2rad(Angle))
+            deltaY[~mask] = np.abs(A[~mask]) * MICRONS_TO_ARCSEC * np.sin(np.deg2rad(180.0 - np.abs(Angle)))
+        else:
+            deltaX[mask] = np.abs(A[mask]) * MICRONS_TO_ARCSEC * np.cos(np.deg2rad(np.abs(Angle) - 180.0))
+            deltaX[~mask] = np.abs(A[~mask]) * MICRONS_TO_ARCSEC * np.cos(np.deg2rad(Angle))
+
+            deltaY[mask] = np.abs(A[mask]) * MICRONS_TO_ARCSEC * np.sin(np.deg2rad(np.abs(Angle) - 180.0))
+            deltaY[~mask] = np.abs(A[~mask]) * MICRONS_TO_ARCSEC * np.sin(np.deg2rad(Angle))
+
+
+        # # Debug plot
+        # zx = np.polyfit(np.array(wave), np.array(deltaX), 2)
+        # zy = np.polyfit(np.array(wave), np.array(deltaY), 2)
+        # fig = py.figure()
+        # ax = fig.add_subplot(111)
+        # ax.plot(wave, deltaX, 'xr', alpha=0.5, label="X-corr, applied to y-coor")
+        # ax.plot(wave, deltaY, 'xb', alpha=0.5, label="Y-corr, applied to x-coor")
+        # ax.plot(wave, np.polyval(zx, np.array(wave)), 'r', alpha=0.5, label=" ")
+        # ax.plot(wave, np.polyval(zy, np.array(wave)), 'b', alpha=0.5, label=" ")
+        # ax.set(xlabel='Wavelength (Ang.)', ylabel='Relative flux', title=f"{os.path.basename(path)} ppxf fits")
+        # ax.legend(loc='best')
+        # py.show()
+        # del zx, zy
+
+
+        # prPurple(f"A={A}, fractional_r={fractional_r}, Angle= {Angle}, polarradius = {r_plateCentre_probeCentre}, {alphar}")
+        # prCyan(f"deltaX = {deltaX}")
+        # prCyan(f"deltaY = {deltaY}")
+        # prCyan(f"wave={wave}")
+        # prPurple(f"meanX, meanY = {meanX}, {meanY}")
+        # prPurple(f"RobotX,Y = {plateCentre_microns}")
+        # prPurple(f"{plateCentre_microns[0] - meanX, plateCentre_microns[1] - meanY}")
+
+        return A, fractional_r, wave, deltaX, deltaY
+
+
+    if isinstance(path_list, str):
+        path_list = [path_list]
+    for i_file, path in enumerate(path_list):
+        ifu = IFU(path, probenum, flag_name=False)
+
+    # print("probename=", ifu.hexabundle_name)
+    offset, frac_offset, lam, delta_X, delta_Y = func(ifu.mean_x, ifu.mean_y)
+    zf = np.polyfit(np.array(lam), np.array(frac_offset), 2)
+    zx = np.polyfit(np.array(lam), np.array(delta_X), 2)
+    zy = np.polyfit(np.array(lam), np.array(delta_Y), 2)
+
+    # Debug plot
+    # fig = py.figure()
+    # ax = fig.add_subplot(111)
+    # ax.plot(lam, frac_offset, 'xk', alpha=0.5, label="best-fit")
+    # ax.plot(lam, np.polyval(zf, np.array(lam)), 'b', alpha=0.5, label="best-fit")
+    # ax.set(xlabel='Wavelength (Ang.)', ylabel='Relative flux', title=f"{os.path.basename(path)} ppxf fits")
+    # ax.legend(loc='best')
+    # py.show()
+
+    return zf, zx, zy
+
+
+
+def get_cvd_parameters_old(path_list, probenum, max_sep_arcsec=60.0,
                              catalogues=STANDARD_CATALOGUES,
                              model_name='ref_centre_alpha_dist_circ_hdratm',   # NEED to change the name here
                              n_trim=0, smooth='spline', molecfit_available=False,
                              molecfit_dir='', speed='', tell_corr_primary=False):
 
 
-    data_chunked = read_chunked_data(path_list, star_match['probenum'])
+    data_chunked = read_chunked_data(path_list, probenum)
     trim_chunked_data(data_chunked, n_trim)
 
     psf_params_xcen, psf_params_ycen, psf_params_lambda = [], [], []
@@ -135,7 +246,7 @@ def get_cvd_parameters(path_list, star_match, max_sep_arcsec=60.0,
 
         # Fit the PSF
         fixed_parameters = set_fixed_parameters(
-            path_list, model_name, probenum=star_match['probenum'])
+            path_list, model_name, probenum=probenum)
         psf_parameters = fit_model_flux(
             chunked_data['data'],
             chunked_data['variance'],
@@ -210,6 +321,7 @@ def get_cvd_parameters(path_list, star_match, max_sep_arcsec=60.0,
                     np.array(av_yref_cen - av_yref_cen_adjust_good[sorted_indx]), 2)
     polyval_x = np.polyval(zx, wavelengths)
     polyval_y = np.polyval(zy, wavelengths)
+    prGreen(f"xcen_av={av_xref_cen}, ycen_av={av_yref_cen}")
 
     # fig1, ax1 = py.subplots(figsize=(11, 4))
     # ax1.plot(wavelengths, (av_xref_cen - av_xref_cen_adjust)*ARCSEC_IN_MICRONS, 'bo', label='xdata')

@@ -125,15 +125,23 @@ You should not touch this one, as it is called automatically, in case needed.
 from __future__ import absolute_import, division, print_function, unicode_literals
 
 from .. import utils
+from ..utils.term_colours import *
 from ..observing import centroid
 from ..utils.mc_adr import DARCorrector
+from ..dr.cvd_model import get_cvd_parameters
+
 
 import numpy as np
-import os, shutil
+import os, shutil, sys
 import matplotlib.pyplot as plt
 from matplotlib import cm
 import astropy.io.fits as pf
 from scipy.optimize import leastsq
+
+# Robot center positions
+ROBOT_CENTRE_IN_MICRONS = [324470.0, 297834.0] # [constants.robot_center_x * 1.0E3, constants.robot_center_y * 1.0E3]
+PLATE_RADIUS = 226.0 * 1.0E3 # constants.HECTOR_plate_radius (from Sam Vaughan's HOP package)
+ROBOTCENTRE_X, ROBOTCENTRE_Y = ROBOT_CENTRE_IN_MICRONS[1], ROBOT_CENTRE_IN_MICRONS[0]  # switch, since y is x, and x is y
 
 # Multiply by this value to convert arcseconds to microns
 ARCSEC_TO_MICRON = 1000.0 / 15.2
@@ -142,7 +150,7 @@ ARCSEC_TO_MICRON = 1000.0 / 15.2
 ifus=[1,2,3,4,5,6,7,8,9,10,11,12,13 ,14,15,16,17,18,19,20,21]
 
 def find_dither(RSSname,reference,centroid=True,inter=False,plot=False,remove_files=True,
-                do_dar_correct=True,max_shift=350.0,use_iraf=False):
+                do_dar_correct=True,do_cvd_correct=True,plateCentre=None,max_shift=350.0,use_iraf=False):
       
       
       ## For each RSSname call the get_cetroid module, computes centroid coordinates and stores them 
@@ -155,7 +163,7 @@ def find_dither(RSSname,reference,centroid=True,inter=False,plot=False,remove_fi
                 shutil.rmtree(centroid_dir)
           for name in RSSname:
               #print(name)
-              get_centroid(name, reference, do_dar_correct=do_dar_correct) #**reference added
+              get_centroid(name, reference, do_dar_correct=do_dar_correct, do_cvd_correct=do_cvd_correct) #**reference added
 
       nRSS=len(RSSname)
       
@@ -444,9 +452,6 @@ def find_dither(RSSname,reference,centroid=True,inter=False,plot=False,remove_fi
           plt.gca().add_patch(fov)
           
           for i in range(len(ifus)):
-                    
-                
-                
                 
                 deltax=-1*np.multiply(np.extract((np.array(ifscol))==(i+1),xshcol),200)   #scale each offset by x200 in order to make it visible in the plot - the -1 is to go back in focal plane coordinates            
                 deltay=np.multiply(np.extract((np.array(ifscol))==(i+1),yshcol),200)   #scale each offset by x200 in order to make it visible in the plot
@@ -528,9 +533,12 @@ def fit_transform(p0, coords_in, coords_ref, sigma_clip=None, good=None):
             break
     return fit, good, n_good
 
-def get_centroid(infile,reference=None, do_dar_correct=True): #** reference added
+def get_centroid(infile,reference=None, do_dar_correct=True, do_cvd_correct=True, plateCentre=None): #** reference added
 
-    ## Create name of the file where centroid coordinates are stored 
+    ## Create name of the file where centroid coordinates are stored
+    # MLPG - 23/09/2023: Adding the "do_cvd_correct" keyword and associated codes to do the corrections
+    # MLPG - 18/10/2023: The data_sum (produced in observing/centroid/centroid_fit function) sums over the [200:1800] range to produce a broadband image
+    #                    So, I am limiting the wavelength range of the data to [200:1800] in cvd_calculations
     
     out_txt=''.join([os.path.splitext(infile)[0], "_centroid"])
 
@@ -545,15 +553,26 @@ def get_centroid(infile,reference=None, do_dar_correct=True): #** reference adde
                 # Probably a broken hexabundle
                 continue
 
-            p_mic, data_mic, xlin_mic, ylin_mic, model_mic=centroid.centroid_fit(ifu_data.x_microns, ifu_data.y_microns, ifu_data.data, reference,infile,ifu_data.name, circular=True) #**reference,infile,ifu_data.name added
+            x_microns = np.around(ifu_data.x_microns)
+            y_microns = np.around(ifu_data.y_microns)
+            p_mic, data_mic, xlin_mic, ylin_mic, model_mic=centroid.centroid_fit(x_microns.astype(int), y_microns.astype(int), ifu_data.data, reference,infile,ifu_data.name, circular=True) #**reference,infile,ifu_data.name added
             amplitude_mic, xout_mic, yout_mic, sig_mic, bias_mic=p_mic
             ##Get coordinates in micron. 
             ##Since centroid_fit currently inverts the x coordinates to have 'on-sky' coordinates, here 
             ##I need to re-multiply x coordinates by -1 to have them in the focal plane reference 
-                
+
+            # print(xout_mic + ROBOTCENTRE_X)
             x_out= -1*xout_mic
             y_out= yout_mic
-            
+
+            # print(ifu_data.hexabundle_name)
+            # print('meanX_cal=', x_out + ROBOTCENTRE_X)
+            # print('meanY_cal=', ROBOTCENTRE_Y + (-1.*y_out) ) # This is becuase of the way ymicron is defined relative to xmicron
+            # print("micX,Y=", xout_mic, yout_mic, x_out, y_out)
+            # print("meanX, Y position=", np.mean(x_microns), np.mean(y_microns))
+            # print(ifu_data.mean_x, ifu_data.mean_y)
+            # print(ifu_data.x_microns + ROBOTCENTRE_X)
+
             # Adjust for DAR, which means that "true" galaxy position is offset from observed position
             if do_dar_correct:
                 dar_calc = DARCorrector(method='simple')
@@ -562,11 +581,26 @@ def get_centroid(infile,reference=None, do_dar_correct=True): #** reference adde
                 x_out -= dar_calc.dar_east * ARCSEC_TO_MICRON
                 y_out += dar_calc.dar_north * ARCSEC_TO_MICRON
 
+            if do_cvd_correct:
+                if plateCentre is None: plateCentre = [0.0, 0.0]
+                cvd_parameters = get_cvd_parameters(infile, ifu)
+                lambda_range = ifu_data.lambda_range[200:1800] # Note that this is the data range used to produce a summed broadband image in centroid.centroid_fit routine
+                # x_out += np.polyval(cvd_parameters[2], np.mean(ifu_data.lambda_range)) * ARCSEC_TO_MICRON
+                # y_out += np.polyval(cvd_parameters[1], np.mean(ifu_data.lambda_range)) * ARCSEC_TO_MICRON
+                # -- changed for iter4 -- below
+                x_out -= 1.0 * (np.polyval(cvd_parameters[1], np.mean(lambda_range))) * ARCSEC_TO_MICRON
+                y_out += 1.0 * (np.polyval(cvd_parameters[2], np.mean(lambda_range))) * ARCSEC_TO_MICRON
+
+
+            # print('crrX=', np.polyval(cvd_parameters[1], np.mean(ifu_data.lambda_range)) * ARCSEC_TO_MICRON)
+            # print('crrY=', np.polyval(cvd_parameters[2], np.mean(ifu_data.lambda_range)) * ARCSEC_TO_MICRON)
+            # print(np.mean(ifu_data.lambda_range))
+            # sys.exit()
             # the data to write to file
             s=ifu_data.name+' '+str(ifu_data.ifu)+' '+str(x_out)+' '+str(y_out)+'\n'
                     
             f.write(s)
-            
+
     f.close() # close the output file
 
 

@@ -30,6 +30,7 @@ import astropy.io.fits as pf
 import numpy as np
 from scipy.ndimage.filters import median_filter
 import scipy.optimize as optimize
+from scipy.interpolate import interp1d
 import re
 
 # required for test plotting:
@@ -262,7 +263,7 @@ def extract_secondary_standard(path_list,model_name='ref_centre_alpha_dist_circ_
     trim_chunked_data(chunked_data, n_trim)
 
     # Get CvD parameters from the polynomial fits to the centroid varations in x-, y-directions
-    cvd_parameters = get_cvd_parameters(path_list, star_match)
+    cvd_parameters = get_cvd_parameters(path_list, star_match['probenum'])
 
     # Fit the PSF
     fixed_parameters = set_fixed_parameters(
@@ -289,17 +290,24 @@ def extract_secondary_standard(path_list,model_name='ref_centre_alpha_dist_circ_
         # the data reduction location
         # TODO: make this plot only if the user invokes debug command
         # fig = py.figure()
-        # ax = fig.add_subplot(111)
+        # ax1 = fig.add_subplot(211)
+        # ax2 = fig.add_subplot(212)
         #
         # data, wavelength = ifu.data, ifu.lambda_range
         # good_fibre = (ifu.fib_type == 'P')
         # data = data[good_fibre, :]
         # data = np.nansum(data, axis=0)
         #
-        # ax.plot(wavelength, data, 'b', alpha=0.5, label='Summed')
-        # ax.plot(ifu.lambda_range, observed_flux, 'r', alpha=0.5, label='Extracted')
+        # ax1.plot(wavelength, data, 'b', alpha=0.5, label='Summed')
+        # ax1.plot(ifu.lambda_range, observed_flux, 'r', alpha=0.5, label='Extracted')
+        #
+        # f = interp1d(wavelength, data)
+        # ax2.plot(ifu.lambda_range, observed_flux / f(ifu.lambda_range), 'g', alpha=0.5, label='Extracted/Summed')
+        # ax2.plot(ifu.lambda_range, np.repeat(1.0, len(ifu.lambda_range)), 'k--', alpha=0.5, label=' ')
+        # ax2.set_ylim(-0.8, 2.5)
+        #
         # fig.legend(loc='best')
-        # ax.set(xlabel='Wavelength (Ang.)', ylabel='flux', title=os.path.basename(path))
+        # ax1.set(xlabel='Wavelength (Ang.)', ylabel='flux', title=os.path.basename(path))
         # py.savefig(f"{os.path.basename(path)}_derive_STF.png", bbox_inches='tight')
         #######################
 
