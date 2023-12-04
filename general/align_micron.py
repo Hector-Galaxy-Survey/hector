@@ -512,6 +512,7 @@ def plate_scale_model_residuals(p,off,ref):
 
 def fit_transform(p0, coords_in, coords_ref, sigma_clip=None, good=None):
     """Fit a coordinate transform to get from coords_ref to coords_in."""
+    print(coords_in,coords_ref)
     fit = (p0, 0)
     if good is None:
         good = np.ones(len(coords_in), bool)
@@ -519,6 +520,10 @@ def fit_transform(p0, coords_in, coords_ref, sigma_clip=None, good=None):
         n_good = np.sum(good)
         if n_good == 0:
             break
+        print(n_good)
+        print('h1',plate_scale_model_residuals)
+        print('fit',fit)
+        print('good',good)
         fit = leastsq(plate_scale_model_residuals, fit[0], 
                       args=(coords_in[good, :], coords_ref[good, :]))
         if sigma_clip is not None:

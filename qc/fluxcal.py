@@ -826,6 +826,7 @@ def sum_spectrum_from_cube(file_pair, radius):
 
 def read_stellar_spectrum(file_pair):
     """Read and return the measured spectrum of a star from a single frame."""
+    print(file_pair)
     flux = []
     noise = []
     wavelength = []
@@ -836,12 +837,15 @@ def read_stellar_spectrum(file_pair):
         flux.append(hdulist['FLUX_CALIBRATION'].data[0, :])
         noise.append(hdulist['FLUX_CALIBRATION'].data[2, :])
 
-    if np.max(wavelength[0]) > np.min(wavelength[1]): # This is for Spector which doesn't have a gap!
+    if np.max(wavelength[0]) > np.min(wavelength[1]): #Sree: This is for Spector which doesn't have a gap!
         wavelength_mid = np.min(wavelength[1])+(np.max(wavelength[0])-np.min(wavelength[1]))/2.
         goodblue = np.where(wavelength[0] < wavelength_mid-100)
         goodred = np.where(wavelength[1] > wavelength_mid+100)
         nwavelength = list(wavelength[0][goodblue])
         nwavelength.append(list(wavelength[1][goodred]))
+        print('hi',np.min(wavelength[1]),np.max(wavelength[0]),np.min(wavelength[1]), wavelength_mid)
+        print(np.min(nwavelength[1]),np.max(nwavelength[0]),np.min(nwavelength[1]))
+        
         nflux = list(flux[0][goodblue])
         nflux.append(list(flux[1][goodred]))
         nnoise = list(noise[0][goodblue])
@@ -849,6 +853,9 @@ def read_stellar_spectrum(file_pair):
         flux = nflux
         wavelength = nwavelength
         noise = nnoise
+
+#    print('poi',np.min(wavelength[1]),np.max(wavelength[0]),np.min(wavelength[1]), wavelength_mid)
+
 
     flux = np.hstack(flux)
     noise = np.hstack(noise)
@@ -967,6 +974,7 @@ def measure_band(band, flux, wavelength, sdss_dir=sdss_path):
 def measure_mags(flux, noise, wavelength):
     """Do clipping and interpolation, then return g and r band mags."""
     good = clip_spectrum(flux, noise, wavelength, limit_flux=20.0)
+    print('qc.fluxcal.measure_mages good', good)
     flux, noise, wavelength = interpolate_arms(
         flux, noise, wavelength, good)
     mags = {}
@@ -982,32 +990,31 @@ def interpolate_arms(flux, noise, wavelength, good=None, n_pix_fit=300):
     #  * There are at least 300 pixels in each arm to fit to
     # TODO: Clean up to remove these assumptions, particularly the second one
     # Establish basic facts about which pixels we should look at
-    # TODO: Spector doesn't have a gap...
+    # Sree (Nov 2023): the code has been modified and is working on Spector data with wavelength overlap in blue and red arms. All good now. 
+
     n_pix = len(wavelength)
     if good is None:
         good = np.arange(n_pix)
     middle = np.int(n_pix // 2)
     good_blue = good & (np.arange(n_pix) < middle)
     good_red = good & (np.arange(n_pix) >= middle)
-    wavelength_middle = 0.5 * (wavelength[middle-1] + wavelength[middle])
     delta_wave_blue = wavelength[1] - wavelength[0]
     delta_wave_red = wavelength[-1] - wavelength[-2]
     # Get the flux from the red end of the blue and the blue end of the red,
     # and fit a straight line between them
-    index_blue = np.where(good_blue)[0][-n_pix_fit:]
-    index_red = np.where(good_red)[0][:n_pix_fit]
+    index_blue = np.where((good_blue) & (np.array(wavelength) < np.array(wavelength)[np.where(good_red)[0][0]]))[0][-n_pix_fit:]
+    index_red = np.where((good_red) & (np.array(wavelength) > np.array(wavelength)[np.where(good_blue)[0][-1]]))[0][:n_pix_fit]
     index_fit = np.hstack((index_blue, index_red))
     poly_params = np.polyfit(wavelength[index_fit], flux[index_fit], 1,
                              w=1.0/noise[index_fit]**2)
-    wavelength_start = wavelength[middle-2] + delta_wave_blue
-    n_pix_insert_blue = int(np.round(
-        (wavelength_middle - wavelength_start) / delta_wave_blue))
-    wavelength_end = wavelength[middle+1]
-    n_pix_insert_red = int(np.round(
-        (wavelength_end - wavelength_middle) / delta_wave_red))
+
+    wavelength_middle = 0.5 * (wavelength[index_blue[-1]] + wavelength[index_red[0]])
+    wavelength_start = wavelength[index_blue[-2]]+delta_wave_blue
+    wavelength_end = wavelength[index_red[1]]
+    n_pix_insert_blue = int(np.round((wavelength_middle - wavelength_start) / delta_wave_blue))
+    n_pix_insert_red = int(np.round((wavelength_end - wavelength_middle) / delta_wave_red))
     n_pix_insert = n_pix_insert_red + n_pix_insert_blue
-    print('qc/fluxcal.py',  min(wavelength),    max(wavelength), wavelength_start,wavelength_middle,wavelength_end, n_pix_insert_blue, n_pix_insert_red, n_pix,middle, middle-1,delta_wave_blue)
-    print(wavelength[middle], wavelength[middle-1])
+    print('qc/fluxcal.interpolate_arms',  min(wavelength),    max(wavelength), wavelength_start,wavelength_middle,wavelength_end, n_pix_insert_blue, n_pix_insert_red, n_pix,middle, middle-1,delta_wave_blue)
     wavelength_insert = np.hstack((
         np.linspace(wavelength_start, wavelength_middle, n_pix_insert_blue,
                     endpoint=False),

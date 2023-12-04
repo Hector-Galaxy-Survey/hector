@@ -60,6 +60,7 @@ from scipy.interpolate import LSQUnivariateSpline, interp1d
 from scipy.ndimage.filters import median_filter, gaussian_filter1d
 from scipy.ndimage import zoom
 
+
 from astropy import coordinates as coord
 from astropy import units
 from astropy import table
@@ -238,7 +239,6 @@ def chunk_data(ifu, n_drop=None, n_chunk=None, sigma_clip=None):
     chunk_size = np.int(np.floor(chunk_size))
     start = n_drop
     end = n_drop + n_chunk * chunk_size
-    print('remove from dr/fluxcal2.py',n_drop, n_chunk, chunk_size, start, end, data.shape, data[:, start:end].shape)
     data = data[:, start:end].reshape(n_fibre, n_chunk, chunk_size)
     variance = ifu.var[:, start:end].reshape(n_fibre, n_chunk, chunk_size)
     wavelength = ifu.lambda_range[start:end].reshape(n_chunk, chunk_size)
@@ -812,6 +812,16 @@ def derive_transfer_function(path_list, max_sep_arcsec=60.0,
                             sigma_flux, sigma_background,
                             star_match, psf_parameters, model_name,
                             good_psf)
+        print('dr.derive_transfer_function: lambda_range',ifu.lambda_range,' smooth',smooth,'path_list', path2)
+
+        f0 = open('/storage2/sree/hector/dr/v2/transfer.txt', 'w')
+        f0.write('# standard wavelength flux\n')
+        for wave,flux in zip(ifu.lambda_range,observed_flux):
+            f0.write('O '+str(wave)+' '+str(flux)+'\n')        
+        for wave,flux in zip(standard_data['wavelength'],standard_data['flux']):
+            f0.write('S '+str(wave)+' '+str(flux)+'\n')
+        f0.close()
+
         transfer_function = take_ratio(
             standard_data['flux'],
             standard_data['wavelength'],
@@ -1050,6 +1060,7 @@ def read_standard_data(star):
     """Return the true wavelength and flux for a primary standard."""
     # First check how many header rows there are
     skiprows = 0
+    print('dr.fluxcal2.read_standard_data',star['path'] )
     with open(star['path']) as f_spec:
         finished = False
         while not finished:
@@ -1080,18 +1091,45 @@ def take_ratio(standard_flux, standard_wavelength, observed_flux,
     observed_flux_rebinned, sigma_flux_rebinned, count_rebinned = \
         rebin_flux_noise(standard_wavelength, observed_wavelength,
                          observed_flux, sigma_flux)
-    ratio = standard_flux / observed_flux_rebinned
+    ratio1 = standard_flux / observed_flux_rebinned
+
+    # Convolve observed spectra 
+    #Spectral resolution of standard star reference is often worse than that of Hector spectra
+    #For blue ccds, convolve spectra below 4500A, where strong absorption lines are detected from some standard stars
+    FWHM_obs = observed_wavelength[1]-observed_wavelength[0]
+    FWHM_standard = standard_wavelength[1]-standard_wavelength[0]
+    FWHM_diff = np.sqrt(FWHM_standard**2 - FWHM_obs**2)
+    sigma_diff=FWHM_diff/2.355/(observed_wavelength[1]-observed_wavelength[0])
+#    if((np.isfinite(sigma_diff)) & (observed_wavelength[-1]<7000.)):
+    if(np.isfinite(sigma_diff)):
+        observed_flux_convolved=gaussian_filter1d(observed_flux_rebinned, sigma_diff)
+#        observed_flux_convolved[standard_wavelength > 4500.]=observed_flux_rebinned[standard_wavelength > 4500.]
+        if((observed_wavelength[0]>5000.)): #For red ccds, convolve spectra only below 6500A
+            observed_flux_convolved[standard_wavelength > 6500.]=observed_flux_rebinned[standard_wavelength > 6500.]
+        ratio1 = standard_flux / observed_flux_convolved
+
     if smooth == 'gauss':
-        ratio = smooth_ratio(ratio)
+        ratio2 = smooth_ratio(ratio1)
     elif smooth == 'chebyshev':
-        ratio = fit_chebyshev(standard_wavelength, ratio, mf_av=mf_av,
+        ratio2 = fit_chebyshev(standard_wavelength, ratio1, mf_av=mf_av,
                               tell_corr_primary=tell_corr_primary)
     elif smooth == 'spline':
-        ratio = fit_spline(standard_wavelength, ratio, mf_av=mf_av,
+        ratio2 = fit_spline(standard_wavelength, ratio1, mf_av=mf_av,
                            tell_corr_primary=tell_corr_primary)
     # Put the ratio back onto the observed wavelength scale
-    ratio = 1.0 / np.interp(observed_wavelength, standard_wavelength, 
-                            1.0 / ratio)
+#    ratio = 1.0 / np.interp(observed_wavelength, standard_wavelength, 1.0 / ratio2)
+    ratio = np.interp(observed_wavelength, standard_wavelength,ratio2)
+
+    f0 = open('/storage2/sree/hector/dr/v2/take_ratio.txt', 'w')
+    f0.write('# ind ratio\n')
+    for r1,w1 in zip(ratio1,standard_wavelength):
+        f0.write('r1 '+str(w1)+' '+str(r1)+'\n')
+    for r2,w2 in zip(ratio2,standard_wavelength):
+        f0.write('r2 '+str(w2)+' '+str(r2)+'\n')
+    for r,w in zip(ratio,observed_wavelength):
+        f0.write('r '+str(w)+' '+str(r)+'\n')
+    f0.close()
+
     return ratio
 
 def smooth_ratio(ratio, width=10.0):
@@ -1153,19 +1191,22 @@ def fit_spline(wavelength, ratio, mf_av=False,tell_corr_primary=False):
         good = np.where(np.isfinite(ratio))[0]
     else:
         good = np.where(np.isfinite(ratio) & ~(in_telluric_band(wavelength)))[0]
-    knots = np.linspace(wavelength[good][0], wavelength[good][-1], 8)
+    knots = np.linspace(wavelength[good][0], wavelength[good][-1],16) 
+
     # Add extra knots around 5500A, where there's a sharp turn
-    extra = knots[(knots > 5000) & (knots < 6000)]
+    extra = knots[(knots > 5500) & (knots < 6500)]
     if len(extra) > 1:
-        extra = 0.5 * (extra[1:] + extra[:-1])
+        extra = np.linspace(extra[0]+10., extra[-1]-10.,20)
         knots = np.sort(np.hstack((knots, extra)))
+   
     # Remove any knots sitting in a telluric band, but only if not using tell_corr_primary:
     if (not tell_corr_primary):
         knots = knots[~in_telluric_band(knots)]
         
     spline = LSQUnivariateSpline(
-        wavelength[good], 1.0/ratio[good], knots[1:-1])
+        wavelength[good], 1.0/ratio[good], knots[1:-1], k=3)
     fit = 1.0 / spline(wavelength)
+
     # Mark with NaNs anything outside the fitted wavelength range
     #fit[:good[0]] = np.nan
     #fit[good[-1]+1:] = np.nan
@@ -1207,6 +1248,13 @@ def fit_spline_secondary(wavelength, ratio,sigma,nbins=40,nsig=5.0,verbose=False
     # features are slowly varying.  Because of this, have a relatively small
     # number of knots: 
     knots = np.linspace(wavelength[good][0], wavelength[good][-1], 3)
+
+    # Sree add more knots in the gap 
+#    extra = wavelength[good][(wavelength[good] > 5500) & (wavelength[good] < 6500)]
+#    if len(extra) > 1:
+#        extra = np.linspace(extra[0]+10., extra[-1]-10.,20)
+#        knots = np.sort(np.hstack((knots, extra)))
+#        print('knots', knots)
 
     # do the fit
     spline = LSQUnivariateSpline(

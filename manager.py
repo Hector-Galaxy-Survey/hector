@@ -1804,9 +1804,9 @@ class Manager:
                 else:
                     for i in sub[0]:
                         if tlmfail[i] == 1:
-                            f.write('     * Fibre '+str(fib_spec_id[i])+' is allocated where there is no signal (thput='+str(thput[i])+').\n')
+                            f.write('     * Fibre '+str(fib_spec_id[i])+'(Hexa '+fib_name[i]+') is allocated where there is no signal (thput='+str(thput[i])+').\n')
                         if tlmfail[i] == 2:
-                            f.write('     * Fibre '+str(fib_spec_id[i])+' is an inactive sky fibre (N) but allocated where there is a signal (thput='+str(thput[i])+').\n')
+                            f.write('     * Fibre '+str(fib_spec_id[i])+'('+fib_name[i]+') is an inactive fibre but allocated where there is a signal (thput='+str(thput[i])+').\n')
                         if ((fib_type[i] == 'S') | (fib_type[i] == 'N')) & ((tlmfail[i] == 1) | (tlmfail[i] == 2)) & (str(fib_name[i]) != ''): #check point: wrong sky position
                             f.write('     Check point: This is a sky fibre '+str(fib_name[i])+'. Go to the top-end and check the sky fibre is correctly positioned. \n')
                             f.write('       If the position was wrong, disable the frames adding '+str(fits.filename)[0:-5]+' and '+otherfilename[0:-5]+' on '+str(self.abs_root)+'/disable.txt\n')
@@ -1818,9 +1818,9 @@ class Manager:
                             f.write('         position error: sky fibre '+str(fib_name[i])+' SPEC_ID='+str(fib_spec_id[i])+' TYPE='+str(fib_type[i])+'\n')
                             f.write('       If the sky fibre position was correct, continue to the next check point\n')
                         if (str(tlmfail[i])[0] == '3'): # not in numerical order
-                            f.write('     * Fibre '+str(fib_spec_id[i]-1)+' and '+str(fib_spec_id[i])+' are not in numerical order.\n')
+                            f.write('     * Fibre '+str(fib_spec_id[i]-1)+' and '+str(fib_spec_id[i])+'(Hexa '+fib_name[i]+') are not in numerical order.\n')
                         if (str(tlmfail[i])[0] == '4'): # tlm cut off 
-                            f.write('     * Fibre '+str(fib_spec_id[i])+' shows cut off of tramline at the '+cutoff_pos+' corner. \n')
+                            f.write('     * Fibre '+str(fib_spec_id[i])+'(Hexa '+fib_name[i]+') shows cut off of tramline at the '+cutoff_pos+' corner. \n')
                 if(np.max(raw) > 65534.): #check point: saturation
                     f.write('     Check point: Max count: '+str(np.max(raw))+'   Number of saturated pixels: '+str(len(raw[np.where(raw > 65534)]))+'\n')
                     f.write('       Max count reaches to the saturation level. Is it saturated or just cosmic ray?\n')
@@ -1830,11 +1830,6 @@ class Manager:
                     f.write('       Take new dome flat with shorter exposure time. No need to continue to the next check point. \n')
                 else:
                     f.write('     Check point: This frame is not saturated. Continue to the next check point.\n')
-                f.write('     Check point: visually check the focus: hector@aatlxe:~$ ds9 '+fits.reduced_dir+'/'+str(fits.filename)+' -zoom 4 -zscale&\n')
-                f.write('       Do you clearly see a contrast (>~ '+str(typical_contrast[ccd-1])+' counts) between the signal and gap? If not, it is out of focus.\n')
-                f.write('       If it is out of focus, disable it adding '+str(fits.filename)[0:-5]+' on '+str(self.abs_root)+'/disable.txt\n')
-                f.write('       You need to add all other (arc, object) frames that are out of focus. \n')
-                f.write('       Do check the focus values. No need to continue to the next check point.\n')
                 f.write('     Check point: check how the other arm ('+otherfilename[0:-5]+') is doing. You may find a solution there. \n')
                 f.write('     Check point: visually check tlm:\n') # load drcontrol qui to visually check tlm
                 f.write('       In the ipython shell    In [1]: mngr.load_2dfdr_gui("'+fits.reduced_dir+'")\n')
@@ -1861,9 +1856,11 @@ class Manager:
                 if contrast < typical_contrast[ccd-1]:
                     nfocus = 1
                     prYellow(f'  ** Check the focus!!! Expected contrast is above '+str(typical_contrast[ccd-1])+', and the contrast of this frame is '+str(contrast))
-                    f.write('\n  ** Check the focus of this frame!!! Expected contrast is '+str(typical_contrast[ccd-1])+', and the contrast of this frame is '+str(contrast)+'\n')
-                    f.write('     If the contrast is way too below the expected one, consider refocusing. \n')
-                    f.write('     Visually check the focus: hector@aatlxe:~$ ds9 '+fits.reduced_dir+'/'+str(fits.filename)+' -zoom 4 -zscale&\n')
+                    f.write('\n  ** Check the focus of this frame!!! Expected contrast btw the gap and signal is '+str(typical_contrast[ccd-1])+', and the contrast of this frame is '+str(contrast)+'\n')
+                    f.write('       If the contrast is way too below the expected one, consider refocusing. \n')
+                    f.write('       Visually check the focus: hector@aatlxe:~$ ds9 '+fits.reduced_dir+'/'+str(fits.filename)+' -zoom 4 -zscale&\n')
+                    f.write('       If it is out of focus, disable it and the file from the other arm adding '+str(fits.filename)[0:-5]+' and '+otherfilename[0:-5]+' on '+str(self.abs_root)+'/disable.txt\n')
+                    f.write('       You need to add all other (arc, object) frames that are affected. Do focussing again.\n')
                 else:
                     f.write(' It also shows a reasonable focus (contrast='+str(contrast)+').')
 #                    print(' It also shows a reasonable focus (contrast='+str(contrast)+').\n')
@@ -2228,7 +2225,7 @@ class Manager:
         if self.dummy:
             create_dummy_output(reduced_files, tlm=tlm, overwrite=overwrite)
 
-        # Data with error or  we could not reduced within timeout of 600s
+        # Data with error orwe could not reduced within timeout of 600s
         tdfail = str(self.abs_root)+'/tdfdr_failure.txt'
         if os.path.exists(tdfail):
             with warnings.catch_warnings():
@@ -2338,6 +2335,7 @@ class Manager:
         # Original model name: ref_centre_alpha_circ_hdratm
         inputs_list = []
         ccdname = ['ccd_1','ccd_3']
+        ccdname = ['ccd_3']
         for nccd in ccdname:
             for fits in self.files(ndf_class='MFOBJECT', do_not_use=False,
                                    spectrophotometric=True, ccd=nccd, **kwargs):
@@ -2884,34 +2882,42 @@ class Manager:
         swap_id = ['901006735001769','901006999103632']; swap_bundle = ['T', 'B']
         if(str(self.abs_root)[-13:] == '230710_230724'):
             if(os.path.exists(cubed_root+'/'+swap_id[0]+'/')):
-                frames = glob(cubed_root + '/'+swap_id[0]+'/*')
-                if(pf.getheader(frames[0], 'IFUPROBE') != 'T'):
-                    shutil.move(cubed_root+'/'+swap_id[0]+'/'+swap_id[0]+'*.fits', cubed_root+'/'+swap_id[1]+'/')
-                    shutil.move(cubed_root+'/'+swap_id[1]+'/'+swap_id[1]+'*.fits', cubed_root+'/'+swap_id[0]+'/')
-                    for sid in swap_id: 
-                        for k in glob(cubed_root + '/'+sid+'/*'):
-                            tmp = k.split('/')[-1].split('_')
-                            tmp[0] = sid
-                            newname = cubed_root + '/'+sid+'/'+'_'.join(tmp)
+                frames0 = glob(cubed_root + '/'+swap_id[0]+'/*')
+                frames1 = glob(cubed_root + '/'+swap_id[1]+'/*')
+
+                if(pf.getheader(frames0[0])['IFUPROBE'] != 'T'):
+                    shutil.move(frames0[0], cubed_root+'/'+swap_id[1]+'/')
+                    shutil.move(frames0[1], cubed_root+'/'+swap_id[1]+'/')
+                    shutil.move(frames1[0], cubed_root+'/'+swap_id[0]+'/')
+                    shutil.move(frames1[1], cubed_root+'/'+swap_id[0]+'/')
+                    prYellow('swap directories of 901006735001769 and 901006999103632')
+
+                for sid in swap_id: 
+                    for k in glob(cubed_root + '/'+sid+'/*'):
+                        tmp = k.split('/')[-1].split('_'); tmp[0] = sid
+                        newname = cubed_root + '/'+sid+'/'+'_'.join(tmp)
+                        if k != newname:
+                            prYellow('move '+k+' to '+newname)
                             shutil.move(k,newname)
 
-                    frames0 = glob(cubed_root + '/'+swap_id[0]+'/*')
-                    frames1 = glob(cubed_root + '/'+swap_id[1]+'/*')
-
-                    hdulist0 = pf.open(frames0, 'update', do_not_scale_image_data=True)
-                    hdulist1 = pf.open(frames1, 'update', do_not_scale_image_data=True)
-                    crval1  = [hdulist1[0].header['CRVAL1'],hdulist0[0].header['CRVAL1']]
-                    crval2  = [hdulist1[0].header['CRVAL2'],hdulist0[0].header['CRVAL2']]
-                    catara  = [hdulist1[0].header['CATARA'],hdulist0[0].header['CATARA']]
-                    catadec = [hdulist1[0].header['CATADEC'],hdulist0[0].header['CATADEC']]
-
-                    hdulist0[0].header['CRVAL1']  = crval1[0] ; hdulist1[0].header['CRVAL1']  = crval1[1]
-                    hdulist0[0].header['CRVAL2']  = crval2[0] ; hdulist1[0].header['CRVAL2']  = crval2[1]
-                    hdulist0[0].header['CATARA']  = catara[0] ; hdulist1[0].header['CATARA']  = catara[1]
-                    hdulist0[0].header['CATADEC'] = catadec[0]; hdulist1[0].header['CATADEC'] = catadec[1]
-                    hdulist0[0].header['NAME'] = swap_id[0]; hdulist1[0].header['NAME'] = swap_id[1]
-                    hdulist0.flush();hdulist0.close()
-                    hdulist1.flush();hdulist1.close()
+                frames0 = glob(cubed_root + '/'+swap_id[0]+'/*')
+                frames1 = glob(cubed_root + '/'+swap_id[1]+'/*')
+                if(pf.getheader(frames0[0])['NAME'] != swap_id[0]):
+                    prYellow('modify header of 901006735001769 and 901006999103632')
+                    for i in [0,1]:
+                        hdulist0 = pf.open(frames0[i], 'update', do_not_scale_image_data=True)
+                        hdulist1 = pf.open(frames1[i], 'update', do_not_scale_image_data=True)
+                        crval1  = [hdulist1[0].header['CRVAL1'],hdulist0[0].header['CRVAL1']]
+                        crval2  = [hdulist1[0].header['CRVAL2'],hdulist0[0].header['CRVAL2']]
+                        catara  = [hdulist1[0].header['CATARA'],hdulist0[0].header['CATARA']]
+                        catadec = [hdulist1[0].header['CATADEC'],hdulist0[0].header['CATADEC']]
+                        hdulist0[0].header['CRVAL1']  = crval1[0] ; hdulist1[0].header['CRVAL1']  = crval1[1]
+                        hdulist0[0].header['CRVAL2']  = crval2[0] ; hdulist1[0].header['CRVAL2']  = crval2[1]
+                        hdulist0[0].header['CATARA']  = catara[0] ; hdulist1[0].header['CATARA']  = catara[1]
+                        hdulist0[0].header['CATADEC'] = catadec[0]; hdulist1[0].header['CATADEC'] = catadec[1]
+                        hdulist0[0].header['NAME'] = swap_id[0]; hdulist1[0].header['NAME'] = swap_id[1]
+                        hdulist0.flush();hdulist0.close()
+                        hdulist1.flush();hdulist1.close()
 
 
         print('Start resizing the cubes...') #Susie's code resizing cubes
@@ -2939,6 +2945,8 @@ class Manager:
 #                cube_inst = pf.getheader(k0[0])['INSTRUME']
 
                 #Delete cubes with zero dimension (from inactive hexabundles)
+                #Sree: the below doesn't work because cubes for broken fibres also have a size but NaNs in it. May remove the below.
+                print(axis_b, axis_r, pf.getheader(k0[0])['IFUPROBE'], k0)
                 if (axis_b == 0) and (axis_r == 0):
                     print(pf.getheader(k0[0])['NAME'],' Tile ',pf.getheader(k0[0])['PLATEID'],' Hexabundle ',pf.getheader(k0[0])['IFUPROBE'],' has zero dimension')
                     print('Delete the files...')
@@ -3086,6 +3094,7 @@ class Manager:
         """Scale datacubes based on the stellar g magnitudes."""
 
         ccdname = ['ccd_1','ccd_3']
+        #ccdname = ['ccd_1'] #TODO: Sree: this line should be removed. it is for testing.
         for nccd in ccdname:
              groups = self.group_files_by(
                  'field_id', ccd=nccd, ndf_class='MFOBJECT', do_not_use=False,
@@ -5876,7 +5885,7 @@ def cube_object(inputs):
     """Cube a single object in a set of RSS files."""
     (field_id, ccd, path_list, name, cubed_root, drop_factor, tag,
      update_tol, size_of_grid, output_pix_size_arcsec, overwrite) = inputs
-    print('Cubing {} in field ID: {}, CCD: {}'.format(name, field_id, ccd))
+    print('\nCubing {} in field ID: {}, CCD: {}'.format(name, field_id, ccd))
     print('{} files available'.format(len(path_list)))
     suffix = '_' + field_id
     if tag:
