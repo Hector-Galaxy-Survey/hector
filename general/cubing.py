@@ -557,8 +557,7 @@ def dithered_cube_from_rss_wrapper(files, name, size_of_grid=50,
         try:
             os.makedirs(directory)
         except OSError:
-            print("Directory Exists", directory)
-            print("Writing files to the existing directory")
+            print("Writing files to the existing directory: ",directory)
         else:
             print("Making directory", directory)
 
@@ -600,10 +599,9 @@ def dithered_cube_from_rss_wrapper(files, name, size_of_grid=50,
 
     # Write out FITS files.
     if write==True:
-
-        if ifu_list[0].gratid == '580V':
+        if (ifu_list[0].gratid == '580V') or (ifu_list[0].gratid == 'VPH-1099-484'):
             band = 'g'
-        elif ifu_list[0].gratid == '1000R':
+        elif (ifu_list[0].gratid == '1000R') or (ifu_list[0].gratid == 'VPH-1178-679'):
             band = 'r'
         elif not nominal:
             # Need an identified band if we're going to do full WCS matching.
