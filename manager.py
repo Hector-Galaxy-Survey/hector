@@ -2333,9 +2333,9 @@ class Manager:
         # such that DAR correction is removed/and chromatic variation distortion added
         # CVD model name: ref_centre_alpha_circ_hdr_cvd
         # Original model name: ref_centre_alpha_circ_hdratm
+        hector.manager.read_hector_tiles(abs_root=self.abs_root)
         inputs_list = []
         ccdname = ['ccd_1','ccd_3']
-        ccdname = ['ccd_3']
         for nccd in ccdname:
             for fits in self.files(ndf_class='MFOBJECT', do_not_use=False,
                                    spectrophotometric=True, ccd=nccd, **kwargs):
@@ -6105,6 +6105,7 @@ def read_hector_tiles(abs_root=None):
 
     # setup file paths
     tile_path = Path(hector_path) / f"Tiles/Tile_files"
+    robot_path = Path(hector_path) / f"Tiles/Robot_files"
     base_path = Path(hector_path) / f"standards/secondary/Hector_tiles"
     file_names = ["Hector_tiles.csv", "Hector_secondary_standards.csv", "Hector_secondary_standards_shortened.csv"]
 
@@ -6113,19 +6114,22 @@ def read_hector_tiles(abs_root=None):
         os.makedirs(base_path)
     if not os.path.isdir(tile_path):
         os.makedirs(tile_path)
-        os.makedirs(Path(str(tile_path).replace('Tile_', 'Robot_')))
+    if not os.path.isdir(robot_path):
+        os.makedirs(robot_path)
 
     # grab new Hector tiles from the raw folder
     if abs_root is not None:
         tile_dir = abs_root + f'/raw/'
         for root, dirs, files in os.walk(tile_dir):
             for file in files:
-                if 'Tile' in file:
+                if (('Tile' in file) and (file[-3:] == 'csv')):
                     src_path = os.path.join(root, file)
-                    dest_path = os.path.join(tile_path, file)
-                    if not os.path.exists(dest_path):
-                        shutil.copy(src_path, dest_path)
-                        shutil.copy(src_path.replace('Tile', 'Robot'), dest_path.replace('Tile', 'Robot'))
+                    dest_tile_path = os.path.join(tile_path, file)
+                    dest_robot_path = os.path.join(robot_path, file.replace('Tile', 'Robot'))
+                    if not os.path.exists(dest_tile_path):
+                        shutil.copy(src_path, dest_tile_path)
+                        shutil.copy(src_path.replace('Tile', 'Robot'), dest_robot_path)
+
 
     # Check if the files holding the tile list and secondary standards exists. If not, create.
 #    if not os.path.exists(f"{base_path}/{file_names[0]}"):
