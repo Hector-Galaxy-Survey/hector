@@ -4,6 +4,7 @@ from astropy.io    import fits, ascii as ap_ascii
 from astropy.table import Table
 
 def TelluricCorrectPrimary(path_list,probenum,molecfit_dir=''):
+    np.seterr(divide = 'ignore') 
 
     hdulist = fits.open(path_list[1])
     fibre = hdulist['FIBRES_IFU']
