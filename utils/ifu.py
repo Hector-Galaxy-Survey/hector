@@ -288,6 +288,8 @@ class IFU:
         dash_locs = [m.start() for m in re.finditer('/', self.primary_header['CFG_FILE'])]
         tile_file = self.primary_header['CFG_FILE'][dash_locs[-1] + 1::]
         robot_file = glob.glob(hector_path + 'Tiles/Robot_files/' + tile_file.replace('Tile', 'Robot') + '*')
+        if(len(robot_file) == 0):
+            print('Missing Robot file: ',robot_file,' Tile file:',tile_file)
         object_robottab = pd.read_csv(robot_file[0], skiprows=6)
 
         self.probe_annulus = table_new.field('CIRCMAG')  # telecentricity of the probe, given by the circmag colour
