@@ -2336,6 +2336,7 @@ class Manager:
         hector.manager.read_hector_tiles(abs_root=self.abs_root)
         inputs_list = []
         ccdname = ['ccd_1','ccd_3']
+#        ccdname = ['ccd_1']
         for nccd in ccdname:
             for fits in self.files(ndf_class='MFOBJECT', do_not_use=False,
                                    spectrophotometric=True, ccd=nccd, **kwargs):
@@ -2360,7 +2361,8 @@ class Manager:
                     n_trim = 0
                 inputs_list.append({'path_pair': path_pair, 'n_trim': n_trim,
                                     'model_name': model_name, 'smooth': smooth,
-                                    'speed':self.speed,'tellcorprim':self.telluric_correct_primary})
+                                    'speed':self.speed,'tellcorprim':self.telluric_correct_primary,
+                                    'ncpu':self.n_cpu})
         self.map(derive_transfer_function_pair, inputs_list)
         self.next_step('derive_transfer_function', print_message=True)
         return
@@ -2395,14 +2397,6 @@ class Manager:
 
                 # Since we've now changed the transfer functions, mark these as needing checks.
                 update_checks('FLX', fits_list, False)
-
-#maire I was planning to copy TRANSFERcombined.fits from the other instrument but they cannot share the file. I may remove this when cleaning. 
-#        for fits_list in groups.values():
-#            path_out = os.path.join(os.path.dirname(fits_list[0].reduced_path),'TRANSFERcombined.fits')
-#            if overwrite or not os.path.exists(path_out):
-#                path_other_spec = self.other_spec(fits_list[0]).reduced_path
-#                path_with_copy = os.path.join(os.path.dirname(path_other_spec),'TRANSFERcombined.fits')
-#                shutil.copy2(path_with_copy, path_out)
 
             # Copy the file into all required directories for each standard stars (e.g. LTT1788)
             paths_with_copies = [os.path.dirname(path_list[0])]
@@ -5757,15 +5751,16 @@ def derive_transfer_function_pair(inputs):
     n_trim = inputs['n_trim']
     model_name = inputs['model_name']
     smooth = inputs['smooth']
+    ncpu = inputs['ncpu']
 
-    print('Deriving transfer function for ' +
-          os.path.basename(path_pair[0]) + ' and ' +
-          os.path.basename(path_pair[1]))
+#    print('Deriving transfer function for ' +
+#          os.path.basename(path_pair[0]) + ' and ' +
+#          os.path.basename(path_pair[1]))
     try:
         fluxcal2.derive_transfer_function(
             path_pair, n_trim=n_trim, model_name=model_name, smooth=smooth,
             molecfit_available = MOLECFIT_AVAILABLE, molecfit_dir = MF_BIN_DIR,
-            speed=inputs['speed'],tell_corr_primary=inputs['tellcorprim'])
+            speed=inputs['speed'],tell_corr_primary=inputs['tellcorprim'], ncpu=ncpu)
     except ValueError:
         print('  Warning: No star found in dataframe, skipping ' +
               os.path.basename(path_pair[0]))

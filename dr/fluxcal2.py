@@ -78,6 +78,12 @@ import datetime
  
 # required for test plotting:
 import pylab as py
+import matplotlib
+matplotlib.use('Agg')
+#import matplotlib.pyplot as plt
+
+from multiprocessing import Process
+
 
 from ..utils.ifu import IFU
 from ..utils.mc_adr import parallactic_angle, adr_r
@@ -734,16 +740,19 @@ def derive_transfer_function(path_list, max_sep_arcsec=60.0,
                              catalogues=STANDARD_CATALOGUES,
                              model_name='ref_centre_alpha_circ_hdr_cvd',
                              n_trim=0, smooth='spline',molecfit_available=False,
-                             molecfit_dir='',speed='',tell_corr_primary=False):
+                             molecfit_dir='',speed='',tell_corr_primary=False,debug=True,ncpu=10):
     """Derive transfer function and save it in each FITS file."""
     # First work out which star we're looking at, and which hexabundle it's in
     # MLPG (change back): changed model_name = ref_centre_alpha_circ_hdr_cvd (original = ref_centre_alpha_dist_circ_hdratm)
     # cvd_model added
     # cvd_parameters keyword added to various function call withint this routine (e.g. fit_model_flux, extract_flux)
+    import matplotlib.pyplot as plt
+
     star_match = match_standard_star(
         path_list[0], max_sep_arcsec=max_sep_arcsec, catalogues=catalogues)
     if star_match is None:
         raise ValueError('No standard star found in the data.')
+    print('Deriving TF for '+path_list[0]+' on Hexa '+star_match['probename']+' ('+star_match['name']+')')
     standard_data = read_standard_data(star_match)
 
     # Apply telluric correction to primary standards and write to new file, returning
@@ -776,6 +785,7 @@ def derive_transfer_function(path_list, max_sep_arcsec=60.0,
 
     psf_parameters = insert_fixed_parameters(psf_parameters, fixed_parameters)
     good_psf = check_psf_parameters(psf_parameters, chunked_data)
+
     for path,path2 in zip(path_list_tel,path_list):
         ifu = IFU(path, star_match['probenum'], flag_name=False)
         remove_atmosphere(ifu)
@@ -812,15 +822,15 @@ def derive_transfer_function(path_list, max_sep_arcsec=60.0,
                             sigma_flux, sigma_background,
                             star_match, psf_parameters, model_name,
                             good_psf)
-        print('dr.derive_transfer_function: lambda_range',ifu.lambda_range,' smooth',smooth,'path_list', path2)
+#        print('dr.derive_transfer_function: lambda_range',ifu.lambda_range,' smooth',smooth,'path_list', path2)
 
-        f0 = open('/storage2/sree/hector/dr/v2/transfer.txt', 'w')
-        f0.write('# standard wavelength flux\n')
-        for wave,flux in zip(ifu.lambda_range,observed_flux):
-            f0.write('O '+str(wave)+' '+str(flux)+'\n')        
-        for wave,flux in zip(standard_data['wavelength'],standard_data['flux']):
-            f0.write('S '+str(wave)+' '+str(flux)+'\n')
-        f0.close()
+#        f0 = open('/storage2/sree/hector/dr/v2/transfer.txt', 'w')
+#        f0.write('# standard wavelength flux\n')
+##        for wave,flux in zip(ifu.lambda_range,observed_flux):
+#            f0.write('O '+str(wave)+' '+str(flux)+'\n')        
+#        for wave,flux in zip(standard_data['wavelength'],standard_data['flux']):
+#            f0.write('S '+str(wave)+' '+str(flux)+'\n')
+#        f0.close()
 
         transfer_function = take_ratio(
             standard_data['flux'],
@@ -831,8 +841,65 @@ def derive_transfer_function(path_list, max_sep_arcsec=60.0,
             smooth=smooth,
             mf_av=molecfit_available,
             tell_corr_primary=tell_corr_primary)
+        transfer_function = median_filter(transfer_function,5)
 
         save_transfer_function(path2, transfer_function)
+        
+
+        ######################
+        # MLPG & Sree: Diagnostic plot showing extracted flux versus summed flux, saved in
+        # the data reduction location. Active when debug = True
+        if debug:
+            fig, (ax1, ax2, ax3, ax4) = plt.subplots(4, 1, figsize=(8, 12))
+            ax1.set(ylabel='flux', title=os.path.basename(path)+' Hexa'+star_match['probename']+' '+star_match['name'])
+            data, wavelength = ifu.data, ifu.lambda_range
+            good_fibre = (ifu.fib_type == 'P')
+            data = data[good_fibre, :]; data = nansum(data, axis=0)
+            ax1.plot(wavelength, data, 'b', alpha=0.5, label='Summed over bundle')
+            ax1.plot(ifu.lambda_range, observed_flux, 'r', alpha=0.5, label='Extracted after CVD')
+            ax1.legend(loc='best')
+
+            ax2.set(ylabel='Extracted/Summed')
+            f = interp1d(wavelength, data)
+            ax2.plot(ifu.lambda_range, median_filter(observed_flux/f(ifu.lambda_range),15), 'g', alpha=0.5, label='Extracted/Summed')
+            ax2.plot(ifu.lambda_range, np.repeat(1.0, len(ifu.lambda_range)), 'k--', alpha=0.5, label='Extracted/Summed')
+            ax2.set_ylim(-0.8, 2.5)
+
+            ax3.set(ylabel='Normalized Flux')            
+            observed_flux_fcal = observed_flux * transfer_function
+            FWHM_obs = ifu.lambda_range[1]-ifu.lambda_range[0]
+            FWHM_standard = standard_data['wavelength'][1]-standard_data['wavelength'][0]
+            FWHM_diff = np.sqrt(FWHM_standard**2 - FWHM_obs**2)
+            sigma_diff=FWHM_diff/2.355/(ifu.lambda_range[1]-ifu.lambda_range[0])
+            norm_factor =  np.nanmax(standard_data['flux'][(standard_data['wavelength'] > ifu.lambda_range[200]) & (standard_data['wavelength'] < ifu.lambda_range[-200])])
+            ax3.plot(ifu.lambda_range, gaussian_filter1d(observed_flux_fcal,sigma_diff)/norm_factor, 'g', alpha=0.5, label='Flux calibrated')
+            ax3.plot(ifu.lambda_range, observed_flux/np.nanmax(observed_flux[200:-200]), 'b', alpha=0.5, label='Observed')
+            ax3.plot(standard_data['wavelength'],standard_data['flux'] / norm_factor ,'r', alpha=0.5, label='Reference')
+            ax3.set_ylim(0, 1.4)
+            ax3.legend(loc='best')
+            ax3.set_xlim(min(ifu.lambda_range)-100,max(ifu.lambda_range)+100)
+
+            ax4.set(ylabel='Transfer Function')
+            f = interp1d(standard_data['wavelength'],standard_data['flux'])
+            ax4.plot(ifu.lambda_range,f(wavelength)/observed_flux, 'g', alpha=0.5, label='Reference/Observed')
+            ax4.plot(ifu.lambda_range, transfer_function, 'r', alpha=0.5, label='TF',linewidth=2)
+            ylim = max(transfer_function)*1.5
+            if ylim > 200:
+                ylim=200
+            ax4.set_ylim(0,ylim)
+            ax4.legend(loc='best')
+            dest_path = path[0:path.find('/reduced')]+'/derive_TF'
+            if not os.path.isdir(dest_path):
+                print('mkdir')
+                os.makedirs(dest_path)
+                print('done mkdir')
+
+            fig.savefig(dest_path+"/"+os.path.basename(path)[:10]+"_derive_TF.pdf", bbox_inches='tight')
+            plt.close(fig)  # Close the figure object
+
+        #######################        
+        #root = path[0:path.find('/reduced')]
+        #py.savefig(root[0]+"/derive_TF.pdf", bbox_inches='tight')
     return
 
 def match_standard_star(filename, max_sep_arcsec=60.0, 
@@ -1060,7 +1127,6 @@ def read_standard_data(star):
     """Return the true wavelength and flux for a primary standard."""
     # First check how many header rows there are
     skiprows = 0
-    print('dr.fluxcal2.read_standard_data',star['path'] )
     with open(star['path']) as f_spec:
         finished = False
         while not finished:
@@ -1093,7 +1159,7 @@ def take_ratio(standard_flux, standard_wavelength, observed_flux,
                          observed_flux, sigma_flux)
     ratio1 = standard_flux / observed_flux_rebinned
 
-    # Convolve observed spectra 
+    #Sree:Convolve observed spectra 
     #Spectral resolution of standard star reference is often worse than that of Hector spectra
     #For blue ccds, convolve spectra below 4500A, where strong absorption lines are detected from some standard stars
     FWHM_obs = observed_wavelength[1]-observed_wavelength[0]
@@ -1103,9 +1169,10 @@ def take_ratio(standard_flux, standard_wavelength, observed_flux,
 #    if((np.isfinite(sigma_diff)) & (observed_wavelength[-1]<7000.)):
     if(np.isfinite(sigma_diff)):
         observed_flux_convolved=gaussian_filter1d(observed_flux_rebinned, sigma_diff)
-#        observed_flux_convolved[standard_wavelength > 4500.]=observed_flux_rebinned[standard_wavelength > 4500.]
-        if((observed_wavelength[0]>5000.)): #For red ccds, convolve spectra only below 6500A
-            observed_flux_convolved[standard_wavelength > 6500.]=observed_flux_rebinned[standard_wavelength > 6500.]
+        observed_flux_convolved[standard_wavelength > 4500.]=observed_flux_rebinned[standard_wavelength > 4500.]
+#    if(np.isfinite(sigma_diff)):
+#        if((observed_wavelength[0]>5000.)): #For red ccds, convolve spectra only below 6500A
+#            observed_flux_convolved[standard_wavelength > 6500.]=observed_flux_rebinned[standard_wavelength > 6500.]
         ratio1 = standard_flux / observed_flux_convolved
 
     if smooth == 'gauss':
@@ -1120,16 +1187,17 @@ def take_ratio(standard_flux, standard_wavelength, observed_flux,
 #    ratio = 1.0 / np.interp(observed_wavelength, standard_wavelength, 1.0 / ratio2)
     ratio = np.interp(observed_wavelength, standard_wavelength,ratio2)
 
-    f0 = open('/storage2/sree/hector/dr/v2/take_ratio.txt', 'w')
-    f0.write('# ind ratio\n')
-    for r1,w1 in zip(ratio1,standard_wavelength):
-        f0.write('r1 '+str(w1)+' '+str(r1)+'\n')
-    for r2,w2 in zip(ratio2,standard_wavelength):
-        f0.write('r2 '+str(w2)+' '+str(r2)+'\n')
-    for r,w in zip(ratio,observed_wavelength):
-        f0.write('r '+str(w)+' '+str(r)+'\n')
-    f0.close()
-
+#    f0 = open('/storage2/sree/hector/dr/v2/take_ratio.txt', 'w')
+#    f0.write('# ind ratio\n')
+#    for r1,w1 in zip(ratio1,standard_wavelength):
+#        f0.write('r1 '+str(w1)+' '+str(r1)+'\n')
+#    for r2,w2 in zip(ratio2,standard_wavelength):
+#        f0.write('r2 '+str(w2)+' '+str(r2)+'\n')
+#    for r,w in zip(ratio,observed_wavelength):
+#        f0.write('r '+str(w)+' '+str(r)+'\n')
+#    f0.close()
+#    if((observed_wavelength[0]>6000.)):
+#        stop
     return ratio
 
 def smooth_ratio(ratio, width=10.0):
@@ -2850,31 +2918,3 @@ def median_filter_nan(im,filt):
     V = im.copy()
     V[im!=im]=0
     #print(np.shape(V))
-    #print(filt)
-    VV = median_filter(V,size=filt)
-
-    W = 0*im.copy()+1
-    W[im!=im] = 0
-    WW = median_filter(W,size=filt)
-
-    im_med = VV/WW
-
-    return im_med
-
-def median_filter_nan_1d(spec,filt):
-    """Function to median filter a 1D array with correction
-    for NaN values."""
-
-    n = np.size(spec)
-
-    medspec = np.zeros(n)
-
-    hsize = int(filt/2)
-    for i in range(n):
-
-        i1 = max(0,i-hsize)
-        i2 = min(n-1,i+hsize)
-
-        medspec[i] = np.nanmedian(spec[i1:i2])
-
-    return medspec
