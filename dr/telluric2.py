@@ -21,15 +21,15 @@ def TelluricCorrectPrimary(path_list,probenum,molecfit_dir=''):
     naxis1 = header['NAXIS1']
     crpix1 = header['CRPIX1']
     wave_axis = crval1 + cdelt1 * (np.arange(naxis1) + 1 - crpix1)
-    
+
     transfer_function, sigma_transfer, corrected_flux = TelluricCorrect(path_list[1],flux_data,
                 sigma_flux,wave_axis,mf_bin_dir=molecfit_dir,primary=True)
-                
+
     uncorrected_flux = hdulist[0].data.copy()
     hdulist[0].data*= transfer_function
     hdulist[1].data = hdulist[0].data**2 * ((sigma_transfer/transfer_function)**2 +
                                             hdulist[1].data/uncorrected_flux**2)    
-    
+
     path_telluric_corrected = path_list[1].replace('red.fits','fcal.fits')
     hdulist.writeto(path_telluric_corrected,overwrite=True)
     

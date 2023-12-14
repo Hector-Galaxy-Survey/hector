@@ -762,6 +762,7 @@ def derive_transfer_function(path_list, max_sep_arcsec=60.0,
                                             molecfit_dir=molecfit_dir)
     else:
         path_list_tel = path_list
+
     # Read the observed data, in chunks
     chunked_data = read_chunked_data(path_list_tel, star_match['probenum'])
     trim_chunked_data(chunked_data, n_trim)
@@ -888,14 +889,15 @@ def derive_transfer_function(path_list, max_sep_arcsec=60.0,
                 ylim=200
             ax4.set_ylim(0,ylim)
             ax4.legend(loc='best')
+
             dest_path = path[0:path.find('/reduced')]+'/derive_TF'
             if not os.path.isdir(dest_path):
-                print('mkdir')
                 os.makedirs(dest_path)
-                print('done mkdir')
 
-            fig.savefig(dest_path+"/"+os.path.basename(path)[:10]+"_derive_TF.pdf", bbox_inches='tight')
+            fig.savefig(dest_path+"/"+star_match['name']+"_"+os.path.basename(path)[:10]+"_derive_TF.pdf", bbox_inches='tight')
             plt.close(fig)  # Close the figure object
+            print('   save debugging plot '+dest_path+"/"+star_match['name']+"_"+os.path.basename(path)[:10]+"_derive_TF.pdf")
+            
 
         #######################        
         #root = path[0:path.find('/reduced')]

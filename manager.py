@@ -6121,9 +6121,9 @@ def read_hector_tiles(abs_root=None):
                     src_path = os.path.join(root, file)
                     dest_tile_path = os.path.join(tile_path, file)
                     dest_robot_path = os.path.join(robot_path, file.replace('Tile', 'Robot'))
-                    if not os.path.exists(dest_tile_path):
-                        shutil.copy(src_path, dest_tile_path)
-                        shutil.copy(src_path.replace('Tile', 'Robot'), dest_robot_path)
+#                    if not os.path.exists(dest_tile_path):
+                    shutil.copy(src_path, dest_tile_path)
+                    shutil.copy(src_path.replace('Tile', 'Robot'), dest_robot_path)
 
 
     # Check if the files holding the tile list and secondary standards exists. If not, create.
