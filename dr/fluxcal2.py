@@ -740,14 +740,13 @@ def derive_transfer_function(path_list, max_sep_arcsec=60.0,
                              catalogues=STANDARD_CATALOGUES,
                              model_name='ref_centre_alpha_circ_hdr_cvd',
                              n_trim=0, smooth='spline',molecfit_available=False,
-                             molecfit_dir='',speed='',tell_corr_primary=False,debug=True,ncpu=10):
+                             molecfit_dir='',speed='',tell_corr_primary=False,debug=True):
     """Derive transfer function and save it in each FITS file."""
     # First work out which star we're looking at, and which hexabundle it's in
     # MLPG (change back): changed model_name = ref_centre_alpha_circ_hdr_cvd (original = ref_centre_alpha_dist_circ_hdratm)
     # cvd_model added
     # cvd_parameters keyword added to various function call withint this routine (e.g. fit_model_flux, extract_flux)
     import matplotlib.pyplot as plt
-
     star_match = match_standard_star(
         path_list[0], max_sep_arcsec=max_sep_arcsec, catalogues=catalogues)
     if star_match is None:
@@ -897,11 +896,7 @@ def derive_transfer_function(path_list, max_sep_arcsec=60.0,
             fig.savefig(dest_path+"/"+star_match['name']+"_"+os.path.basename(path)[:10]+"_derive_TF.pdf", bbox_inches='tight')
             plt.close(fig)  # Close the figure object
             print('   save debugging plot '+dest_path+"/"+star_match['name']+"_"+os.path.basename(path)[:10]+"_derive_TF.pdf")
-            
-
         #######################        
-        #root = path[0:path.find('/reduced')]
-        #py.savefig(root[0]+"/derive_TF.pdf", bbox_inches='tight')
     return
 
 def match_standard_star(filename, max_sep_arcsec=60.0, 
@@ -2920,3 +2915,31 @@ def median_filter_nan(im,filt):
     V = im.copy()
     V[im!=im]=0
     #print(np.shape(V))
+    #print(filt)
+    VV = median_filter(V,size=filt)
+
+    W = 0*im.copy()+1
+    W[im!=im] = 0
+    WW = median_filter(W,size=filt)
+
+    im_med = VV/WW
+
+    return im_med
+
+def median_filter_nan_1d(spec,filt):
+    """Function to median filter a 1D array with correction
+    for NaN values."""
+
+    n = np.size(spec)
+
+    medspec = np.zeros(n)
+
+    hsize = int(filt/2)
+    for i in range(n):
+
+        i1 = max(0,i-hsize)
+        i2 = min(n-1,i+hsize)
+
+        medspec[i] = np.nanmedian(spec[i1:i2])
+
+    return medspec

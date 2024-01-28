@@ -1065,7 +1065,7 @@ class Manager:
             pool.join()
 
         if os.path.exists(self.abs_root):
-            f = open(self.abs_root+'/filelist.txt', 'w')
+            f = open(self.abs_root+'/filelist_'+str(self.abs_root)[-13:]+'.txt', 'w')
             f.write('#filename  ndfclass  field  object  standrad  disabled  exposure\n')
             f.close()
 
@@ -1146,7 +1146,7 @@ class Manager:
         else:
             self.set_name(fits, trust_header=trust_header)
             print('Adding file: ', filename, fits.ndf_class, fits.plate_id, fits.name)
-            f = open(self.abs_root+'/filelist.txt', 'a')
+            f = open(self.abs_root+'/filelist_'+str(self.abs_root)[-13:]+'.txt', 'a')
             f.write(filename+' '+fits.ndf_class+' '+(fits.plate_id or 'None')+' '+(fits.name or 'None')+' '+(str(fits.spectrophotometric) or 'None')+' '+(str(fits.do_not_use) or 'None')+' '+fits.exposure_str+'\n')
             f.close()
             
@@ -2361,8 +2361,7 @@ class Manager:
                     n_trim = 0
                 inputs_list.append({'path_pair': path_pair, 'n_trim': n_trim,
                                     'model_name': model_name, 'smooth': smooth,
-                                    'speed':self.speed,'tellcorprim':self.telluric_correct_primary,
-                                    'ncpu':self.n_cpu})
+                                    'speed':self.speed,'tellcorprim':self.telluric_correct_primary})
         self.map(derive_transfer_function_pair, inputs_list)
         self.next_step('derive_transfer_function', print_message=True)
         return
@@ -5751,7 +5750,6 @@ def derive_transfer_function_pair(inputs):
     n_trim = inputs['n_trim']
     model_name = inputs['model_name']
     smooth = inputs['smooth']
-    ncpu = inputs['ncpu']
 
 #    print('Deriving transfer function for ' +
 #          os.path.basename(path_pair[0]) + ' and ' +
@@ -5760,7 +5758,7 @@ def derive_transfer_function_pair(inputs):
         fluxcal2.derive_transfer_function(
             path_pair, n_trim=n_trim, model_name=model_name, smooth=smooth,
             molecfit_available = MOLECFIT_AVAILABLE, molecfit_dir = MF_BIN_DIR,
-            speed=inputs['speed'],tell_corr_primary=inputs['tellcorprim'], ncpu=ncpu)
+            speed=inputs['speed'],tell_corr_primary=inputs['tellcorprim'])
     except ValueError:
         print('  Warning: No star found in dataframe, skipping ' +
               os.path.basename(path_pair[0]))
@@ -6121,9 +6119,9 @@ def read_hector_tiles(abs_root=None):
                     src_path = os.path.join(root, file)
                     dest_tile_path = os.path.join(tile_path, file)
                     dest_robot_path = os.path.join(robot_path, file.replace('Tile', 'Robot'))
-#                    if not os.path.exists(dest_tile_path):
-                    shutil.copy(src_path, dest_tile_path)
-                    shutil.copy(src_path.replace('Tile', 'Robot'), dest_robot_path)
+                    if not os.path.exists(dest_tile_path):
+                        shutil.copy(src_path, dest_tile_path)
+                        shutil.copy(src_path.replace('Tile', 'Robot'), dest_robot_path)
 
 
     # Check if the files holding the tile list and secondary standards exists. If not, create.
@@ -6211,7 +6209,9 @@ def read_stellar_mags():
             skiprows = 1
             delimiter = ','
             name_func = lambda d: d['name']
-        data = np.loadtxt(path, skiprows=skiprows, delimiter=delimiter,
+#        data = np.loadtxt(path, skiprows=skiprows, delimiter=delimiter,
+#                          dtype={'names': names, 'formats': formats})
+        data = np.genfromtxt(path, skip_header=skiprows, delimiter=delimiter,
                           dtype={'names': names, 'formats': formats})
         if data.shape == ():
             # Ensure data is iterable in case of only a single line
