@@ -39,6 +39,7 @@ import socket
 import glob
 import datetime
 import numpy as np
+import multiprocessing
 
 # Set up logging
 from .. import slogging
@@ -167,21 +168,24 @@ def call_2dfdr_reduce(dirname, root=None, options=None, dummy=False):
                 message = '{:%Y-%b-%d %H:%M:%S}'.format(datetime.datetime.now())+" 2dfdr did not run to completion for command: %s" % " ".join(command_line)
                 print("Error has occured! Should check "+root+"/tdfdr_failure.txt")
                 print("   "+message)
+                lock = multiprocessing.Lock()
                 if os.path.exists(root+'/tdfdr_failure.txt'):
-                    lines = []
+                    lines = []; messages =[]
                     with open(root+'/tdfdr_failure.txt', 'r') as fail:
                         lines = np.array([line.rstrip() for line in fail])
-                        for line in lines:
-                            if message[20:].rstrip() == line[20:].rstrip():
-                                lines[np.where(line == lines)] = message
-                    f = open(root+'/tdfdr_failure.txt', 'w')
-                    for line in lines:
-                        f.write(line+'\n')
-                    f.close()
+                        if any(message[20:].rstrip() in line[20:].rstrip() for line in lines):
+                            for line in lines:
+                                if message[20:].rstrip() == line[20:].rstrip():
+                                    lines[np.where(line == lines)] = message
+                            messages = lines
+                        else:
+                            messages = np.append(np.array(lines), np.array(message))
                 else:
-                    fn = open(root+'/tdfdr_failure.txt', 'a')
-                    fn.write(message+'\n')
-                    fn.close()
+                    messages = [message]
+                with lock:
+                    with open(root+'/tdfdr_failure.txt', 'w') as fn:
+                        for message in messages:
+                            fn.write(message + '\n')
                 #raise TdfdrException(message)
 
 def call_2dfdr_gui(dirname, options=None):

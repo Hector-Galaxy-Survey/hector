@@ -963,10 +963,8 @@ class Manager:
             print('NOT applying telluric correction to primary standard stars')
 
         self.dummy = dummy
-
         self._debug = False
         self.debug = debug
-        
 
     @property
     def debug(self):
@@ -1153,7 +1151,7 @@ class Manager:
         fits.set_check_data()
         self.set_reduced_path(fits)
 
-        #ccd_4 data from 26, 27 Apr 2023, where overscan region is different but header does not point the right pixels
+        #Sree: ccd_4 data from 26, 27 Apr 2023, where overscan region is different but header does not point the right pixels
         if (fits.ccd == 'ccd_4' and fits.header['RO_PORTS'] == 'B'):
             fits.add_header_item('DETECXS', 41,'First column of detectorm, set by Hector manager')
             fits.add_header_item('DETECXE', 4136,'Last column of detector, set by Hector manager')
@@ -1162,6 +1160,24 @@ class Manager:
             fits.add_header_item('WINDOXS2', 1,'First column of window 2, set by Hector manager')
             fits.add_header_item('WINDOXE2', 40,'Last column of window 2, set by Hector manager')
             print('    DETECX? and WINDOX?? keywords have been modified having RO_PORTS=B from',fits.filename)
+
+        #Sree (Feb 2024): A bias column is artificially added in ccd_4 at x = 2048 for Hector
+        #Here we make a modification before it is permanantly fixed
+        #TODO: should change fits.epoch range once the issue has been fixed
+        try:
+            biascol_modified = fits.header['BIASCOL']
+        except KeyError:
+            biascol_modified = 'F'
+        if ((fits.epoch > 2022.0) and (fits.epoch < 2023.99) and (fits.ccd == 'ccd_4') and biascol_modified != 'T'):
+            new_path = os.path.join(fits.raw_dir, (fits.filename[:10]+'_original.fits'))
+            if not os.path.exists(new_path):
+                shutil.copy2(fits.raw_path, new_path)
+            # relocate the bias column x=2048 to the end of the image and shift the image to the left by 1 pixel from x=2049
+            hdulist = pf.open(fits.raw_path, 'update'); image = hdulist[0].data
+            bias_col = image[:,2048].copy(); image[:,2048:-1] = image[:, 2049:]; image[:, -1] = bias_col
+            hdulist.flush(); hdulist.close()
+            fits.add_header_item('BIASCOL', 'T','BIAS column at x=2048 is removed by manager')
+            print('  remove bias colume at x=2048 from '+fits.filename)
 
         if not fits.do_not_use:
             fits.make_reduced_link()
@@ -1915,12 +1931,11 @@ class Manager:
             kwargs_copy = dict(kwargs)
 
         if ((self.use_twilight_flat_blue and do_twilight) or self.use_twilight_flat_all):
-            fits_twilight_list = []
             if(self.use_twilight_flat_blue and do_twilight):
-                ccdname = ['ccd_1','ccd_3']
+                ccdlist = ['ccd_1','ccd_3']
                 print('Processing twilight frames for ccd1 and ccd3 to get fibre flat field')
             if(self.use_twilight_flat_all):
-                ccdname = ['ccd_1','ccd_2','ccd_3','ccd_4']
+                ccdlist = ['ccd_1','ccd_2','ccd_3','ccd_4']
                 print('Processing twilight frames for *all* ccds to get fibre flat field for testing')
 
             # The twilights should already have been copied as MFFFF
@@ -1931,9 +1946,10 @@ class Manager:
             # placed in the list fits_twilight_list and then can be
             # processed as normal MFFFF files.
 
-            for nccd in ccdname:
-                for fits in self.files(ndf_class='MFSKY', do_not_use=False, ccd=nccd, **kwargs): 
-                    #marie does it need to be **kwargs or **kwargs_copy??? SAMI has **kwargs here. Why did I change this?
+            for nccd in ccdlist:
+                fits_twilight_list = []
+                for fits in self.files(ndf_class='MFSKY', do_not_use=False, ccd=ccdlist, **kwargs):
+                    #TODO: does it need to be **kwargs or **kwargs_copy??? SAMI has **kwargs here. Why did I change this?
                     fits_twilight_list.append(self.copy_as(fits, 'MFFFF', overwrite=overwrite))
 
                 # use the iterable file reducer to loop over the copied twilight list and
@@ -1975,9 +1991,9 @@ class Manager:
         # Send all the sky frames to the improved wavecal routine then
         # apply correction to all the blue arcs
         if  self.improve_blue_wavecorr:
-           # ccdname = ['ccd_1','ccd_3']
-            ccdname = ['ccd_1'] #TODO: the correction make it worst for Spector. Now it is turned off for Spector but I will revisit this.
-            for nccd in ccdname:
+           # ccdlist = ['ccd_1','ccd_3']
+            ccdlist = ['ccd_1'] #TODO:Sree: the correction make it worst for Spector. Now it is turned off for Spector but I will revisit this.
+            for nccd in ccdlist:
                 file_list_tw = []
                 for f in file_list:
                     if f.ccd == nccd:
@@ -2213,19 +2229,19 @@ class Manager:
                     if fin:
                         update_checks(check, [fits], False)
 
-            input_list = [item for i, item in enumerate(input_list)
+                input_list = [item for i, item in enumerate(input_list)
                           if not finished[i]]
-        # Delete unwanted reduced files
+
+        # Delete unwanted reduced files and modified Hector ccd4 files
         for fits in reduced_files:
             if (fits.ndf_class == 'MFFFF' and tlm and not leave_reduced and os.path.exists(fits.reduced_path)):
                 os.remove(fits.reduced_path)
-                
 
         # Create dummy output if pipeline is being run in dummy mode
         if self.dummy:
             create_dummy_output(reduced_files, tlm=tlm, overwrite=overwrite)
 
-        # Data with error orwe could not reduced within timeout of 600s
+        # Data with error or we could not reduced within timeout of 600s
         tdfail = str(self.abs_root)+'/tdfdr_failure.txt'
         if os.path.exists(tdfail):
             with warnings.catch_warnings():
@@ -2335,33 +2351,33 @@ class Manager:
         # Original model name: ref_centre_alpha_circ_hdratm
         hector.manager.read_hector_tiles(abs_root=self.abs_root)
         inputs_list = []
-        ccdname = ['ccd_1','ccd_3']
-#        ccdname = ['ccd_1']
-        for nccd in ccdname:
-            for fits in self.files(ndf_class='MFOBJECT', do_not_use=False,
-                                   spectrophotometric=True, ccd=nccd, **kwargs):
-                if not overwrite:
-                    hdulist = pf.open(fits.reduced_path)
-                    try:
-                        hdu = hdulist['FLUX_CALIBRATION']
-                    except KeyError:
-                        # Hasn't been done yet. Close the file and carry on.
-                        hdulist.close()
-                    else:
-                        # Has been done. Close the file and skip to the next one.
-                        hdulist.close()
-                        continue
-                fits_2 = self.other_arm(fits)
-                path_pair = (fits.reduced_path, fits_2.reduced_path)
-                log.info(path_pair)
-                if fits.epoch < 2013.0:
-                    # SAMI v1 had awful throughput at blue end of blue, need to trim that data
-                    n_trim = 3 #how about ccd3?
+        ccdlist = ['ccd_1','ccd_3']
+#        ccdlist = ['ccd_1']
+        for fits in self.files(ndf_class='MFOBJECT', do_not_use=False,
+                               spectrophotometric=True, ccd=ccdlist, **kwargs):
+            if not overwrite:
+                hdulist = pf.open(fits.reduced_path)
+                try:
+                    hdu = hdulist['FLUX_CALIBRATION']
+                except KeyError:
+                    # Hasn't been done yet. Close the file and carry on.
+                    hdulist.close()
                 else:
-                    n_trim = 0
-                inputs_list.append({'path_pair': path_pair, 'n_trim': n_trim,
-                                    'model_name': model_name, 'smooth': smooth,
-                                    'speed':self.speed,'tellcorprim':self.telluric_correct_primary})
+                    # Has been done. Close the file and skip to the next one.
+                    hdulist.close()
+                    continue
+            fits_2 = self.other_arm(fits)
+            path_pair = (fits.reduced_path, fits_2.reduced_path)
+            log.info(path_pair)
+            if fits.epoch < 2013.0:
+                # SAMI v1 had awful throughput at blue end of blue, need to trim that data
+                n_trim = 3 #TODO: how about Hector ccd3?
+            else:
+                n_trim = 0
+            inputs_list.append({'path_pair': path_pair, 'n_trim': n_trim,
+                                'model_name': model_name, 'smooth': smooth,
+                                'speed':self.speed,'tellcorprim':self.telluric_correct_primary})
+        print(inputs_list)
         self.map(derive_transfer_function_pair, inputs_list)
         self.next_step('derive_transfer_function', print_message=True)
         return
@@ -2441,8 +2457,8 @@ class Manager:
         # First make the list of file pairs to correct
         # MLPG: adding new model name = ref_centre_alpha_circ_hdr_cvd
         inputs_list = []
-        ccdname = ['ccd_2','ccd_4']
-        for nccd in ccdname:
+        ccdlist = ['ccd_2','ccd_4']
+        for nccd in ccdlist:
              for fits_2 in self.files(ndf_class='MFOBJECT', do_not_use=False,
                                       spectrophotometric=False, ccd=nccd,
                                       name=name, **kwargs):
@@ -2470,6 +2486,7 @@ class Manager:
                          'TRANSFERcombined.fits')
                      # For September 2012, secondary stars were often not in the
                      # hexabundle at all, so use the theoretical airmass scaling
+                     # The same happened for Hector until Sep 2022.
                      if (fits_2.epoch < 2012.75) or ((fits_2.epoch > 2021.0) and (fits_2.epoch < 2022.75)):
                          scale_PS_by_airmass = True
                      else:
@@ -3086,9 +3103,9 @@ class Manager:
                     **kwargs):
         """Scale datacubes based on the stellar g magnitudes."""
 
-        ccdname = ['ccd_1','ccd_3']
-        #ccdname = ['ccd_1'] #TODO: Sree: this line should be removed. it is for testing.
-        for nccd in ccdname:
+        ccdlist = ['ccd_1','ccd_3']
+        #ccdlist = ['ccd_1'] #TODO: Sree: this line should be removed. it is for testing.
+        for nccd in ccdlist:
              groups = self.group_files_by(
                  'field_id', ccd=nccd, ndf_class='MFOBJECT', do_not_use=False,
                  reduced=True, name=name, include_linked_managers=True, **kwargs)
@@ -3140,9 +3157,9 @@ class Manager:
     def bin_cubes(self, overwrite=False, min_exposure=599.0, name='main',
                   min_transmission=0.333, max_seeing=4.0, tag=None, **kwargs):
         """Apply default binning schemes to datacubes."""
-        path_pair_list = []
-        ccdname = ['ccd_1','ccd_3']
-        for nccd in ccdname:
+        ccdlist = ['ccd_1','ccd_3']
+        for nccd in ccdlist:
+            path_pair_list = []
             groups = self.group_files_by(
                 'field_id', ccd=nccd, ndf_class='MFOBJECT', do_not_use=False,
                 reduced=True, name=name, include_linked_managers=True, **kwargs)
@@ -3233,8 +3250,8 @@ class Manager:
                              include_gzipped=False, **kwargs):
         """Create aperture spectra."""
         print('Producing aperture spectra')
-        ccdname = ['ccd_1','ccd_3']
-        for nccd in ccdname:
+        ccdlist = ['ccd_1','ccd_3']
+        for nccd in ccdlist:
             path_pair_list = []
             groups = self.group_files_by(
                 'field_id', ccd=nccd, ndf_class='MFOBJECT', do_not_use=False,
@@ -3268,8 +3285,8 @@ class Manager:
     def record_dust(self, overwrite=False, min_exposure=599.0, name='main',
                     min_transmission=0.333, max_seeing=4.0, tag=None, **kwargs):
         """Record information about dust in the output datacubes."""
-        ccdname = ['ccd_1','ccd_3']
-        for nccd in ccdname:
+        ccdlist = ['ccd_1','ccd_3']
+        for nccd in ccdlist:
             groups = self.group_files_by(
                 'field_id', ccd=nccd, ndf_class='MFOBJECT', do_not_use=False,
                 reduced=True, name=name, include_linked_managers = True, **kwargs)
