@@ -80,7 +80,7 @@ import datetime
 import pylab as py
 import matplotlib
 matplotlib.use('Agg')
-#import matplotlib.pyplot as plt
+import matplotlib.pyplot as plt
 
 from multiprocessing import Process
 
@@ -746,7 +746,6 @@ def derive_transfer_function(path_list, max_sep_arcsec=60.0,
     # MLPG (change back): changed model_name = ref_centre_alpha_circ_hdr_cvd (original = ref_centre_alpha_dist_circ_hdratm)
     # cvd_model added
     # cvd_parameters keyword added to various function call withint this routine (e.g. fit_model_flux, extract_flux)
-    import matplotlib.pyplot as plt
     star_match = match_standard_star(
         path_list[0], max_sep_arcsec=max_sep_arcsec, catalogues=catalogues)
     if star_match is None:
@@ -792,45 +791,10 @@ def derive_transfer_function(path_list, max_sep_arcsec=60.0,
         observed_flux, observed_background, sigma_flux, sigma_background = \
             extract_total_flux(ifu, psf_parameters, model_name, cvd_parameters=cvd_parameters)
 
-        #######################
-        # MLPG: Diagnostic plot showing extracted flux versus summed flux, saved in
-        # the data reduction location
-        # TODO: make this plot only if the user invokes debug command
-        # fig = py.figure()
-        # ax1 = fig.add_subplot(211)
-        # ax2 = fig.add_subplot(212)
-        #
-        # data, wavelength = ifu.data, ifu.lambda_range
-        # good_fibre = (ifu.fib_type == 'P')
-        # data = data[good_fibre, :]
-        # data = nansum(data, axis=0)
-        #
-        # ax1.plot(wavelength, data, 'b', alpha=0.5, label='Summed')
-        # ax1.plot(ifu.lambda_range, observed_flux, 'r', alpha=0.5, label='Extracted')
-        #
-        # f = interp1d(wavelength, data)
-        # ax2.plot(ifu.lambda_range, observed_flux/f(ifu.lambda_range), 'g', alpha=0.5, label='Extracted/Summed')
-        # ax2.plot(ifu.lambda_range, np.repeat(1.0, len(ifu.lambda_range)), 'k--', alpha=0.5, label='Extracted/Summed')
-        # ax2.set_ylim(-0.8, 2.5)
-        #
-        # fig.legend(loc='best')
-        # ax1.set(xlabel='Wavelength (Ang.)', ylabel='flux', title=os.path.basename(path))
-        # py.savefig(f"{os.path.basename(path)}_derive_TF.png", bbox_inches='tight')
-        #######################
-
         save_extracted_flux(path2, observed_flux, observed_background,
                             sigma_flux, sigma_background,
                             star_match, psf_parameters, model_name,
                             good_psf)
-#        print('dr.derive_transfer_function: lambda_range',ifu.lambda_range,' smooth',smooth,'path_list', path2)
-
-#        f0 = open('/storage2/sree/hector/dr/v2/transfer.txt', 'w')
-#        f0.write('# standard wavelength flux\n')
-##        for wave,flux in zip(ifu.lambda_range,observed_flux):
-#            f0.write('O '+str(wave)+' '+str(flux)+'\n')        
-#        for wave,flux in zip(standard_data['wavelength'],standard_data['flux']):
-#            f0.write('S '+str(wave)+' '+str(flux)+'\n')
-#        f0.close()
 
         transfer_function = take_ratio(
             standard_data['flux'],
@@ -2943,3 +2907,136 @@ def median_filter_nan_1d(spec,filt):
         medspec[i] = np.nanmedian(spec[i1:i2])
 
     return medspec
+
+def calculate_mean_transfer(path_in, path_root):
+    """
+    Sree: Calculate and return the mean transfer function over the past year.
+
+    Inputs:
+    `path_in' - path for a transfer function from a run on reduction 
+        e.g. /your_path/231106_231119/reduced/231107/H01_T191/H01_T191_F0/LTT1788/ccd_1/TRANSFERcombined.fits
+    `path_root' - working directory of the run
+        e.g. /your_path/231106_231119
+
+    """
+    import re
+    match = re.search(r'ccd_(\d+)', path_in);  ccd = match.group(1)
+    date_start = os.path.basename(path_root)[7:13]
+
+    print('Calculate median TF for ccd'+ccd)
+    print('  Given path for the current TF: ',path_in)
+    print('  Calculate mean TF using the TF from the following runs:')
+
+    #find the run lists to consider for the tansfer function within a 1 year window
+    tmp_list = np.array(os.listdir(os.path.dirname(path_root)))
+    run_list_all = [x for x in tmp_list if (len(x)==13) and (x[6] == '_')]
+    run_list = []
+    for x in run_list_all:
+        if (np.abs(int(date_start)-int(x[7:13])) < 10000) and (np.abs(int(date_start)-int(x[7:13])) >0) and int(x[7:13]) > 230101:
+            run_list.append(x)
+    print('    ',run_list)
+
+    #find TRANSFERcombined.fits from each run
+    transfer_name = 'TRANSFERcombined.fits'
+    transfer_found = []; use_median = False
+    for run in run_list:  
+        target_dir = os.path.dirname(path_root)+'/'+run+'/reduced/'
+        for root, dirs, files in os.walk(target_dir):
+            if(('/ccd_'+str(ccd) in root) and ('main' not in root) and ('outdir' not in root)):
+                for file in files:
+                    if file == transfer_name:
+                        transfer_found.append(os.path.join(root, file))
+                        break  
+                else:
+                    continue
+                break
+        else:
+            continue
+        continue
+   
+    #read transfer function from each run
+    n_file = len(transfer_found); n_pixel = pf.getval(transfer_found[0], 'NAXIS1')
+    transfer_array = np.zeros((n_file, n_pixel))
+    for i in range(n_file):
+        transfer_array[i,:] = pf.getdata(transfer_found[i])
+
+    #TF from this run
+    try: 
+        current_tf = np.array(pf.getdata(path_in))
+        try: #This is already a median TF copied previously
+            if pf.getval(path_in, 'MEDTF'):
+                use_median = True
+        except KeyError:
+            pass
+    except FileNotFoundError: #when there is no available primary standard star and no TF file
+        copyfile(transfer_found[0], path_in)
+        prPurple('  Given file is not found. Copy '+transfer_found[0]+' as current TF')
+        use_median = True
+        current_tf = np.array(pf.getdata(path_in))
+
+    # exclude pixels in the edgewith TF exceeding 50
+    mask = np.nanmedian(transfer_array,axis=0) < 50
+    continuous_regions = np.where(np.diff(np.concatenate(([False], mask, [False]))) == 1)[0].reshape(-1, 2)
+    continuous_regions = continuous_regions[(continuous_regions[:, 1] - continuous_regions[:, 0]) >= 1000]
+    badpixels = np.where((np.arange(n_pixel) < continuous_regions[0][0]) | (np.arange(n_pixel) > continuous_regions[0][1]))[0]
+    transfer_array[:,badpixels] = np.nan
+    current_tf[badpixels] = np.nan
+
+    # 3-sigma clipping to exclude outliers in TF
+    std_tf_eachrow = np.nanstd(transfer_array, axis=1)
+    ind = np.ones(n_file); med_tf = np.nanmean(transfer_array, axis=1); std_tf = np.std(med_tf[ind>0]); pcount = n_file+1
+    ind[med_tf == np.max(med_tf)] = 0 #exclude maximum TF
+    while True:
+        std_tf = np.std(med_tf[ind>0])
+        ind[med_tf > np.median(med_tf[ind>0])+3*std_tf] = 0 #3 sigma clipping
+        ind[std_tf_eachrow > np.nanstd(np.median(transfer_array[ind>0,:],axis=0))*10] =0 #exclude TF with large variations
+        ncount = np.count_nonzero(ind)
+        if ncount == pcount:
+            break
+        pcount = ncount
+    with warnings.catch_warnings():
+    # We get lots of invalid value warnings arising because of divide by zero errors.
+        warnings.filterwarnings('ignore', message="All-NaN slice encountered")
+        median_tf = np.nanmedian(transfer_array[ind>0,:],axis=0)
+    print('  ccd_'+ccd+' (current TF / median TF): ',np.nanmedian(current_tf / median_tf))
+
+#    print(std_tf_eachrow, np.nanstd(np.median(transfer_array[ind>0,:], axis=0)))
+#    print(ccd, med_tf, np.median(med_tf[ind>0]), std_tf, np.median(med_tf[ind>0]) + 3 * std_tf,np.min(med_tf) + 3 * std_tf, ind)
+
+    #dibbuging plots
+    #fig, (ax1) = plt.subplots(figsize=(8, 10))
+    fig, (ax1,ax2) = plt.subplots(2,1,figsize=(8, 12))
+    ax1.set(ylabel='Transfer Function', title=os.path.basename(path_root)+': ccd'+ccd+' TF from each run')
+    colors = ['b', 'g', 'c', 'm', 'y','brown', 'teal', 'navy', 'olive', 'lime', 'maroon', 'gold', 'silver', 'indigo', 'orange', 'purple']
+    for i in range(n_file):
+        li = '--' if ind[i] == 0 else '-'
+        ax1.plot(transfer_array[i,:], colors[i % len(colors)], alpha=0.5, label=run_list[i],linewidth=2,linestyle=li)
+    ax1.plot(median_tf, 'r', alpha=0.5, label='median TF',linewidth=2)
+    li = '-'; 
+    if (np.nanmean(current_tf)>np.median(med_tf[ind > 0])+3*std_tf) or (np.nanstd(current_tf)>np.nanstd(median_tf)*10.) or (np.nanmedian(current_tf/median_tf)>1.1) or use_median:
+        li = '--'; use_median = True #use median TF instead of current TF for the rest of reduction
+    ax1.plot(current_tf, 'black', alpha=0.5, label='current TF',linewidth=2, linestyle=li)
+    ax1.text(0.5, 0.4, '--- is excluded', ha='center', va='center', transform=ax1.transAxes, fontsize=14, color='black')
+    ylim = min(np.nanmax(current_tf) * 1.2, 100); ax1.set_ylim(0,ylim); ax1.legend(loc='best')
+
+    ax2.set(ylabel='TF / median TF', title='current TF/median TF ='+str(np.nanmedian(current_tf / median_tf)))
+    for i in range(n_file):
+        li = '--' if ind[i] == 0 else '-'
+        ax2.plot(transfer_array[i,:]/median_tf, colors[i % len(colors)], alpha=0.5, label=run_list[i],linewidth=2,linestyle=li)
+    li = '-';
+    if use_median:
+        li = '--'
+        ax2.text(0.5, 0.4, 'median TF will be used for this run', ha='center', va='center', transform=ax2.transAxes, fontsize=14, color='black')
+        prPurple('  *** median TF will be used for this run')
+    ax2.plot(current_tf/median_tf, 'black', alpha=0.5, label='current TF',linewidth=2, linestyle=li)
+    ax2.set_ylim(0.,2); ax2.legend(loc='best')
+
+    dest_path = path_root+'/derive_TF'
+    if not os.path.isdir(dest_path):
+        os.makedirs(dest_path)
+    
+    print('  Save debugging plot '+dest_path+"/median_TF_"+os.path.basename(path_root)+"_ccd"+ccd+".pdf")
+    fig.savefig(dest_path+"/median_TF_"+os.path.basename(path_root)+"_ccd"+ccd+".pdf", bbox_inches='tight')
+    plt.close(fig)  # Close the figure object
+
+    return median_tf, use_median

@@ -2377,12 +2377,11 @@ class Manager:
             inputs_list.append({'path_pair': path_pair, 'n_trim': n_trim,
                                 'model_name': model_name, 'smooth': smooth,
                                 'speed':self.speed,'tellcorprim':self.telluric_correct_primary})
-        print(inputs_list)
         self.map(derive_transfer_function_pair, inputs_list)
         self.next_step('derive_transfer_function', print_message=True)
         return
 
-    def combine_transfer_function(self, overwrite=False, **kwargs):
+    def combine_transfer_function(self, overwrite=False, use_median_TF=False, **kwargs):
         """Combine and save transfer functions from multiple files."""
 
         # First sort the spectrophotometric files into date/field/CCD/name
@@ -2395,6 +2394,13 @@ class Manager:
         # revise grouping of standards, so that we average over all the
         # standard star observations in the run.  Only group based on ccd.
         # (SMC 17/10/2019)
+        # Sree(22/Mar/2024): it now automatically calculate median TF 
+        # within 1 year window and applies median TF when current TF/median TF > 1.05
+        # Or users can specify use_median_TF=True
+        # Diagnostic figures are shown derive_TF/median_TF_(basename)_ccdX.fits
+
+        import matplotlib.pyplot as plt
+
         groups = self.group_files_by(('ccd'),
                                      ndf_class='MFOBJECT', do_not_use=False,
                                      spectrophotometric=True, **kwargs)
@@ -2404,7 +2410,7 @@ class Manager:
             path_out = os.path.join(os.path.dirname(path_list[0]),
                                     'TRANSFERcombined.fits')
             if overwrite or not os.path.exists(path_out):
-                print('Combining files to create', path_out)
+                print('\nCombining files to create', path_out)
                 fluxcal2.combine_transfer_functions(path_list, path_out)
                 # Run the QC throughput measurement
                 if os.path.exists(path_out):
@@ -2412,6 +2418,22 @@ class Manager:
 
                 # Since we've now changed the transfer functions, mark these as needing checks.
                 update_checks('FLX', fits_list, False)
+
+            #Sree (Mar 2024): compare the current TF with median TF over the past year
+            #If current TF/median TF > 1.1, we use median TF instead of the current TF from the run
+            #TODO: this is an additional task having issues on extracting standard star flux.
+            #this step might be skipped, if we can confirm our flux extraction is accurate enough.
+            median_tf, use_median = fluxcal2.calculate_mean_transfer(path_out,self.abs_root)
+            if (use_median or use_median_TF):
+                with pf.open(path_out, mode='update') as hdul:
+                    #replace the TF with median TF
+                    hdul[0].data = median_tf
+                    hdul[0].header.set('MEDTF',True,'This is replaced by the median TF')
+                    hdul.pop() #remove existing THROUGHPUT extension
+                    hdul[1].header['ORIGFILE'] = os.path.basename(path_list[0])
+                    hdul.writeto(path_out, overwrite=True)
+                #update the QC throughput measurement too, so it does not affect thput calcumation
+                self.qc_throughput_spectrum(path_out)
 
             # Copy the file into all required directories for each standard stars (e.g. LTT1788)
             paths_with_copies = [os.path.dirname(path_list[0])]
@@ -3096,6 +3118,7 @@ class Manager:
                     and seeing <= max_seeing
                     and fits.exposure >= min_exposure):
                 good_fits_list.append(fits)
+            print('qc_for_cubing:',transmission, seeing, fits.exposure)
         return good_fits_list
 
     def scale_cubes(self, overwrite=False, min_exposure=599.0, name='main',
@@ -3164,30 +3187,37 @@ class Manager:
                 'field_id', ccd=nccd, ndf_class='MFOBJECT', do_not_use=False,
                 reduced=True, name=name, include_linked_managers=True, **kwargs)
             for (field_id,), fits_list in groups.items():
+                print(fits_list)
                 table = pf.getdata(fits_list[0].reduced_path, 'FIBRES_IFU')
                 objects = table['NAME'][table['TYPE'] == 'P']
                 objects = np.unique(objects).tolist()
                 objects = [obj.strip() for obj in objects]  # Strip whitespace from object names
                 for objname in objects:
+                    print(objname)
                     path_pair = [
                         self.cubed_path(objname, arm, fits_list, field_id,
                                         exists=True, min_exposure=min_exposure,
                                         min_transmission=min_transmission,
                                         max_seeing=max_seeing, tag=tag,gzipped=False)
                         for arm in ('blue', 'red')]
+                    print(path_pair)
                     if path_pair[0] and path_pair[1]:
                         if ('.gz' in path_pair[0]) or ('.gz' in path_pair[1]):
                             skip = True
                             continue
                         skip = False
+                        print(skip)
                         if not overwrite:
                             hdulist = pf.open(path_pair[0])
                             for hdu in hdulist:
                                 if hdu.name.startswith('BINNED_FLUX'):
                                     skip = True
                                     break
+                        print(skip)
                         if not skip:
                             path_pair_list.append(path_pair)
+            print(path_pair_list)
+
             self.map(bin_cubes_pair, path_pair_list)
         self.check_extensions(n=14) 
         self.next_step('bin_cubes', print_message=True)
@@ -3532,7 +3562,10 @@ class Manager:
                 break
             hdulist_mean.close()
         else:
-            print('  Warning: No mean throughput file found for QC checks.')
+            prRed('  Warning: No mean throughput file found for QC checks.')
+            print('     mean throughput file:', path_mean)
+            print('     mean throughput start, finish: ',header['DATESTRT'],header['DATEFNSH'])
+            print('     epoch of '+file_input+': ',epoch)
             found_mean = False
         if found_mean:
             relative_throughput = absolute_throughput / mean_throughput
@@ -4296,6 +4329,7 @@ class Manager:
         if tag:
             path += '_' + tag
         path += '.fits'
+        print('path1',path)
         if gzipped:
             path = path + '.gz'
         if exists:
@@ -4303,6 +4337,7 @@ class Manager:
                 path = self.cubed_path(name, arm, fits_list, field_id,
                                        gzipped=(not gzipped), exists=False,
                                        tag=tag, **kwargs)
+                print('path2',path)
                 if not os.path.exists(path):
                     return None
         return path
@@ -5768,9 +5803,6 @@ def derive_transfer_function_pair(inputs):
     model_name = inputs['model_name']
     smooth = inputs['smooth']
 
-#    print('Deriving transfer function for ' +
-#          os.path.basename(path_pair[0]) + ' and ' +
-#          os.path.basename(path_pair[1]))
     try:
         fluxcal2.derive_transfer_function(
             path_pair, n_trim=n_trim, model_name=model_name, smooth=smooth,
