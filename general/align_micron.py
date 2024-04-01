@@ -149,7 +149,7 @@ ARCSEC_TO_MICRON = 1000.0 / 15.2
 
 ifus=[1,2,3,4,5,6,7,8,9,10,11,12,13 ,14,15,16,17,18,19,20,21]
 
-def find_dither(RSSname,reference,centroid=True,inter=False,plot=False,remove_files=True,
+def find_dither(RSSname,reference,centroid=True,inter=False,plot=False,remove_files=False,
                 do_dar_correct=True,do_cvd_correct=True,plateCentre=None,max_shift=350.0,use_iraf=False):
       
       
@@ -314,7 +314,6 @@ def find_dither(RSSname,reference,centroid=True,inter=False,plot=False,remove_fi
              sigma_clip= 2.
              
              while True: 
-
                 if use_iraf:
                     iraf.images.immatch.geomap(input=file_geoin,database=file_geodb,xmin="INDEF",ymin="INDEF",xmax="INDEF",ymax="INDEF",results=file_stats,xxorder=2.,yyorder=2.,xyorder=2.,yxorder=2.,
                                 fitgeom='rscale', function='polynomial', interactive=inter, maxiter=10., reject=sigma_clip,verbose=0)
@@ -331,13 +330,18 @@ def find_dither(RSSname,reference,centroid=True,inter=False,plot=False,remove_fi
                     rms = np.sqrt(xrms**2 + yrms**2)
 
                 else:
+                    print(name)
                     coords_in = np.array([xin,yin]).T
                     coords_ref = np.array([xref,yref]).T
                     fit, good, n_good = fit_transform([0, 0, 0, 0], coords_in, coords_ref, sigma_clip=sigma_clip, good=good)
                     coords_fit = plate_scale_model(fit[0], coords_ref)
                     delta = coords_fit - coords_in
-                    xrms = np.sqrt(np.mean(delta[good, 0]**2))
-                    yrms = np.sqrt(np.mean(delta[good, 1]**2))
+                    if n_good > 0:
+                        xrms = np.sqrt(np.mean(delta[good, 0]**2))
+                        yrms = np.sqrt(np.mean(delta[good, 1]**2))
+                    else:
+                        xrms = np.sqrt(np.mean(delta[:, 0]**2))
+                        yrms = np.sqrt(np.mean(delta[:, 1]**2))
                     rms = np.sqrt(xrms**2 + yrms**2)
                         
                 ## Check if the rms is lower than 50 micron. 
@@ -512,18 +516,15 @@ def plate_scale_model_residuals(p,off,ref):
 
 def fit_transform(p0, coords_in, coords_ref, sigma_clip=None, good=None):
     """Fit a coordinate transform to get from coords_ref to coords_in."""
-    print(coords_in,coords_ref)
     fit = (p0, 0)
     if good is None:
         good = np.ones(len(coords_in), bool)
     while True:
         n_good = np.sum(good)
-        if n_good == 0:
+        #if n_good == 0:
+        if n_good < 4: #Sree: n_good < len(fit[0]) = 4 gives error from leasteq
             break
-        print(n_good)
-        print('h1',plate_scale_model_residuals)
-        print('fit',fit)
-        print('good',good)
+        #print('leastsq',plate_scale_model_residuals, fit[0],coords_in[good, :],coords_ref[good, :])
         fit = leastsq(plate_scale_model_residuals, fit[0], 
                       args=(coords_in[good, :], coords_ref[good, :]))
         if sigma_clip is not None:
