@@ -383,24 +383,24 @@ def dar_correct(ifu_list, xfibre_all, yfibre_all, method='simple',update_rss=Fal
 
 def other_arm(filename):
     """Return the FITSFile from the other arm of the spectrograph."""
-    if 'ccd_1' in filename:
-        other_number = '2'
-        other_filename = (filename[:-13] + other_number + filename[-12:]).replace("ccd_1", "ccd_" + other_number)
-        return filename, other_filename
-    elif 'ccd_2' in filename:
-        other_number = '1'
-        other_filename = (filename[:-13] + other_number + filename[-12:]).replace("ccd_2", "ccd_" + other_number)
-        return other_filename, filename
-    elif 'ccd_3' in filename:
-        other_number = '4'
-        other_filename = (filename[:-13] + other_number + filename[-12:]).replace("ccd_3", "ccd_" + other_number)
-        return filename, other_filename
-    elif 'ccd_4' in filename:
-        other_number = '3'
-        other_filename = (filename[:-13] + other_number + filename[-12:]).replace("ccd_4", "ccd_" + other_number)
-        return other_filename, filename
-    else:
+    #Sree (1 Apr 2024): it is modified to apply both sci and fits files.
+    import re
+    match = re.search(r'ccd_(\d)', filename)
+    if not match:
         raise ValueError('Unrecognised CCD: ' + filename)
+
+    transform_dict = {'1': '2', '2': '1', '3': '4', '4': '3'}
+    ccd_part = filename.split('/')[-2]  #e.g. ccd_1
+    file_part = filename.split('/')[-1] #e.g. 27aug10007fcal.fits
+    current_ccd = ccd_part[-1]
+    other_ccd = transform_dict[current_ccd]
+    new_ccd_part = f"ccd_{other_ccd}"
+    new_file_part = re.sub(r'(\d{2})([a-zA-Z]{3})' + re.escape(current_ccd),
+                                lambda m: f"{m.group(1)}{m.group(2)}{other_ccd}",
+                                filename.split('/')[-1])
+    other_filename = filename.replace(ccd_part, new_ccd_part).replace(file_part, new_file_part)
+    return filename, other_filename
+#        raise ValueError('Unrecognised CCD: ' + filename)
 
 
 def cvd_correct(ifu_list, files, xfibre_all, yfibre_all, update_rss=False, plateCentre=None):
@@ -583,19 +583,19 @@ def dithered_cube_from_rss_wrapper(files, name, size_of_grid=50,
                 os.remove(path)
 
     # Call dithered_cube_from_rss to create the flux, variance and weight cubes for the object.
-    #try:
-    flux_cube, var_cube, weight_cube, diagnostics, covariance_cube, covar_locs = \
-        dithered_cube_from_rss(
-            ifu_list, files, size_of_grid=size_of_grid,
-            output_pix_size_arcsec=output_pix_size_arcsec,
-            drop_factor=drop_factor, clip=clip, do_clip_by_fibre=do_clip_by_fibre, plot=plot,
-            offsets=offsets, covar_mode=covar_mode,
-            do_dar_correct=do_dar_correct, do_cvd_correct=do_cvd_correct, clip_throughput=clip_throughput,
-            update_tol=update_tol, plateCentre=plateCentre)
+    try:
+        flux_cube, var_cube, weight_cube, diagnostics, covariance_cube, covar_locs = \
+            dithered_cube_from_rss(
+                ifu_list, files, size_of_grid=size_of_grid,
+                output_pix_size_arcsec=output_pix_size_arcsec,
+                drop_factor=drop_factor, clip=clip, do_clip_by_fibre=do_clip_by_fibre, plot=plot,
+                offsets=offsets, covar_mode=covar_mode,
+                do_dar_correct=do_dar_correct, do_cvd_correct=do_cvd_correct, clip_throughput=clip_throughput,
+                update_tol=update_tol, plateCentre=plateCentre)
 
-    #except Exception:
-    #    print "Cubing Failed."
-    #    continue
+    except Exception:
+        #print ("Cubing Failed.")
+        return
 
     # Write out FITS files.
     if write==True:
@@ -720,11 +720,13 @@ def dithered_cube_from_rss(ifu_list, files, size_of_grid=50, output_pix_size_arc
     #      for the galaxy position from the gaussian fit (e.g., everything is now on 
     #      the same coordiante system.
     #
+    if(ifu_list[0].hexabundle_name[0] == 'M'):
+        return
 
     for j in range(n_obs):
-
         # Get the data.
         galaxy_data=ifu_list[j]
+
         
         # Smooth the spectra and median.
         data_smoothed=np.zeros_like(galaxy_data.data)
@@ -768,6 +770,7 @@ def dithered_cube_from_rss(ifu_list, files, size_of_grid=50, output_pix_size_arc
 
         if (offsets == 'fit'):
             # Fit parameter estimates from a crude centre of mass
+            print('fit.name',ifu_list[0].name, ifu_list[0].hexabundle_name)
             com_distr=utils.comxyz(x_good,y_good,data_good)
         
             # First guess sigma
@@ -1142,10 +1145,10 @@ def dithered_cube_from_rss(ifu_list, files, size_of_grid=50, output_pix_size_arc
     var_cube_unprimed = var_cube / (weight_cube * weight_cube)
 
     #Print out the dimension before cropping #Susie's code resizing cubes
-    print('Dimension flux before cropping: ',np.shape(flux_cube_unprimed))
-    print('Dimension var before cropping: ',np.shape(var_cube_unprimed))
-    print('Dimension weight before cropping: ', np.shape(weight_cube))
-    print('Dimension covariance before cropping: ', np.shape(covariance_array))
+    print(' Dimension flux before cropping: ',np.shape(flux_cube_unprimed))
+    print(' Dimension var before cropping: ',np.shape(var_cube_unprimed))
+    print(' Dimension weight before cropping: ', np.shape(weight_cube))
+    print(' Dimension covariance before cropping: ', np.shape(covariance_array))
     #This part is for trimming the edge to minimise the size of cube
     #by deleting NaN rows and columns and keep the object in the centre
     
@@ -1266,17 +1269,22 @@ def dithered_cube_from_rss(ifu_list, files, size_of_grid=50, output_pix_size_arc
         pass
     
     #Cropping the final cubes
-    flux_cube_unprimed = (flux_cube_unprimed[left+1:right,top+1:bottom,:])
-    var_cube_unprimed = (var_cube_unprimed[left+1:right,top+1:bottom,:])
-    weight_cube = (weight_cube[left+1:right,top+1:bottom,:])
-    covariance_array = covariance_array[left+1:right,top+1:bottom,:]
-    
-    #Print out the dimension after cropping
-    print('Dimension flux after cropping: ',np.shape(flux_cube_unprimed))
-    print('Dimension var after cropping: ',np.shape(var_cube_unprimed))
-    print('Dimension weight after cropping: ', np.shape(weight_cube))
-    print('Dimension covariance after cropping: ', np.shape(covariance_array))
+    if (left+1 != right) or (top+1 != bottom):
+        flux_cube_unprimed = (flux_cube_unprimed[left+1:right,top+1:bottom,:])
+        var_cube_unprimed = (var_cube_unprimed[left+1:right,top+1:bottom,:])
+        weight_cube = (weight_cube[left+1:right,top+1:bottom,:])
+        covariance_array = covariance_array[left+1:right,top+1:bottom,:]
 
+        #Print out the dimension after cropping
+        print(' Dimension flux after cropping: ',np.shape(flux_cube_unprimed))
+        print(' Dimension var after cropping: ',np.shape(var_cube_unprimed))
+        print(' Dimension weight after cropping: ', np.shape(weight_cube))
+        print(' Dimension covariance after cropping: ', np.shape(covariance_array))
+
+    else:
+        prRed(f' All the data is NaN for {ifu_list[0].name} from Hexabundle {ifu_list[0].hexabundle_name[0]}. Remove the data.')
+        raise Exception("Error message")
+    
     return flux_cube_unprimed, var_cube_unprimed, weight_cube, diagnostic_info, covariance_array, covariance_slice_locs
 
 def sigma_clip_mask_slice_fibres(grid_slice_fibres):
