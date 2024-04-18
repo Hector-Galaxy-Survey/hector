@@ -95,3 +95,4 @@ def make_clipped_thput_files(path_list, overwrite=True, edit_all=False,
             else:
                 edited[index] = False
     return edited
+

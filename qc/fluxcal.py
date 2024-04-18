@@ -156,6 +156,7 @@ def calculate_mean_throughput(path_out, mngr_list, detector, date_start=None,
                 continue
             thput_list.append(thput)
             filename_list.append(fits.filename)
+
     thput = np.array(thput_list)
     deviation = 1.0 - np.median(thput / np.median(thput, axis=0), axis=1)
     good = np.abs(deviation) < reject
