@@ -1712,8 +1712,8 @@ class Manager:
             # make a copy with file type MFFFF.  The copied files are
             # placed in the list fits_twilight_list and then can be
             # processed as normal MFFFF files.
-            ccds = ['ccd_1','ccd_3']
-            for fits in self.files(ndf_class='MFSKY', do_not_use=False, ccd=ccds, **kwargs_copy): #marie
+            ccdlist = ['ccd_1','ccd_3']
+            for fits in self.files(ndf_class='MFSKY', do_not_use=False, ccd=ccdlist, **kwargs_copy):
                 fits_twilight_list.append(self.copy_as(fits, 'MFFFF', overwrite=overwrite))
             # use the iterable file reducer to loop over the copied twilight list and
             # reduce them as MFFFF files to make TLMs.
@@ -2630,17 +2630,18 @@ class Manager:
 
         hector.manager.read_hector_tiles(abs_root=self.abs_root)
         inputs_list = []
-        ccds = ['ccd_1', 'ccd_3']
         prGreen('Fitting models to star observations')
+        ccdlist = ['ccd_1','ccd_3']
         for fits_1 in self.files(ndf_class='MFOBJECT', do_not_use=False,
-                                 spectrophotometric=False, ccd=ccds,
+                                 spectrophotometric=False, ccd=ccdlist,
                                  name='main',**kwargs):
             if ((not overwrite and 'SECCOR' in
-                    pf.getheader(fits_1.telluric_path)) | 
+                pf.getheader(fits_1.telluric_path)) | 
                 (not os.path.exists(fits_1.telluric_path))):
                 # Already been done; skip to the next file
                 continue
-            inputs_list.append((fits_1.telluric_path))
+            if fits_1.telluric_path not in inputs_list:
+                inputs_list.append(fits_1.telluric_path)
             
         # fit each of the frames indivdually using ppxf, store the results
         # (the best template(s) and possibly weights) in the headers.
@@ -2653,7 +2654,7 @@ class Manager:
         prGreen('Averaging models to determine best calibration template')
         groups = self.group_files_by(('date', 'field_id', 'ccd'),
                                      ndf_class='MFOBJECT', do_not_use=False,
-                                     ccd=ccds,name='main',
+                                     ccd=ccdlist,name='main',
                                      spectrophotometric=False, **kwargs)
 
         prGreen('Deriving and applying secondary transfer functions')
@@ -2785,10 +2786,16 @@ class Manager:
             copy_to_other_arm = False
 
         for nccd in ccd_measure:
+            print('measure nccd',nccd)
+            print(min_exposure, name, nccd)
+            print(self.files(ndf_class='MFOBJECT', do_not_use=False,
+                reduced=True, min_exposure=min_exposure, name=name, ccd=nccd,
+                include_linked_managers=True, **kwargs))
             groups = self.group_files_by(
                 'field_id', ndf_class='MFOBJECT', do_not_use=False,
                 reduced=True, min_exposure=min_exposure, name=name, ccd=nccd,
                 include_linked_managers=True, **kwargs)
+            print('done')
             complete_groups = []
             for key, fits_list in groups.items():
                 fits_list_other_arm = [self.other_arm(fits, include_linked_managers=True)
@@ -2796,6 +2803,7 @@ class Manager:
                 if overwrite:
                     complete_groups.append(
                         (key, fits_list, copy_to_other_arm, fits_list_other_arm))
+                    print('add1',fits_list)
                     for fits in fits_list:
                         hdulist_this_arm = pf.open(best_path(fits),'update')
                         try:
@@ -2817,10 +2825,12 @@ class Manager:
                         complete_groups.append(
                             (key, fits_list, copy_to_other_arm,
                              fits_list_other_arm))
+                        print('add2')
 
                         # Also mark this group as requiring visual checks:
                         update_checks('ALI', fits_list, False)
                         break
+            print(complete_groups)
             self.map(measure_offsets_group, complete_groups)
 
         self.next_step('measure_offsets', print_message=True)
@@ -2894,7 +2904,7 @@ class Manager:
 
         # Send the cubing tasks off to multiple CPUs
         cubed_list = self.map(cube_object, inputs_list)
-
+        
         # Mark cubes as not checked. Only mark the first file in each input set
         for inputs, cubed in zip(inputs_list, cubed_list):
             if cubed:
@@ -2971,17 +2981,14 @@ class Manager:
                 
             for k3 in np.unique(k2):
                 k0 = glob(k + '*' + k3 + '*')
+                print(k0)
                 axis_b = pf.getheader(k0[0])['NAXIS1']
                 axis_r = pf.getheader(k0[1])['NAXIS1']
-#                cube_grating = pf.getheader(k0[0])['GRATID'] #ccd3 grating=VPH-1099-484 & ccd4 grating=VPH-1178-679
-#                cube_inst = pf.getheader(k0[0])['INSTRUME']
 
                 #Delete cubes with zero dimension (from inactive hexabundles)
-                #Sree: the below doesn't work because cubes for broken fibres also have a size but NaNs in it. May remove the below.
-                print(axis_b, axis_r, pf.getheader(k0[0])['IFUPROBE'], k0)
-                if (axis_b == 0) and (axis_r == 0):
-                    print(pf.getheader(k0[0])['NAME'],' Tile ',pf.getheader(k0[0])['PLATEID'],' Hexabundle ',pf.getheader(k0[0])['IFUPROBE'],' has zero dimension')
-                    print('Delete the files...')
+                #print(axis_b, axis_r, pf.getheader(k0[0])['IFUPROBE'], k0)
+                if (axis_b == 0) or (axis_r == 0):
+                    print('Delete zero dimemsion cube: ',pf.getheader(k0[0])['NAME'],' Tile ',pf.getheader(k0[0])['PLATEID'],' Hexabundle ',pf.getheader(k0[0])['IFUPROBE'])
                     for i in range(len(k0)):
                         os.remove(k0[i])
                 
@@ -3054,21 +3061,20 @@ class Manager:
                             cfile.flush(); cfile.close()
                             hdul.writeto(filename,overwrite=True); hdul.close()
 
-                 #       if cube_inst=='SPECTOR':
-                 #           crval3=cfile[0].header['CRVAL3']; cdelt3=cfile[0].header['CDELT3']; crpix3=cfile[0].header['CRPIX3']; naxis3=cfile[0].header['NAXIS3']
-                 #           x=np.arange(naxis3)+1
-                 #           L0=crval3-crpix3*cdelt3 #Lc-pix*dL
-                 #           lam=L0+x*cdelt3
-                 #           w0 = 0; w1 = naxis3 - 1
-
-                  #          cube_grating = pf.getheader(k0[0])['GRATID'] #ccd3 grating=VPH-1099-484 & ccd4 grating=VPH-1178-679
-                  #          if cube_grating == 'VPH-1099-484': #ccd3
-                  #              w1 = max(np.where(lam < 5840.)[0]) # 5840 A is a little arbitrary but the point where ccd3 and ccd4 roughly cross each other
-                  #          else: #ccd4
-                  #              w0 = min(np.where(lam > 5840.)[0]) 
-                  #          print(cube_inst, cube_grating, w0, w1, lam[w0],lam[w1])
-
-                            
+                        #Sree: make it nan when mean transmission < 0.05
+                        #TODO: remove this if the truncation is made at earlier stage (e.g. 2dfdr idx options)
+                        mean_transmission = pf.getdata(hector_path+'/standards/throughput/mean_throughput_'+pf.getheader(k0[i])['DETECTOR']+'.fits')
+                        mask = mean_transmission > 0.05
+                        count_true = np.count_nonzero(mask)
+                        if(count_true < pf.getval(k0[i],'NAXIS3')):
+                            continuous_regions = np.where(np.diff(np.concatenate(([False], mask, [False]))) == 1)[0].reshape(-1, 2)
+                            continuous_regions = continuous_regions[(continuous_regions[:, 1] - continuous_regions[:, 0]) >= 1000]
+                            badpixels = np.where((np.arange(pf.getval(k0[i],'NAXIS3'))<continuous_regions[0][0]) | (np.arange(pf.getval(k0[i],'NAXIS3'))>continuous_regions[0][1]))[0]
+                            hdul = pf.open(k0[i], mode='update') 
+                            new_data = hdul[0].data
+                            new_data[badpixels,:,:] = np.nan
+                            hdul[0].data = new_data
+                            hdul.close()
 
         #Delete the directory if there is no item in it
         print('\n')
@@ -3118,7 +3124,7 @@ class Manager:
                     and seeing <= max_seeing
                     and fits.exposure >= min_exposure):
                 good_fits_list.append(fits)
-            print('qc_for_cubing:',transmission, seeing, fits.exposure)
+            #print('qc_for_cubing:',fits, transmission, seeing, fits.exposure)
         return good_fits_list
 
     def scale_cubes(self, overwrite=False, min_exposure=599.0, name='main',
@@ -3127,7 +3133,7 @@ class Manager:
         """Scale datacubes based on the stellar g magnitudes."""
 
         ccdlist = ['ccd_1','ccd_3']
-        #ccdlist = ['ccd_1'] #TODO: Sree: this line should be removed. it is for testing.
+        #ccdlist = ['ccd_1'] 
         for nccd in ccdlist:
              groups = self.group_files_by(
                  'field_id', ccd=nccd, ndf_class='MFOBJECT', do_not_use=False,
@@ -3178,7 +3184,7 @@ class Manager:
         return
 
     def bin_cubes(self, overwrite=False, min_exposure=599.0, name='main',
-                  min_transmission=0.333, max_seeing=4.0, tag=None, **kwargs):
+                  min_transmission=0.333, max_seeing=4.0, tag=None, verbose=False, **kwargs):
         """Apply default binning schemes to datacubes."""
         ccdlist = ['ccd_1','ccd_3']
         for nccd in ccdlist:
@@ -3187,37 +3193,40 @@ class Manager:
                 'field_id', ccd=nccd, ndf_class='MFOBJECT', do_not_use=False,
                 reduced=True, name=name, include_linked_managers=True, **kwargs)
             for (field_id,), fits_list in groups.items():
-                print(fits_list)
+                if verbose:
+                    print(fits_list)
                 table = pf.getdata(fits_list[0].reduced_path, 'FIBRES_IFU')
                 objects = table['NAME'][table['TYPE'] == 'P']
                 objects = np.unique(objects).tolist()
                 objects = [obj.strip() for obj in objects]  # Strip whitespace from object names
                 for objname in objects:
-                    print(objname)
+                    if verbose:
+                        print(objname)
                     path_pair = [
                         self.cubed_path(objname, arm, fits_list, field_id,
                                         exists=True, min_exposure=min_exposure,
                                         min_transmission=min_transmission,
                                         max_seeing=max_seeing, tag=tag,gzipped=False)
                         for arm in ('blue', 'red')]
-                    print(path_pair)
+                    if verbose:
+                        print(path_pair)
                     if path_pair[0] and path_pair[1]:
                         if ('.gz' in path_pair[0]) or ('.gz' in path_pair[1]):
                             skip = True
                             continue
                         skip = False
-                        print(skip)
                         if not overwrite:
-                            hdulist = pf.open(path_pair[0])
-                            for hdu in hdulist:
-                                if hdu.name.startswith('BINNED_FLUX'):
+                            hdulist_blue = pf.open(path_pair[0])
+                            hdulist_red  = pf.open(path_pair[1])
+                            check_ext = 'BINNED_VARIANCE_SECTORS' #Sree:now it skips when the last extension is found
+                            for hdu_blue, hdu_red in zip(hdulist_blue, hdulist_red): #Sree: check both cubes
+                                if hdu_blue.name.startswith(check_ext) and hdu_blue.name.startswith(check_ext):
                                     skip = True
                                     break
-                        print(skip)
                         if not skip:
                             path_pair_list.append(path_pair)
-            print(path_pair_list)
-
+            if verbose:
+                print(path_pair_list, len(path_pair_list))
             self.map(bin_cubes_pair, path_pair_list)
         self.check_extensions(n=14) 
         self.next_step('bin_cubes', print_message=True)
@@ -3225,7 +3234,7 @@ class Manager:
 
     def check_extensions(self,cubed_root=None,n=14):    
         '''
-        Check the number of extensions in a cube - V02 (31st May 2023)
+        Susie: Check the number of extensions in a cube - V02 (31st May 2023)
         Contact Susie Tuntipong (stun4076@uni.sydney.edu.au) for details.
         cubed_root is the directory of cubed files, i.e. '*/test/cubed/
         n is the expected number of extensions for complete cubes
@@ -3264,7 +3273,7 @@ class Manager:
                     f0.write(d.split('/')[-1] +' 0 '+str(n)+' '+pf.getheader(d)['PLATEID']+' '+pf.getheader(d)['IFUPROBE']+'\n')
                 else:
                     #case 2 - non-zero dimension, may suffer from other issues
-                    print(' '+d.split('/')[-1]+' ** Incomplete dimensions, # of dimensions='+str(extension))
+                    print(' '+d.split('/')[-1]+' ** Incomplete dimensions, # of dimensions='+str(extension)+'  Hexa bundle '+pf.getheader(d)['IFUPROBE'])
                     f0.write(d.split('/')[-1] +' '+str(extension)+' '+str(n)+' '+pf.getheader(d)['PLATEID']+' '+pf.getheader(d)['IFUPROBE']+'\n')
         f0.close()
 
@@ -3338,6 +3347,160 @@ class Manager:
         self.check_extensions(n=15)
         self.next_step('record_dust',print_message=True)
         return
+
+    def data_release(self, version=None, date_start=None, date_finish=None, move=False, moveback=False):
+        """
+        Sree: change cube names for data release and generate release catalogue.
+        It generates release catalogue and move the generated cubes.
+        First import hector and manager with a run in the reduction directory for the current version
+        date_start, date_finish = 'YYMMDD' 
+        For making a catalogue without moving cubes, only specify version, date_start, date_finish.  
+        move=True moves all cubes to the release directory
+        moveback=True moves back the cubes to the working directory
+        Catalogue can be generated when cubes are in working directories. Therefore, moveback cubes to working
+        directories first to generate the catalogue again.
+        mngr.data_release(version='0_01',date_start='220801')
+        """
+
+        import string
+
+        if version is None or not bool(re.match(r'^\d{1}_\d{2}$',version)):
+            print("\nI expect to receive a version in a format of 'x_xx' where x is a number. Specify the version correctly.")
+            print("e.g. mngr.data_release(version='0_01')\n")
+            sys.exit(0)
+        if date_start is None: # til now
+            date_start = '230101' #start of survey
+        if date_finish is None: # til now
+            now = datetime.datetime.now()
+            date_finish = now.strftime('%y%m%d')
+
+        print(f'\nPreparing release cubes and catalogue for version v{version} from {date_start} to {date_finish}')
+        dir_version = os.path.join(os.path.dirname(os.path.dirname(self.abs_root)),'v'+version)
+        dir_release = dir_version+'/release_v'+version
+        list_dir = np.array(os.listdir(dir_version))
+        run_list = [x for x in list_dir if bool(re.match(r'^2\d{5}_2\d{5}$',x))]
+        runid = sorted([x for x in run_list if int(x[:6]) >= int(date_start) and int(x[7:13]) <= int(date_finish)],key=lambda x: (int(x[:6])))
+        print(' Directory for the version: ',dir_version)
+        print(' List of runs to be included: ',runid)
+        try:
+            os.makedirs(dir_release)
+        except OSError:
+            pass
+
+        if not moveback:
+            tempname = os.path.join(dir_version, f'release_v{version}_temp.csv') #list all available cubes
+            if os.path.exists(tempname):
+                os.remove(tempname)
+            for i in range(len(runid)):
+                os.system(f'find {os.path.join(dir_version, runid[i], "cubed")} -name "*.fits" > list.txt')
+                with open('list.txt', 'r') as list_file:
+                    listcube = list_file.readlines()
+                    for j in range(len(listcube)):
+                        listcube[j] = listcube[j].strip()
+                        with pf.open(listcube[j]) as hdulist:
+                            hdr = hdulist[0].header
+                            name = hdr['NAME'].strip()
+                            infile = listcube[j][listcube[j].rfind(name):]
+                            ccd = infile[infile.find('_') + 1]
+                            if ccd == 'b':
+                                ccd = 'BL'
+                            if ccd == 'r':
+                                ccd = 'RD'
+                            ra   = hdr['CATARA']; dec  = hdr['CATADEC']
+                            xcen = hdr['CRPIX1']; ycen = hdr['CRPIX2']
+                            texp = hdr['TOTALEXP']; ndither = hdr['NDITHER']
+                            inst = hdr['INSTRUME'].strip(); probe = hdr['IFUPROBE'].strip()
+                            plate = hdr['PLATEID'].strip()
+                            try:
+                                label = hdr['LABEL'].strip()
+                            except KeyError:
+                                label = 1
+                            source = 'S'
+                            if (name[0] == 'C') or (plate[0] == 'A'):
+                                source = 'C'; type = 'G'
+                            if (name[0] == 'W') or (plate[0] == 'H') or (plate[0] == 'G') or (plate == 'Commissioning_SAMI_low_mass_T001'):
+                                source = 'W'; type = 'G'
+                            if source == 'S':
+                                type = 'S'
+                            if (probe == 'H') or (probe == 'U'):
+                                type = 'S'
+                            qc_data = hdulist['QC'].data
+                            fwhm = np.nanmedian(qc_data['FWHM'])
+                            trans = np.nanmedian(qc_data['TRANSMIS'])
+
+                            data = pd.DataFrame({
+                                'name': [name],'ccd': [ccd],'runid': [runid[i]],'infile': [infile], 'version': [version],
+                                'ra': [ra],'dec': [dec],'xcen': [xcen],'ycen': [ycen], 'texp': [texp],'ndither': [ndither],
+                                'inst': [inst],'probe':[probe],'tile':[plate],'field':[label],'source':[source],'type':[type],
+                                'fwhm':[fwhm],'trans':[trans]})
+
+                            if os.path.exists(tempname):
+                                data.to_csv(tempname, mode='a', header=False, index=False)
+                            else:
+                                data.to_csv(tempname, mode='w', header=True, index=False)
+
+            cols = pd.read_csv(tempname)
+            cols['merge'] = cols.apply(lambda row: ''.join(row.drop(['ccd', 'infile', 'fwhm', 'trans']).astype(str)), axis=1)
+            letters = list(string.ascii_uppercase); letter_counter = 0; cols['identifier'] = None
+
+            for name, group in cols.groupby('name'):
+                letter_counter = 0  # each name group starts with identifier of A
+                prev_merge =  group.iloc[0]['merge'] 
+                for index, row in group.iterrows():
+                    if row['merge'] != prev_merge:
+                        letter_counter += 1  # update identifier
+                        prev_merge = row['merge']  # update merge
+                    identifier = letters[letter_counter % len(letters)]
+        
+                    cols.loc[index, 'identifier'] = identifier
+            print(cols[['name', 'ccd', 'infile', 'identifier']])
+            cols['filename'] = cols['name'].astype(str)+'_'+cols['ccd']+'_'+cols['identifier']+'_v'+cols['version']+'.fits'
+            data = pd.DataFrame({
+                'name': cols['name'], 'filename': cols['filename'], 'ccd': cols['ccd'], 'identifier': cols['identifier'], 'version': cols['version'], 'infile': cols['infile'],
+                'runid': cols['runid'], 'ra': cols['ra'], 'dec': cols['dec'], 'xcen': cols['xcen'], 'ycen': cols['ycen'], 'texp': cols['texp'], 'ndither': cols['ndither'],
+                'inst': cols['inst'],'probe': cols['probe'],'tile': cols['tile'], 'field': cols['field'], 'source': cols['source'], 'type': cols['type'],
+                'fwhm': cols['fwhm'], 'trans': cols['trans']})
+
+            outname = os.path.join(dir_release, f'release_catalogue_v{version}.csv')
+            if os.path.exists(outname):
+                os.remove(outname)
+            if os.path.exists(outname):
+                data.to_csv(outname, mode='a', header=False, index=False)
+            else:
+                data.to_csv(outname, mode='w', header=True, index=False)
+            print(' Writing release catalogue to ',os.path.join(dir_release, f'release_v{version}.csv'))
+
+            if move: # move cubes 
+                for index, row in cols.iterrows():
+                    oldpath = os.path.join(dir_version, row['runid'], "cubed", str(row['name']), row['infile'])
+                    newpath = os.path.join(dir_release, row['filename'])
+                    if os.path.exists(newpath):
+                        print(newpath+' is already exist. Exit')
+                        sys.exit(0)
+                    else:
+                        shutil.move(oldpath, newpath)
+                prRed(' Moved cubes to the release directory.')
+            else: # dry run: print only
+                for index, row in cols.iterrows():
+                    oldpath = os.path.join(dir_version, row['runid'], "cubed", str(row['name']), row['infile'])
+                    newpath = os.path.join(dir_release, row['filename'])
+                    print(f"shutil.move('{oldpath}', '{newpath}')")
+                prRed(' Cubes have not yet moved. Make move=True to move the cubes to the release directory')
+
+        else:  #return the cube to the reduction directory
+            cols = pd.read_csv(os.path.join(dir_release, f'release_catalogue_v{version}.csv'))
+            for index, row in cols.iterrows():
+                oldpath = os.path.join(dir_version, row['runid'], "cubed", str(row['name']), row['infile'])
+                newpath = os.path.join(dir_release, row['filename'])
+                if os.path.exists(oldpath):
+                    print(oldpath+' is already exist. Exit')
+                    sys.exit(0)
+                else:
+                    print(f"shutil.move('{newpath}', '{oldpath}')")
+                    shutil.move(newpath, oldpath)
+            prRed(' Cubes are moved back to original working directories')
+
+
 
     def gzip_cubes(self, overwrite=False, min_exposure=599.0, name='main',
                    star_only=False, min_transmission=0.333, max_seeing=4.0,
@@ -4323,13 +4486,14 @@ class Manager:
                    exists=False, tag=None, **kwargs):
         """Return the path to the cubed file."""
         n_file = len(self.qc_for_cubing(fits_list, **kwargs))
+        if(n_file > 28):
+            n_file = 21
         path = os.path.join(
             self.abs_root, 'cubed', name,
             name + '_' + arm + '_' + str(n_file) + '_' + field_id)
         if tag:
             path += '_' + tag
         path += '.fits'
-        print('path1',path)
         if gzipped:
             path = path + '.gz'
         if exists:
@@ -4337,7 +4501,6 @@ class Manager:
                 path = self.cubed_path(name, arm, fits_list, field_id,
                                        gzipped=(not gzipped), exists=False,
                                        tag=tag, **kwargs)
-                print('path2',path)
                 if not os.path.exists(path):
                     return None
         return path
@@ -5928,6 +6091,8 @@ def cube_object(inputs):
     (field_id, ccd, path_list, name, cubed_root, drop_factor, tag,
      update_tol, size_of_grid, output_pix_size_arcsec, overwrite) = inputs
     print('\nCubing {} in field ID: {}, CCD: {}'.format(name, field_id, ccd))
+    #if(len(path_list)>28): #when generate cubes using a spericifed number of dithers
+        #    path_list = path_list[:7]
     print('{} files available'.format(len(path_list)))
     suffix = '_' + field_id
     if tag:
@@ -6112,6 +6277,8 @@ def assign_true_mag(path_pair, name, catalogue=None, hdu=0):
         prRed(f"WARNING: {name} is not in the catalogue")
         return False
     line = catalogue[name]
+    print(name, line)
+    print(line['u'],line['g'],line['r'],line['i'],line['z'])
     for path in path_pair:
         hdulist = pf.open(path, 'update')
         for band in 'ugriz':
@@ -6258,10 +6425,10 @@ def read_stellar_mags():
             skiprows = 1
             delimiter = ','
             name_func = lambda d: d['name']
-#        data = np.loadtxt(path, skiprows=skiprows, delimiter=delimiter,
-#                          dtype={'names': names, 'formats': formats})
         data = np.genfromtxt(path, skip_header=skiprows, delimiter=delimiter,
                           dtype={'names': names, 'formats': formats})
+        data = data[~np.isnan(data['g'])] #Sree: early Hector tiles for clusters do not have g mag and cause issues later on
+
         if data.shape == ():
             # Ensure data is iterable in case of only a single line
             data.shape = (1,)
@@ -6270,6 +6437,8 @@ def read_stellar_mags():
         data['r'] += extinction[2]
         data['i'] += extinction[3]
         data['z'] += extinction[4]
+        #Sree: cluster tile files have nan for u,i,z bands. TODO: catalogue should have all mags!
+        data['u'][np.isnan(data['u'])] = 0.0; data['i'][np.isnan(data['i'])] = 0.0; data['z'][np.isnan(data['z'])] = 0.0
         new_data_dict = {name_func(line): line for line in data}
         data_dict.update(new_data_dict)
     return data_dict
