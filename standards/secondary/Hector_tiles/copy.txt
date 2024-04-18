@@ -1,0 +1,1 @@
+find ../../../Hector_Commissioning/20230417_20230430/ -not -path '*/.DAV/*' -name 'Tile*.csv' -exec cp {} ./ \;
