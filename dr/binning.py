@@ -44,7 +44,11 @@ def bin_cube_pair(path_blue, path_red, name=None, **kwargs):
     """Calculate bins, do binning and save results for a pair of cubes."""
     hdulist_blue = pf.open(path_blue, 'update')
     hdulist_red = pf.open(path_red, 'update')
-    bin_mask,bin_params = return_bin_mask(hdulist_blue, **kwargs)
+    bin_mask,bin_params = return_bin_mask(hdulist_red, **kwargs) #Sree: red cubes are much more reliable
+    if np.isnan(bin_params).any():
+        bin_mask,bin_params = return_bin_mask(hdulist_blue, **kwargs) #SAMI extracted mask and param from blue cubes. Why?
+    #print('bin_mask',bin_mask)
+    #print('bin_params',bin_params)
     bin_and_save(hdulist_blue, bin_mask, bin_params,name=name, **kwargs)
     bin_and_save(hdulist_red, bin_mask, bin_params, name=name, **kwargs)
     hdulist_blue.close()
@@ -456,7 +460,6 @@ def bin_and_save(hdulist, bin_mask, bin_params, name=None, **kwargs):
     return
 
 def return_bin_mask(hdu, mode='adaptive', targetSN=10, minSN=None, sectors=8,radial=5,log=False):
-    
     if mode == 'adaptive':
         bin_mask = adaptive_bin_sami(hdu,targetSN=targetSN, minSN=minSN)
         params = []
@@ -509,8 +512,6 @@ def bin_cube(hdu,bin_mask, mode='', **kwargs):
             binned_cube[:,spaxel_coords[0,:],spaxel_coords[1,:]] = cube[:,spaxel_coords[0,:],spaxel_coords[1,:]]
             binned_var[:,spaxel_coords[0,:],spaxel_coords[1,:]] = var[:,spaxel_coords[0,:],spaxel_coords[1,:]]
         elif n_spaxels > 1:
-            print(hdu[0].header['NAME'], cube.shape, spaxel_coords.shape) #marie
-            #binned_spectrum = np.nansum(cube[:,spaxel_coords[0,:],spaxel_coords[1,:]],axis=1)/n_spaxels
             binned_spectrum = np.nanmean(cube[:,spaxel_coords[0,:],spaxel_coords[1,:]],axis=1)
             binned_weighted_spectrum = np.nansum(weighted_cube[:,spaxel_coords[0,:],spaxel_coords[1,:]],axis=1)#/n_spaxels
             binned_weighted_spectrum[binned_weighted_spectrum == 0] = np.nan # Fix for changed behaviour of np.nansum
