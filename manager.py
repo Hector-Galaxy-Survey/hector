@@ -3352,11 +3352,11 @@ class Manager:
         """
         Sree: change cube names for data release and generate release catalogue.
         It generates release catalogue and move the generated cubes.
-        First import hector and manager with a run in the reduction directory for the current version
-        date_start, date_finish = 'YYMMDD' 
+        First import hector and manager with a run in the reduction directory for the current version.
+        The format of date_start and date_finish is 'YYMMDD' 
         For making a catalogue without moving cubes, only specify version, date_start, date_finish.  
-        move=True moves all cubes to the release directory
-        moveback=True moves back the cubes to the working directory
+        move=True moves all cubes to the release directory.
+        moveback=True moves back the cubes to the working directory.
         Catalogue can be generated when cubes are in working directories. Therefore, moveback cubes to working
         directories first to generate the catalogue again.
         mngr.data_release(version='0_01',date_start='220801')
@@ -3505,7 +3505,7 @@ class Manager:
     def gzip_cubes(self, overwrite=False, min_exposure=599.0, name='main',
                    star_only=False, min_transmission=0.333, max_seeing=4.0,
                    tag=None, **kwargs):
-        """Gzip the final datacubes."""
+        """Gzip the final datacubes. TODO: we may not need this anymore."""
         groups = self.group_files_by(
             ['field_id', 'ccd'], ndf_class='MFOBJECT', do_not_use=False,
             reduced=True, name=name, include_linked_managers = True, **kwargs)

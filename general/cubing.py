@@ -719,9 +719,11 @@ def dithered_cube_from_rss(ifu_list, files, size_of_grid=50, output_pix_size_arc
     #   3. Computes the positions of the fibres within each file including an offset
     #      for the galaxy position from the gaussian fit (e.g., everything is now on 
     #      the same coordiante system.
-    #
-    if(ifu_list[0].hexabundle_name[0] == 'M'):
-        return
+
+
+#    if(ifu_list[0].hexabundle_name[0] == 'M' and ifu_list[0].epoch[0] < 2024.):
+#        prRed(f'skipping M')
+#        return
 
     for j in range(n_obs):
         # Get the data.
@@ -847,7 +849,8 @@ def dithered_cube_from_rss(ifu_list, files, size_of_grid=50, output_pix_size_arc
 
 
     prCyan(f"do_cvd_correct is {do_cvd_correct} and do_dar_correct is {do_dar_correct}")
-    if do_cvd_correct and (ifu_list[0].hexabundle_name[0] != "M"):
+    #if do_cvd_correct and (ifu_list[0].hexabundle_name[0] != "M"):
+    if do_cvd_correct:
         cvd_correct(ifu_list, files, xfibre_all, yfibre_all, plateCentre=plateCentre)
     else:
         prRed("WARNING: Hexabundle M is excluded from cvd modelling...")

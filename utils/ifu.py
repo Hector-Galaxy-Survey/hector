@@ -73,6 +73,7 @@ class IFU:
         self.meandec = self.primary_header['MEANDEC']
 
         self.instrument = self.primary_header['INSTRUME'] 
+        self.epoch = self.primary_header['EPOCH']
 
         # Determine and store which spectrograph ARM this is from (red/blue)
 
