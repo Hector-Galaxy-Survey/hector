@@ -1424,9 +1424,8 @@ class Manager:
     def import_aat(self, username=None, password=None, date=None,
                    server='aatlxa', path='/data_liu/aatobs/OptDet_data'):
         """Import from the AAT data disks."""
-        if os.path.exists(self.abs_root):
-            current_run_file =  self.abs_root
-            start_date, end_date = current_run_file.split('/')[-1].split('_')
+        current_run_file =  self.abs_root
+        start_date, end_date = current_run_file.split('/')[-1].split('_')
         if os.path.exists(path):
             # Assume we are on a machine at the AAT which has direct access to
             # the data directories
