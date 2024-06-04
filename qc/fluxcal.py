@@ -63,7 +63,7 @@ def throughput(path, combined=True):
     thput = (1/data) * (1E16) * gain * hcl / (area*delta_wl)
     return thput
 
-def save_mean_throughput(path_out, mean_thput, thput, filename_list,
+def save_mean_throughput(path_out, mean_thput, thput, filename_list, epoch_list,
                          good_list, detector, date_start=None,
                          date_finish=None):
     """
@@ -77,6 +77,7 @@ def save_mean_throughput(path_out, mean_thput, thput, filename_list,
     `mean_throughput' - 1d array
     `throughput' - n_spec X n_pix array of individual measurements
     `filename_list' - n_spec list of filenames
+    `epoch_list' - n_spec list of epoch 
     `good_list' - n_spec boolean list of files included in the mean
     `detector' - name of the CCD, e.g. E2V2A
 
@@ -94,7 +95,8 @@ def save_mean_throughput(path_out, mean_thput, thput, filename_list,
          pf.BinTableHDU.from_columns(
              [pf.Column(name='filename', format='{}A'.format(filename_length),
                         array=filename_list),
-              pf.Column(name='used', format='L', array=good_list)],
+              pf.Column(name='used', format='L', array=good_list), 
+              pf.Column(name='epoch', format='E', array=epoch_list)],
               name='INPUTS')])
     header = hdulist[0].header
     header['DETECTOR'] = (detector, 'Detector name')
@@ -141,6 +143,7 @@ def calculate_mean_throughput(path_out, mngr_list, detector, date_start=None,
     """
     thput_list = []
     filename_list = []
+    epoch_list = []
     for mngr in mngr_list:
         for fits in mngr.files(ndf_class='MFOBJECT', spectrophotometric=True,
                                do_not_use=False):
@@ -156,12 +159,17 @@ def calculate_mean_throughput(path_out, mngr_list, detector, date_start=None,
                 continue
             thput_list.append(thput)
             filename_list.append(fits.filename)
+            epoch_list.append(fits.epoch)
+    print('standard star frames considered: ', filename_list)
 
     thput = np.array(thput_list)
     deviation = 1.0 - np.median(thput / np.median(thput, axis=0), axis=1)
-    good = np.abs(deviation) < reject
-    mean_thput = np.mean(thput[good, :], axis=0)
-    save_mean_throughput(path_out, mean_thput, thput, filename_list, good,
+    good_deviation = np.abs(deviation) < reject
+    good_thput = (thput > 0).all(axis=1) & (thput < 1).all(axis=1)
+    good = good_deviation & good_thput
+
+    mean_thput = np.nanmean(thput[good, :], axis=0)
+    save_mean_throughput(path_out, mean_thput, thput, filename_list, epoch_list, good,
                          detector, date_start=date_start,
                          date_finish=date_finish)
 
