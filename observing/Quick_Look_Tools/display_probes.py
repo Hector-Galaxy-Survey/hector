@@ -326,7 +326,8 @@ if __name__ == "__main__":
     # Get the hexabundle probe lists based on the user inputs
     if config['spectrograph_not_used'] == 'AAOmega':
         prRed('Using Hector spectrograph')
-        plist = list(string.ascii_uppercase[8:21].replace('M', '').replace('K', '').replace('Q', ''))
+        # plist = list(string.ascii_uppercase[8:21].replace('M', '').replace('K', '').replace('Q', ''))
+        plist = list(string.ascii_uppercase[8:21])
         object_header = object_header_H
 
     elif config['spectrograph_not_used'] == 'Hector':
@@ -336,7 +337,8 @@ if __name__ == "__main__":
 
     else:
         assert config['spectrograph_not_used'] == 'None', f"The spectrograph_not_used keyword is set to {config['spectrograph_not_used']}. It must be one of 'None', 'Hector' or 'AAOmega'"
-        plist = list(string.ascii_uppercase[:21].replace('M', '').replace('K', '').replace('Q', ''))  # Hexa-M is not working
+        # plist = list(string.ascii_uppercase[:21].replace('M', '').replace('K', '').replace('Q', ''))  # Hexa-M is not working
+        plist = list(string.ascii_uppercase[:21])
         object_header = object_header_A
 
     # For a spectrophotometric standard observation, ask the user to assign the bundle
