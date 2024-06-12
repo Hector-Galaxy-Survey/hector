@@ -1416,6 +1416,20 @@ class Manager:
                     src_path = os.path.join(dirname, filename)
                     dest_path = os.path.join(self.abs_root, 'raw', filename)
                     shutil.copy(src_path, dest_path)
+                # (SMC 11/06/24) now that we have guider files, also copy these across.  
+                # they cannot be imported like regular files as they don't
+                # have all the right header keywords.  So we just copy them:
+                if 'guide' in dirname:
+                    src_path = os.path.join(dirname, filename)
+                    # guide folder name and the date to put into the dest_path
+                    folders = dirname.split('/')
+                    dest_folder = os.path.join(self.abs_root, 'raw',folders[-2],folders[-1])
+                    if not os.path.exists(dest_folder):
+                        os.mkdir(dest_folder)
+                    dest_path = os.path.join(dest_folder,filename)
+                    shutil.copy(src_path, dest_path)
+        
+                    
         if os.path.exists(self.tmp_dir) and len(os.listdir(self.tmp_dir)) == 0:
             os.rmdir(self.tmp_dir)
         return
@@ -1434,6 +1448,10 @@ class Manager:
                                 if (re.match(r'\d{6}', s) and
                                     os.path.isdir(os.path.join(path, s)))]
                 date_options = [x for x in whole_survey for y in range(int(start_date),int(end_date)+1) if str(y) in x]
+            else:
+                # (SMC 11/06/24 - bug fix) need to put the actual data passed to the function into
+                # date options, otherwise this will not work:
+                date_options = [date]
             for date in date_options:
                 self.import_dir(os.path.join(path, date))
             return
@@ -1447,7 +1465,9 @@ class Manager:
                 whole_survey = [s for s in srv.listdir(path)
                                 if re.match(r'\d{6}', s)]
                 date_options = [x for x in whole_survey for y in range(int(start_date),int(end_date)+1) if str(y) in x]
- 
+            else:
+                date_options = [date]
+                
             if not os.path.exists(self.tmp_dir):
                 os.makedirs(self.tmp_dir)
             for date in date_options:
