@@ -3388,10 +3388,12 @@ class Manager:
 
         if not moveback:
             tempname = os.path.join(dir_version, f'release_v{version}_temp.csv') #list all available cubes
+            all_data = []
             if os.path.exists(tempname):
                 os.remove(tempname)
             for i in range(len(runid)):
-                os.system(f'find {os.path.join(dir_version, runid[i], "cubed")} -name "*.fits" > list.txt')
+                print(' Identifying cubes from '+os.path.join(dir_version, runid[i], "cubed"))
+                os.system(f'find {os.path.join(dir_version, runid[i], "cubed")} -name "*.fits*" > list.txt')
                 with open('list.txt', 'r') as list_file:
                     listcube = list_file.readlines()
                     for j in range(len(listcube)):
@@ -3426,17 +3428,22 @@ class Manager:
                             qc_data = hdulist['QC'].data
                             fwhm = np.nanmedian(qc_data['FWHM'])
                             trans = np.nanmedian(qc_data['TRANSMIS'])
-
-                            data = pd.DataFrame({
-                                'name': [name],'ccd': [ccd],'runid': [runid[i]],'infile': [infile], 'version': [version],
-                                'ra': [ra],'dec': [dec],'xcen': [xcen],'ycen': [ycen], 'texp': [texp],'ndither': [ndither],
-                                'inst': [inst],'probe':[probe],'tile':[plate],'field':[label],'source':[source],'type':[type],
-                                'fwhm':[fwhm],'trans':[trans]})
-
-                            if os.path.exists(tempname):
-                                data.to_csv(tempname, mode='a', header=False, index=False)
-                            else:
-                                data.to_csv(tempname, mode='w', header=True, index=False)
+                            pname = name[:]
+                            if pname.isnumeric(): # add a prefix if it is not already included in the id
+                                prefix = 'S'
+                                if (source=='C') and (type=='G'):
+                                    prefix = 'C'
+                                if (source=='W') and (type=='G'):
+                                    prefix = 'W'
+                                pname = prefix+pname
+                            data = {
+                                'name': name,'pname': pname,'ccd': ccd,'runid': runid[i],'infile': infile, 'version': version,
+                                'ra': ra,'dec': dec,'xcen': xcen,'ycen': ycen, 'texp': texp,'ndither': ndither,
+                                'inst': inst,'probe':probe,'tile':plate,'field':label,'source':source,'type':type,
+                                'fwhm':fwhm,'trans':trans}
+                            all_data.append(data)
+            df = pd.DataFrame(all_data)
+            df.to_csv(tempname, mode='w', header=True, index=False)
 
             cols = pd.read_csv(tempname)
             cols['merge'] = cols.apply(lambda row: ''.join(row.drop(['ccd', 'infile', 'fwhm', 'trans']).astype(str)), axis=1)
@@ -3453,9 +3460,12 @@ class Manager:
         
                     cols.loc[index, 'identifier'] = identifier
             print(cols[['name', 'ccd', 'infile', 'identifier']])
-            cols['filename'] = cols['name'].astype(str)+'_'+cols['ccd']+'_'+cols['identifier']+'_v'+cols['version']+'.fits'
+            cols['filename'] = cols['pname'].astype(str)+'_'+cols['ccd']+'_'+cols['identifier']+'_v'+cols['version']+'.fits'
+            print(cols['infile'], cols['infile'][0])
+            if('.gz' in cols['infile'][0]):
+                cols['filename'] = cols['filename']+'.gz'
             data = pd.DataFrame({
-                'name': cols['name'], 'filename': cols['filename'], 'ccd': cols['ccd'], 'identifier': cols['identifier'], 'version': cols['version'], 'infile': cols['infile'],
+                'name': cols['pname'], 'filename': cols['filename'], 'ccd': cols['ccd'], 'identifier': cols['identifier'], 'version': cols['version'], 'infile': cols['infile'],
                 'runid': cols['runid'], 'ra': cols['ra'], 'dec': cols['dec'], 'xcen': cols['xcen'], 'ycen': cols['ycen'], 'texp': cols['texp'], 'ndither': cols['ndither'],
                 'inst': cols['inst'],'probe': cols['probe'],'tile': cols['tile'], 'field': cols['field'], 'source': cols['source'], 'type': cols['type'],
                 'fwhm': cols['fwhm'], 'trans': cols['trans']})
@@ -3469,21 +3479,20 @@ class Manager:
                 data.to_csv(outname, mode='w', header=True, index=False)
             print(' Writing release catalogue to ',os.path.join(dir_release, f'release_v{version}.csv'))
 
-            if move: # move cubes 
-                for index, row in cols.iterrows():
-                    oldpath = os.path.join(dir_version, row['runid'], "cubed", str(row['name']), row['infile'])
-                    newpath = os.path.join(dir_release, row['filename'])
-                    if os.path.exists(newpath):
+            for index, row in cols.iterrows():
+                oldpath = os.path.join(dir_version, row['runid'], "cubed", str(row['name']), row['infile'])
+                newpath = os.path.join(dir_release, row['filename'])
+                if (os.path.exists(newpath)) or (os.path.exists(newpath+'.gz')):
                         print(newpath+' is already exist. Exit')
                         sys.exit(0)
-                    else:
-                        shutil.move(oldpath, newpath)
-                prRed(' Moved cubes to the release directory.')
-            else: # dry run: print only
-                for index, row in cols.iterrows():
-                    oldpath = os.path.join(dir_version, row['runid'], "cubed", str(row['name']), row['infile'])
-                    newpath = os.path.join(dir_release, row['filename'])
-                    print(f"shutil.move('{oldpath}', '{newpath}')")
+                #if os.path.isfile(oldpath+'.gz'):
+                #    oldpath = oldpath+'.gz'; newpath = newpath+'.gz'
+                print(f"shutil.move('{oldpath}', '{newpath}')")
+                if move:
+                    shutil.move(oldpath, newpath)
+            if move:
+                prRed(' Moved cubes to the release directory')
+            else:
                 prRed(' Cubes have not yet moved. Make move=True to move the cubes to the release directory')
 
         else:  #return the cube to the reduction directory
@@ -3491,12 +3500,16 @@ class Manager:
             for index, row in cols.iterrows():
                 oldpath = os.path.join(dir_version, row['runid'], "cubed", str(row['name']), row['infile'])
                 newpath = os.path.join(dir_release, row['filename'])
-                if os.path.exists(oldpath):
+                if (os.path.exists(oldpath)) or (os.path.exists(oldpath+'.gz')):
                     print(oldpath+' is already exist. Exit')
                     sys.exit(0)
-                else:
-                    print(f"shutil.move('{newpath}', '{oldpath}')")
-                    shutil.move(newpath, oldpath)
+                #if os.path.isfile(newpath+'.gz'):
+                #    oldpath = oldpath+'.gz'; newpath = newpath+'.gz'
+
+                print(f"shutil.move('{newpath}', '{oldpath}')")
+                if not os.path.isdir(os.path.dirname(oldpath)):
+                    os.makedirs(os.path.dirname(oldpath)) 
+                shutil.move(newpath, oldpath)
             prRed(' Cubes are moved back to original working directories')
 
 
