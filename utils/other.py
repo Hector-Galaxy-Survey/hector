@@ -641,3 +641,23 @@ def clip_spectrum(flux, noise, wavelength, limit_noise=0.35, limit_flux=10.0,
                 (noise < (limit_noise_abs * median_noise)))
     return good
 
+def file_to_date(inname):
+    """conversion between filename (e.g. 23mayxxxxx) to date (0523) """
+    month_name_to_number = {
+    "jan": "01", "feb": "02", "mar": "03", "apr": "04",
+    "may": "05", "jun": "06", "jul": "07", "aug": "08",
+    "sep": "09", "oct": "10", "nov": "11", "dec": "12"
+    }
+    number_to_month_name = {v: k for k, v in month_name_to_number.items()}
+
+    if inname[2:4].isdigit(): #inname = date
+        date = inname[2:4]
+        mon = number_to_month_name[inname[0:2]]
+        outname = date+mon
+    else: #iname = filename
+        date = inname[0:2]
+        mon = month_name_to_number[inname[2:5]]
+        outname = mon+date
+    return outname
+
+
