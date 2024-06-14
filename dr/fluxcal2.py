@@ -751,6 +751,8 @@ def derive_transfer_function(path_list, max_sep_arcsec=60.0,
     if star_match is None:
         raise ValueError('No standard star found in the data.')
     print('Deriving TF for '+path_list[0]+' on Hexa '+star_match['probename']+' ('+star_match['name']+')')
+    #if debug:
+    #    print('Draw debugging plots')
     standard_data = read_standard_data(star_match)
 
     # Apply telluric correction to primary standards and write to new file, returning
@@ -766,7 +768,7 @@ def derive_transfer_function(path_list, max_sep_arcsec=60.0,
     trim_chunked_data(chunked_data, n_trim)
 
     # Get CvD parameters from the polynomial fits to the centroid varations in x-, y-directions
-    prRed(f"probeName = {star_match['probename']}")
+    #prRed(f"probeName = {star_match['probename']}")
     cvd_parameters = get_cvd_parameters(path_list_tel, star_match['probenum'])
 
     # Fit the PSF
@@ -806,10 +808,8 @@ def derive_transfer_function(path_list, max_sep_arcsec=60.0,
             mf_av=molecfit_available,
             tell_corr_primary=tell_corr_primary)
         transfer_function = median_filter(transfer_function,5)
-
         save_transfer_function(path2, transfer_function)
         
-
         ######################
         # MLPG & Sree: Diagnostic plot showing extracted flux versus summed flux, saved in
         # the data reduction location. Active when debug = True
@@ -847,7 +847,7 @@ def derive_transfer_function(path_list, max_sep_arcsec=60.0,
             f = interp1d(standard_data['wavelength'],standard_data['flux'])
             ax4.plot(ifu.lambda_range,f(wavelength)/observed_flux, 'g', alpha=0.5, label='Reference/Observed')
             ax4.plot(ifu.lambda_range, transfer_function, 'r', alpha=0.5, label='TF',linewidth=2)
-            ylim = max(transfer_function)*1.5
+            ylim = np.max(transfer_function)*1.5
             if ylim > 200:
                 ylim=200
             ax4.set_ylim(0,ylim)
@@ -859,7 +859,7 @@ def derive_transfer_function(path_list, max_sep_arcsec=60.0,
 
             fig.savefig(dest_path+"/"+star_match['name']+"_"+os.path.basename(path)[:10]+"_derive_TF.pdf", bbox_inches='tight')
             plt.close(fig)  # Close the figure object
-            print('   save debugging plot '+dest_path+"/"+star_match['name']+"_"+os.path.basename(path)[:10]+"_derive_TF.pdf")
+            print('   Saving debugging plot '+dest_path+"/"+star_match['name']+"_"+os.path.basename(path)[:10]+"_derive_TF.pdf")
         #######################        
     return
 
@@ -1127,13 +1127,9 @@ def take_ratio(standard_flux, standard_wavelength, observed_flux,
     FWHM_standard = standard_wavelength[1]-standard_wavelength[0]
     FWHM_diff = np.sqrt(FWHM_standard**2 - FWHM_obs**2)
     sigma_diff=FWHM_diff/2.355/(observed_wavelength[1]-observed_wavelength[0])
-#    if((np.isfinite(sigma_diff)) & (observed_wavelength[-1]<7000.)):
     if(np.isfinite(sigma_diff)):
         observed_flux_convolved=gaussian_filter1d(observed_flux_rebinned, sigma_diff)
         observed_flux_convolved[standard_wavelength > 4500.]=observed_flux_rebinned[standard_wavelength > 4500.]
-#    if(np.isfinite(sigma_diff)):
-#        if((observed_wavelength[0]>5000.)): #For red ccds, convolve spectra only below 6500A
-#            observed_flux_convolved[standard_wavelength > 6500.]=observed_flux_rebinned[standard_wavelength > 6500.]
         ratio1 = standard_flux / observed_flux_convolved
 
     if smooth == 'gauss':
@@ -1147,8 +1143,8 @@ def take_ratio(standard_flux, standard_wavelength, observed_flux,
     # Put the ratio back onto the observed wavelength scale
 #    ratio = 1.0 / np.interp(observed_wavelength, standard_wavelength, 1.0 / ratio2)
     ratio = np.interp(observed_wavelength, standard_wavelength,ratio2)
-
-#    f0 = open('/storage2/sree/hector/dr/v2/take_ratio.txt', 'w')
+# for debugging:
+#    f0 = open('/storage2/sree/hector/dr/v0_01/take_ratio.txt', 'w')
 #    f0.write('# ind ratio\n')
 #    for r1,w1 in zip(ratio1,standard_wavelength):
 #        f0.write('r1 '+str(w1)+' '+str(r1)+'\n')
@@ -1217,17 +1213,24 @@ def fit_spline(wavelength, ratio, mf_av=False,tell_corr_primary=False):
     # Do the fit in terms of 1.0 / ratio, because it seems to give better
     # results.
     if mf_av & tell_corr_primary:
-        good = np.where(np.isfinite(ratio))[0]
+        good = np.where(np.isfinite(ratio) & (ratio > 0.))[0]
     else:
-        good = np.where(np.isfinite(ratio) & ~(in_telluric_band(wavelength)))[0]
-    knots = np.linspace(wavelength[good][0], wavelength[good][-1],16) 
+        good = np.where(np.isfinite(ratio) & ~(in_telluric_band(wavelength)) & (ratio > 0.))[0]
+    if min(wavelength[good]) > 6000.: #exclude either edge of AAOmega red for the fit
+        good = good[(wavelength[good]>6300.) & (wavelength[good]<7400.)]
+    knots = np.linspace(wavelength[good][0], wavelength[good][-1],10) 
 
-    # Add extra knots around 5500A, where there's a sharp turn
-    extra = knots[(knots > 5500) & (knots < 6500)]
-    if len(extra) > 1:
-        extra = np.linspace(extra[0]+10., extra[-1]-10.,20)
-        knots = np.sort(np.hstack((knots, extra)))
-   
+    # Add extra knots where there's a sharp turn
+    if max(wavelength[good]) < 5850.: #AAOmega blue wavelength range: 3730.8 5801.4; add an extra knot at each end
+        knots = np.sort(list(set(np.concatenate((knots,np.linspace(knots[0],knots[1],3),np.linspace(knots[-2],knots[-1],3))))))
+    if (max(wavelength[good]) > 5850.) & (max(wavelength[good]) < 6000.): #Spector blue; wavelength range: 3747.6 5906.4, add 10 extra knots at the red end
+        w1 = min(knots[knots>5600.]) ; w2 = max(wavelength[good]) ; wn = 10
+        knots = np.sort(list(set(np.concatenate((knots, np.linspace(w1, w2, wn))))))
+    if (min(wavelength[good]) > 5600.) & (min(wavelength[good]) < 5800.): #Spector red; wavelength range: 5704.8 7821.6, add 10 extra knots at the blue end
+        w1 = min(wavelength[good]) ; w2 = max(knots[knots<6000.]) ; wn = 10
+        knots = np.sort(list(set(np.concatenate((knots, np.linspace(w1, w2, wn))))))
+    #print(min(wavelength[good]), max(wavelength[good]),knots)
+
     # Remove any knots sitting in a telluric band, but only if not using tell_corr_primary:
     if (not tell_corr_primary):
         knots = knots[~in_telluric_band(knots)]
@@ -3004,7 +3007,6 @@ def calculate_mean_transfer(path_in, path_root):
 #    print(ccd, med_tf, np.median(med_tf[ind>0]), std_tf, np.median(med_tf[ind>0]) + 3 * std_tf,np.min(med_tf) + 3 * std_tf, ind)
 
     #dibbuging plots
-    #fig, (ax1) = plt.subplots(figsize=(8, 10))
     fig, (ax1,ax2) = plt.subplots(2,1,figsize=(8, 12))
     ax1.set(ylabel='Transfer Function', title=os.path.basename(path_root)+': ccd'+ccd+' TF from each run')
     colors = ['b', 'g', 'c', 'm', 'y','brown', 'teal', 'navy', 'olive', 'lime', 'maroon', 'gold', 'silver', 'indigo', 'orange', 'purple']
