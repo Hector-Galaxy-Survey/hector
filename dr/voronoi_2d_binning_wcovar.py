@@ -67,7 +67,7 @@ class ModuleError(Error):
         return repr(self.msg)
 
 def bin2d_roundness(x, y, size) :
-    """ Return the roundness as defined in Cappellari \& Copin 2003
+    """ Return the roundness as defined in Cappellari and Copin 2003
     """
     npix = x.size
     eR = sqrt(npix / np.pi) * size
