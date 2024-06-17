@@ -29,6 +29,7 @@ def correct_bad_fibres(path_list,debug=False):
 
     # Read in fibre flats from fits files to array
     for index in range(n_file):
+        print(index, path_list[index], n_file,n_fibre,n_spec)
         fflats[index,:,:] = pf.getdata(path_list[index],'PRIMARY')
 
     # Determine the average fibre flat, per-pixel residual images
@@ -57,6 +58,7 @@ def correct_bad_fibres(path_list,debug=False):
     while n_bad_fibres > 0:
         worst_fibre_index = np.squeeze(np.where(fibre_residuals == 
             np.nanmax(fibre_residuals)))
+        #print(i, worst_fibre_index)
         bad_fibres_index.append(worst_fibre_index)
         fflats_fixed[worst_fibre_index[0],worst_fibre_index[1],:] = np.nan
         avg_fixed = np.nanmean(fflats_fixed,axis=0)
@@ -65,9 +67,12 @@ def correct_bad_fibres(path_list,debug=False):
         still_bad_fibres_index = np.where(fibre_residuals > 
                 mean_residual + 4*sig_residual)
         n_bad_fibres = len(still_bad_fibres_index[0])
+        if i == 0: # to make bad_fibres_index have at least two elements
+            n_bad_fibres = 1e9 
         i = i+1
 
     # Replace all bad fibres with the average for that fibre
+    #print(bad_fibres_index, fflats_fixed.shape, avg_fixed.shape)
     bad_fibres_index = np.squeeze(bad_fibres_index)
     fflats_fixed[bad_fibres_index[:,0],bad_fibres_index[:,1],:] = avg_fixed[bad_fibres_index[:,1],:]
 
