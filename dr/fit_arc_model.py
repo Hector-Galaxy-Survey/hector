@@ -1,5 +1,6 @@
 """
 Sree implemented Sam Vaughan's 2D arc modelling code into Hector repo.
+Visit https://dev.aao.org.au/datacentral/hector/Hector-Wave-Cal for further details.
 arc_model_2d is modularized one of Hector-Wave-Cal/workflow/scripts/fit_arc_model_from_command_line.py
 All other modules are from Hector-Wave-Cal/workflow/scripts/utils.py
 """
