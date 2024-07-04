@@ -131,6 +131,7 @@ from .qc.sky import sky_residuals
 from .qc.arc import bad_fibres
 from .dr.fflat import correct_bad_fibres
 from .dr.twilight_wavecal import wavecorr_frame, wavecorr_av, apply_wavecorr
+from .dr.fit_arc_model import arc_model_2d
 
 # Temporary edit. Prevent bottleneck 1.0.0 being used.
 try:
@@ -881,7 +882,8 @@ class Manager:
                  gratlpmm=GRATLPMM, n_cpu=1,demo_data_source='demo',
                  use_twilight_tlm_blue=False, use_twilight_flat_blue=False,
                  improve_blue_wavecorr=False, telluric_correct_primary=False,
-                debug=False, dummy=False, use_twilight_tlm_all=False, use_twilight_flat_all=False):
+                debug=False, dummy=False, use_twilight_tlm_all=False, use_twilight_flat_all=False,
+                fit_arc_model_2d=False):
         if fast:
             self.speed = 'fast'
         else:
@@ -906,6 +908,7 @@ class Manager:
         # define the internal flag that specifies the improved twlight wavelength
         # calibration step should be applied
         self.improve_blue_wavecorr = improve_blue_wavecorr
+        self.fit_arc_model_2d = fit_arc_model_2d
         # Internal flag to set telluric correction for primary standards
         self.telluric_correct_primary = telluric_correct_primary
         self.gratlpmm = gratlpmm
@@ -955,6 +958,8 @@ class Manager:
             print('Applying additional twilight-based wavelength calibration step')
         else:
             print('NOT applying additional twilight-based wavelength calibration step')
+        if fit_arc_model_2d:
+            print('Arc solutions are improved based on 2D arc modelling')
 
         if telluric_correct_primary:
             print('Applying telluric correction to primary standard stars before flux calibration')
@@ -1927,6 +1932,24 @@ class Manager:
             file_iterable, overwrite=overwrite, check='ARC')
         for fits in reduced_files:
             bad_fibres(fits.reduced_path, save=True)
+
+        # Run Sam's 2D arc modelling for better wavelength solutions
+        if self.fit_arc_model_2d:
+            input_list=[]
+            for fits in reduced_files:
+                tdfdr_options = tuple(self.tdfdr_options(fits,verbose=False))
+                arc_reduced = fits.reduced_path
+                arcfit_name = os.path.join(fits.reduced_dir,os.path.basename(fits.filename)[0:10]+'_outdir/arcfits.dat')
+                tlm_name = os.path.join(fits.reduced_dir,tdfdr_options[-1])
+                with pf.open(arc_reduced, mode='readonly') as hdul:
+                    applied = any(hdu.name == 'OLDWAVELA'  for hdu in hdul)
+                if not applied:
+                    input_list.append((arc_reduced,arcfit_name,tlm_name))
+            if input_list:
+                self.map(fit_arc_model_wrapper, input_list)
+            else:
+                print(' Empty list for arc modelling. Nothing to do.')
+
         self.next_step('reduce_arc', print_message=True)
         return
 
@@ -1967,7 +1990,7 @@ class Manager:
 
             for nccd in ccdlist:
                 fits_twilight_list = []
-                for fits in self.files(ndf_class='MFSKY', do_not_use=False, ccd=ccdlist, **kwargs):
+                for fits in self.files(ndf_class='MFSKY', do_not_use=False, ccd=nccd, **kwargs):
                     #TODO: does it need to be **kwargs or **kwargs_copy??? SAMI has **kwargs here. Why did I change this?
                     fits_twilight_list.append(self.copy_as(fits, 'MFFFF', overwrite=overwrite))
 
@@ -2251,7 +2274,7 @@ class Manager:
                 input_list = [item for i, item in enumerate(input_list)
                           if not finished[i]]
 
-        # Delete unwanted reduced files and modified Hector ccd4 files
+        # Delete unwanted reduced files
         for fits in reduced_files:
             if (fits.ndf_class == 'MFFFF' and tlm and not leave_reduced and os.path.exists(fits.reduced_path)):
                 os.remove(fits.reduced_path)
@@ -2260,7 +2283,7 @@ class Manager:
         if self.dummy:
             create_dummy_output(reduced_files, tlm=tlm, overwrite=overwrite)
 
-        # Data with error or we could not reduced within timeout of 600s
+        # Sree: Data with error or we could not reduced within timeout of 600s
         tdfail = str(self.abs_root)+'/tdfdr_failure.txt'
         if os.path.exists(tdfail):
             with warnings.catch_warnings():
@@ -3367,18 +3390,18 @@ class Manager:
         self.next_step('record_dust',print_message=True)
         return
 
-    def data_release(self, version=None, date_start=None, date_finish=None, move=False, moveback=False):
+    def data_release(self, version=None, date_start='220801', date_finish=None, move=False, moveback=False):
         """
-        Sree: change cube names for data release and generate release catalogue.
-        It generates release catalogue and move the generated cubes.
-        First import hector and manager with a run in the reduction directory for the current version.
-        The format of date_start and date_finish is 'YYMMDD' 
-        For making a catalogue without moving cubes, only specify version, date_start, date_finish.  
-        move=True moves all cubes to the release directory.
-        moveback=True moves back the cubes to the working directory.
-        Catalogue can be generated when cubes are in working directories. Therefore, moveback cubes to working
-        directories first to generate the catalogue again.
-        mngr.data_release(version='0_01',date_start='220801')
+        Sree:this generates release catalogue and move the generated cubes. It also change the name of cubes in a regular format.
+        First import hector and manager with one of the any runs in the reduction directory for the current version.
+        The format of date_start and date_finish is 'YYMMDD'
+        if date_start and date_finish are not specified, it condisers runs between Aug 2022 and today
+        if move=False, it generates a catalogue, but doesn't move the cubes to the release directory
+        if move=True, it moves all cubes to the release directory.
+        if moveback=True, it moves back the cubes to the working directory.
+        The catalogue can be generated only when cubes are in working directories. Therefore, should moveback the cubes to working
+        directories first, to generate the catalogue again.
+        mngr.data_release(version='0_01')
         """
 
         import string
@@ -3387,8 +3410,6 @@ class Manager:
             print("\nI expect to receive a version in a format of 'x_xx' where x is a number. Specify the version correctly.")
             print("e.g. mngr.data_release(version='0_01')\n")
             sys.exit(0)
-        if date_start is None: # til now
-            date_start = '230101' #start of survey
         if date_finish is None: # til now
             now = datetime.datetime.now()
             date_finish = now.strftime('%y%m%d')
@@ -3532,12 +3553,63 @@ class Manager:
                 shutil.move(newpath, oldpath)
             prRed(' Cubes are moved back to original working directories')
 
+    def prepare_new_version(self, version_old=None, version_new=None, move=False, date_start='220801', date_finish=None):
+        """
+        Sree: this prepares reduction directories when starting a new version of reductions. 
+        First import hector and manager with one of the any runs in the reduction directory for the old version.
 
+        Inputs:
+        version_old = a version of the current reduction (e.g. 0_01)
+        version_new = a version of the new reduction (e.g. 0_02)
+        if move=False, it copies raw data to the new directory
+        if move=True, it moves raw frames from the old directory to the new directory, to save storage.
+        date_start and date_finish specify the starting and end date to be considered. No need to specify in most cases.
+        mngr.prepare_new_version(version_old='0_01',version_new='0_02')
+        """
+
+        if (version_old is None) or (not bool(re.match(r'^\d{1}_\d{2}$',version_old))):
+            print("\nI expect to receive version_old in a format of 'x_xx' where x is a digit number. Specify the version correctly.")
+            print("e.g. mngr.data_release(version_old='0_01')\n")
+            sys.exit(0)
+        if (version_new is None) or (not bool(re.match(r'^\d{1}_\d{2}$',version_new))):
+            print("\nI expect to receive version_new in a format of 'x_xx' where x is a digit number. Specify the version correctly.")
+            print("e.g. mngr.data_release(version_new='0_01')\n")
+            sys.exit(0)
+        if date_finish is None: # til now
+            now = datetime.datetime.now()
+            date_finish = now.strftime('%y%m%d')
+
+        dir_version_old = os.path.join(os.path.dirname(os.path.dirname(self.abs_root)),'v'+version_old)
+        dir_version_new = os.path.join(os.path.dirname(os.path.dirname(self.abs_root)),'v'+version_new)
+        print(' Old directory: ',dir_version_old)
+        print(' New directory: ',dir_version_new)
+
+        #if not os.path.isdir(dir_version_new):
+        os.makedirs(dir_version_new,exist_ok=True)
+
+        list_dir = np.array(os.listdir(dir_version_old))
+        run_list = [x for x in list_dir if bool(re.match(r'^2\d{5}_2\d{5}$',x))]
+        runs = sorted([x for x in run_list if int(x[:6]) >= int(date_start) and int(x[7:13]) <= int(date_finish)],key=lambda x: (int(x[:6])))
+        print(' List of runs to be included: ',runs)
+
+        for run in runs:
+            #if not os.path.isdir(dir_version_new,run):
+            dir_run_old = os.path.join(dir_version_old,run)
+            dir_run_new = os.path.join(dir_version_new,run)
+            os.makedirs(dir_run_new,exist_ok=True)
+            if move:
+                os.rename(os.path.join(dir_run_old,'raw'), os.path.join(dir_run_new,'raw'))
+            else:
+                print(' Copying raw frames from '+dir_run_old+' to '+dir_run_new)
+                shutil.copytree(os.path.join(dir_run_old,'raw'), os.path.join(dir_run_new,'raw'),dirs_exist_ok = True)
 
     def gzip_cubes(self, overwrite=False, min_exposure=599.0, name='main',
                    star_only=False, min_transmission=0.333, max_seeing=4.0,
                    tag=None, **kwargs):
-        """Gzip the final datacubes. TODO: we may not need this anymore."""
+        """Gzip the final datacubes. TODO: we may not need this anymore.
+        Sree: It is outdated.
+        
+        """
         groups = self.group_files_by(
             ['field_id', 'ccd'], ndf_class='MFOBJECT', do_not_use=False,
             reduced=True, name=name, include_linked_managers = True, **kwargs)
@@ -3912,7 +3984,7 @@ class Manager:
         f.close()
         return
 
-    def tdfdr_options(self, fits, throughput_method='default', tlm=False):
+    def tdfdr_options(self, fits, throughput_method='default', tlm=False, verbose=True):
         """Set the 2dfdr reduction options for this file."""
         options = []
 
@@ -3967,7 +4039,8 @@ class Manager:
             # Arc frames can't use optimal extraction because 2dfdr screws up
             # and marks entire columns as bad when it gets too many saturated
             # pixels
-            options.extend(['-EXTR_OPERATION', 'GAUSS'])
+            # Sree: Hector uses optimal extraction from v0_02
+            #options.extend(['-EXTR_OPERATION', 'GAUSS'])
         elif fits.ndf_class == 'MFFFF' and not tlm:
             # new version of 2dfdr aaorun (2dfdr 7.0) also needs to pass the TLMAP_FILENAME argument
             # when reducing flat fields.  As a result we need to add this to the arguments.
@@ -4049,17 +4122,20 @@ class Manager:
             if filename_match is None:
                 # What to do if no match was found
                 if match_class == 'bias':
-                    print('Warning: Bias frame not found. '
+                    if verbose:
+                        print('Warning: Bias frame not found. '
                           'Turning off bias subtraction for ' + fits.filename)
                     options.extend(['-USEBIASIM', '0','-BIAS_FILENAME', ' '])
                     continue
                 elif match_class == 'dark':
-                    print('Warning: Dark frame not found. '
+                    if verbose:
+                        print('Warning: Dark frame not found. '
                           'Turning off dark subtraction for ' + fits.filename)
                     options.extend(['-USEDARKIM', '0','-DARK_FILENAME', ' '])
                     continue
                 elif match_class == 'lflat':
-                    print('Warning: LFlat frame not found. '
+                    if verbose:
+                        print('Warning: LFlat frame not found. '
                           'Turning off LFlat division for ' + fits.filename)
                     options.extend(['-USEFLATIM', '0','-LFLAT_FILENAME', ' '])
                     continue
@@ -4075,7 +4151,8 @@ class Manager:
                             # Really run out of options here
                             if filename_match is None:
                                 # Still nothing
-                                print('Warning: Offsky (or substitute) frame '
+                                if verbose:
+                                    print('Warning: Offsky (or substitute) frame '
                                       'not found. Turning off throughput '
                                       'calibration for ' + fits.filename)
                                 options.extend(['-THRUPUT', '0'])
@@ -4097,21 +4174,25 @@ class Manager:
                             if filename_match is None:
                                 filename_match = self.match_link(fits, 'tlmap_mfsky_any')
                                 if filename_match is None:
-                                    print('Warning: no matching twilight frames found for TLM.'
-                                          'Will default to using flat field frames instead'
+                                    if verbose:
+                                        print('Warning: no matching twilight frames found for TLM. '
+                                          'Will default to using flat field frames instead '
                                           'for ' + fits.filename)
                                 else:
-                                    print('Warning: No matching twilight found for TLM.'
-                                          'Using a twilight frame from a different night'
+                                    if verbose:
+                                        print('Warning: No matching twilight found for TLM. '
+                                          'Using a twilight frame from a different night '
                                           'for ' + fits.filename)
                                     found = 1
                             else:
-                                print('Warning: No matching twilight found for TLM.'
+                                if verbose:
+                                    print('Warning: No matching twilight found for TLM.'
                                       'Using a twilight frame from the same night'
                                       'for ' + fits.filename)
                                 found = 1
                         else:
-                            print('Found matching twilight for TLM '
+                            if verbose:
+                                print('Found matching twilight for TLM '
                                   'for ' + fits.filename)
                             found = 1
 
@@ -4136,18 +4217,22 @@ class Manager:
                                             'No matching tlmap found for ' +
                                             fits.filename)
                                     else:
-                                        print('Warning: No good flat found for TLM. '
+                                        if verbose:
+                                            print('Warning: No good flat found for TLM. '
                                               'Using flap flat from different field '
                                               'for ' + fits.filename)
                                 else:
-                                    print('Warning: No dome flat found for TLM. '
+                                    if verbose:
+                                        print('Warning: No dome flat found for TLM. '
                                           'Using flap flat instead for ' + fits.filename)
                             else:
-                                print('Warning: No matching flat found for TLM. '
+                                if verbose:
+                                    print('Warning: No matching flat found for TLM. '
                                       'Using flat from different field for ' +
                                       fits.filename)
                         else:
-                            print('Warning: No matching twilight found for TLM. '
+                            if verbose:
+                                print('Warning: No matching twilight found for TLM. '
                                   'Using a dome flat instead ' +
                                   fits.filename)
 
@@ -4164,21 +4249,25 @@ class Manager:
                             if filename_match is None:
                                 filename_match = self.match_link(fits, 'fflat_mfsky_any')
                                 if filename_match is None:
-                                    print('Warning: no matching twilight frames found for FFLAT.'
+                                    if verbose:
+                                        print('Warning: no matching twilight frames found for FFLAT.'
                                           'Will default to using flat field frames instead'
                                           'for ' + fits.filename)
                                 else:
-                                    print('Warning: No matching twilight found for FFLAT.'
+                                    if verbose:
+                                        print('Warning: No matching twilight found for FFLAT.'
                                           'Using a twilight frame from a different night'
                                           'for ' + fits.filename)
                                     found = 1
                             else:
-                                print('Warning: No matching twilight found for FFLAT.'
+                                if verbose:
+                                    print('Warning: No matching twilight found for FFLAT.'
                                       'Using a twilight frame from the same night'
                                       'for ' + fits.filename)
                                 found = 1
                         else:
-                            print('Found matching twilight for FFLAT '
+                            if verbose:
+                                print('Found matching twilight for FFLAT '
                                   'for ' + fits.filename)
                             found = 1
 
@@ -6161,6 +6250,14 @@ def run_2dfdr_single_wrapper(group):
         print(message)
         return False
     return True
+
+@safe_for_multiprocessing
+def fit_arc_model_wrapper(input_list):
+    """fit 2d arc modelling"""
+    arc_reduced, arcfit_name, tlm_name = input_list
+    arc_model_2d(arc_reduced, arcfit_name, tlm_name)
+    print(' Performed a 2D wavelength fit of the arc frames.',arc_reduced)
+    return
 
 
 @safe_for_multiprocessing
