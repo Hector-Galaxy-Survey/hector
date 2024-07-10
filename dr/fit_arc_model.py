@@ -40,11 +40,10 @@ def arc_model_2d(reduced_arc_filename, arcdata_filename, tlm_filename, plot_resi
 
     if not no_update_arc:
         # To add an "_wavela_updated" to the arc filename, use this line
-        output_filename = reduced_arc_filename.parent / (
-            reduced_arc_filename.stem + saved_file_suffix + ".fits"
-        )
+        #output_filename = reduced_arc_filename.parent / (
+        #    reduced_arc_filename.stem + saved_file_suffix + ".fits")
         # To overwrite the arc completely, uncomment this line
-        # output_filename = reduced_arc_filename
+         output_filename = reduced_arc_filename
 
     arc_name = Path(reduced_arc_filename).stem.strip("red")
     N_params_per_slitlet = (N_x + 1) * (N_y + 1)
