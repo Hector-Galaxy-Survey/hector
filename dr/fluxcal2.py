@@ -241,8 +241,8 @@ def chunk_data(ifu, n_drop=None, n_chunk=None, sigma_clip=None):
     else:
         data = ifu.data
     # Convert to integer for future compatibility.
-    n_chunk = np.int(np.floor(n_chunk))
-    chunk_size = np.int(np.floor(chunk_size))
+    n_chunk = int(np.floor(n_chunk))
+    chunk_size = int(np.floor(chunk_size))
     start = n_drop
     end = n_drop + n_chunk * chunk_size
     data = data[:, start:end].reshape(n_fibre, n_chunk, chunk_size)
@@ -505,7 +505,7 @@ def parameters_vector_to_dict(parameters_vector, model_name):
     # MLPG: new model "ref_centre_alpha_circ_hdr_cvd" added
     parameters_dict = {}
     if model_name == 'ref_centre_alpha_angle':
-        n_slice = np.int((len(parameters_vector) - 8) // 2)
+        n_slice = int((len(parameters_vector) - 8) // 2)
         parameters_dict['flux'] = parameters_vector[0:n_slice]
         parameters_dict['background'] = parameters_vector[n_slice:2*n_slice]
         parameters_dict['xcen_ref'] = parameters_vector[-8]
@@ -517,7 +517,7 @@ def parameters_vector_to_dict(parameters_vector, model_name):
         parameters_dict['beta'] = parameters_vector[-2]
         parameters_dict['rho'] = parameters_vector[-1]
     elif model_name == 'ref_centre_alpha_angle_circ':
-        n_slice = np.int((len(parameters_vector) - 6) // 2)
+        n_slice = int((len(parameters_vector) - 6) // 2)
         parameters_dict['flux'] = parameters_vector[0:n_slice]
         parameters_dict['background'] = parameters_vector[n_slice:2*n_slice]
         parameters_dict['xcen_ref'] = parameters_vector[-6]
@@ -528,7 +528,7 @@ def parameters_vector_to_dict(parameters_vector, model_name):
         parameters_dict['beta'] = parameters_vector[-1]
     elif (model_name == 'ref_centre_alpha_dist_circ' or
           model_name == 'ref_centre_alpha_dist_circ_hdratm'):
-        n_slice = np.int((len(parameters_vector) - 5) // 2)
+        n_slice = int((len(parameters_vector) - 5) // 2)
         parameters_dict['flux'] = parameters_vector[0:n_slice]
         parameters_dict['background'] = parameters_vector[n_slice:2*n_slice]
         parameters_dict['xcen_ref'] = parameters_vector[-5]
@@ -537,7 +537,7 @@ def parameters_vector_to_dict(parameters_vector, model_name):
         parameters_dict['alpha_ref'] = parameters_vector[-2]
         parameters_dict['beta'] = parameters_vector[-1]
     elif model_name == 'ref_centre_alpha_angle_circ_atm':
-        n_slice = np.int((len(parameters_vector) - 9) // 2)
+        n_slice = int((len(parameters_vector) - 9) // 2)
         parameters_dict['flux'] = parameters_vector[0:n_slice]
         parameters_dict['background'] = parameters_vector[n_slice:2*n_slice]
         parameters_dict['temperature'] = parameters_vector[-9]
@@ -550,7 +550,7 @@ def parameters_vector_to_dict(parameters_vector, model_name):
         parameters_dict['alpha_ref'] = parameters_vector[-2]
         parameters_dict['beta'] = parameters_vector[-1]
     elif model_name == 'ref_centre_alpha_circ_hdratm':
-        n_slice = np.int((len(parameters_vector) - 4) // 2)
+        n_slice = int((len(parameters_vector) - 4) // 2)
         parameters_dict['flux'] = parameters_vector[0:n_slice]
         parameters_dict['background'] = parameters_vector[n_slice:2*n_slice]
         parameters_dict['xcen_ref'] = parameters_vector[-4]
@@ -558,7 +558,7 @@ def parameters_vector_to_dict(parameters_vector, model_name):
         parameters_dict['alpha_ref'] = parameters_vector[-2]
         parameters_dict['beta'] = parameters_vector[-1]
     elif model_name == 'ref_centre_alpha_circ_hdr_cvd':
-        n_slice = np.int((len(parameters_vector) - 4) // 2)
+        n_slice = int((len(parameters_vector) - 4) // 2)
         parameters_dict['flux'] = parameters_vector[0:n_slice]
         parameters_dict['background'] = parameters_vector[n_slice:2*n_slice]
         parameters_dict['xcen_ref'] = parameters_vector[-4]

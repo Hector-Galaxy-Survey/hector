@@ -188,7 +188,7 @@ def TelluricCorrect(fcal_fname, star_flux, star_flux_err, wave, mf_bin_dir = '',
 
        ## AMBIENT PARAMETERS
        'obsdate'        : int(np.floor(h0['UTMJD'])), # Observing date in [years] or MJD in [days]
-       'utc'            : int(np.float('0.'+str(h0['UTMJD']).split('.')[1]) *24*60*60), # UTC in [s]
+       'utc'            : int(float('0.'+str(h0['UTMJD']).split('.')[1]) *24*60*60), # UTC in [s]
        'telalt'         : h0['ZDSTART'],  # Starting zeneth distance (Telescope altitude angle)[deg]
        'rhum'           : h1['ATMRHUM'] * 100, # Humidity in [%]
        'pres'           : h1['ATMPRES'],  # Pressure in hPa [millibar -> hPa is 1-1]
