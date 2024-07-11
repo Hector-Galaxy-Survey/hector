@@ -1976,7 +1976,7 @@ class Manager:
 
         #This will measure FWHM of specified frames and plot them over time
         if check_focus:
-            outdir = os.path.join(self.abs_root,'qc_plots')
+            outdir = os.path.join(self.abs_root,'qc_plots/')
             if not (os.path.isdir(outdir)):
                 os.makedirs(outdir)
             print('Calculating FWHM for the following frames:')
@@ -2504,6 +2504,8 @@ class Manager:
             #TODO: this is an additional task having issues on extracting standard star flux.
             #this step might be skipped, if we can confirm our flux extraction is accurate enough.
             median_tf, use_median = fluxcal2.calculate_mean_transfer(path_out,self.abs_root)
+            if self.speed == 'slow':
+                median_tf, use_median = fluxcal2.calculate_mean_transfer(path_out,self.abs_root)
             if (use_median or use_median_TF):
                 with pf.open(path_out, mode='update') as hdul:
                     #replace the TF with median TF
