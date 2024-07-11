@@ -132,6 +132,7 @@ from .qc.arc import bad_fibres
 from .dr.fflat import correct_bad_fibres
 from .dr.twilight_wavecal import wavecorr_frame, wavecorr_av, apply_wavecorr
 from .dr.fit_arc_model import arc_model_2d
+from .observing.arc_calculate_fwhm import calculate_fwhm
 
 # Temporary edit. Prevent bottleneck 1.0.0 being used.
 try:
@@ -1705,7 +1706,7 @@ class Manager:
         self.link_calibrator('lflat', overwrite=overwrite)
         return
 
-    def make_tlm(self, overwrite=False, leave_reduced=False, **kwargs):
+    def make_tlm(self, overwrite=False, leave_reduced=False, this_only=None, **kwargs):
         """Make TLMs from all files matching given criteria.
         If the use_twilight_tlm_blue keyword is set to True in the manager
         (when the manager is initialized), then we will also
@@ -1756,6 +1757,11 @@ class Manager:
         # this currently only allows TLMs to be made from MFFFF files
         file_iterable = self.files(ndf_class='MFFFF', do_not_use=False,
                                    **kwargs)
+
+        if this_only:
+            if '.fits' not in this_only:
+                this_only = this_only+'.fits'
+            file_iterable = self.files(ndf_class='MFFFF', do_not_use=False, filename=[this_only], **kwargs)
 
         self.reduce_file_iterable(
             file_iterable, overwrite=overwrite, tlm=True,
@@ -1924,10 +1930,28 @@ class Manager:
         #self.next_step('make_tlm', print_message=True)
         return
 
-    def reduce_arc(self, overwrite=False, **kwargs):
-        """Reduce all arc frames matching given criteria."""
+    def reduce_arc(self, overwrite=False, check_focus=None, this_only=None,  **kwargs):
+        """Reduce all arc frames matching given criteria.
+        check_focus is for checking focus estimating FWHM of arc lines.
+        Give the name of an arc frame to check their FWHM. It will check for all ccds for the given frame.
+        e.g. check_focus='06mar10003'
+        """
+
         file_iterable = self.files(ndf_class='MFARC', do_not_use=False,
                                    **kwargs)
+        if this_only:
+            if '.fits' not in this_only:
+                this_only = this_only+'.fits'
+            file_iterable = self.files(ndf_class='MFARC', do_not_use=False, filename=[this_only], **kwargs)
+
+        if check_focus: #make it reduces necessary frames only
+            if '.fits' in check_focus:
+                check_focus = check_focus[0:10]
+            date=check_focus[0:5];frame=check_focus[6:10]+'.fits'
+            frames = [date+'1'+frame, date+'2'+frame, date+'3'+frame, date+'4'+frame]
+            file_iterable = self.files(ndf_class='MFARC', do_not_use=False, filename=frames,**kwargs)
+            frames_reduced = [x.reduced_path for x in file_iterable]
+
         reduced_files = self.reduce_file_iterable(
             file_iterable, overwrite=overwrite, check='ARC')
         for fits in reduced_files:
@@ -1950,10 +1974,20 @@ class Manager:
             else:
                 print(' Empty list for arc modelling. Nothing to do.')
 
+        #This will measure FWHM of specified frames and plot them over time
+        if check_focus:
+            outdir = os.path.join(self.abs_root,'qc_plots')
+            if not (os.path.isdir(outdir)):
+                os.makedirs(outdir)
+            print('Calculating FWHM for the following frames:')
+            print(frames_reduced)
+            calculate_fwhm(frames_reduced,outdir)
+            print('Check the results from ', outdir)
+
         self.next_step('reduce_arc', print_message=True)
         return
 
-    def reduce_fflat(self, overwrite=False, twilight_only=False, **kwargs):
+    def reduce_fflat(self, overwrite=False, twilight_only=False, this_only=None, **kwargs):
         """Reduce all fibre flat frames matching given criteria."""
 
         # check if ccd keyword argument is set, as we need to account for the
@@ -2007,6 +2041,10 @@ class Manager:
         if (not twilight_only):
             file_iterable = self.files(ndf_class='MFFFF', do_not_use=False,
                                        **kwargs)
+            if this_only:
+                if '.fits' not in this_only:
+                    this_only = this_only+'.fits'
+                file_iterable = self.files(ndf_class='MFFFF', do_not_use=False, filename=[this_only], **kwargs)
             self.reduce_file_iterable(
                 file_iterable, overwrite=overwrite, check='FLT')
 
@@ -4423,7 +4461,7 @@ class Manager:
               tlm_created=None, flux_calibrated=None, telluric_corrected=None,
               spectrophotometric=None, name=None, lamp=None, min_fluxlev=None,
               max_fluxlev=None,
-              central_wavelength=None, include_linked_managers=False):
+              central_wavelength=None, include_linked_managers=False, filename=None):
         """Generator for FITS files that satisfy requirements."""
         if include_linked_managers:
             # Include files from linked managers too
@@ -4484,6 +4522,8 @@ class Manager:
                       (fits.spectrophotometric == spectrophotometric))) and
                     (name is None or
                      (fits.name is not None and fits.name in name)) and
+                    (filename is None or
+                     (fits.filename is not None and fits.filename in filename)) and
                     (lamp is None or fits.lamp == lamp) and
                     (central_wavelength is None or
                      fits.central_wavelength == central_wavelength)):
