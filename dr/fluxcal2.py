@@ -898,7 +898,7 @@ def match_star_coordinates(ra, dec, max_sep_arcsec=60.0,
     """Return details of the star nearest to the supplied coordinates."""
     for index_path in catalogues:
         #index = np.loadtxt(index_path, dtype='S')
-        converters = {'col6':[ascii.convert_numpy(np.str)]}
+        converters = {'col6':[ascii.convert_numpy(str)]}
         index = table.Table.read(index_path, format='ascii.no_header'
                                  ,converters=converters)
         for star in index:
@@ -2332,7 +2332,7 @@ def derive_secondary_tf(path_list,path_list2,path_out,tempfile=hector_path+'stan
         # col2 = pf.Column(name='flux_blue', format='E', array=flux_b)
         # cols = pf.ColDefs([col1, col2])
         # hdutab = pf.BinTableHDU.from_columns(cols, name='secondary_standard_star')
-        # hdutab.writeto(np.str(std_name) + '_' + np.str(index) + '.fits')
+        # hdutab.writeto(str(std_name) + '_' + str(index) + '.fits')
         #
         # fig = py.figure()
         # ax = fig.add_subplot(111)
