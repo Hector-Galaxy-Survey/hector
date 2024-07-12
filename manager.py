@@ -2235,7 +2235,7 @@ class Manager:
             bad_fields = set([fits.field_id for fits in fits_list])
         else:
             bad_fields = []
-        if recalculate_throughput:
+        if recalculate_throughput and (self.speed == 'slow'):
             # Average over individual throughputs measured from sky lines
             extra_files = self.correct_bad_throughput(
                 overwrite=overwrite, **kwargs)
@@ -2503,9 +2503,10 @@ class Manager:
             #If current TF/median TF > 1.1, we use median TF instead of the current TF from the run
             #TODO: this is an additional task having issues on extracting standard star flux.
             #this step might be skipped, if we can confirm our flux extraction is accurate enough.
-            median_tf, use_median = fluxcal2.calculate_mean_transfer(path_out,self.abs_root)
             if self.speed == 'slow':
                 median_tf, use_median = fluxcal2.calculate_mean_transfer(path_out,self.abs_root)
+            else:
+                use_median = False
             if (use_median or use_median_TF):
                 with pf.open(path_out, mode='update') as hdul:
                     #replace the TF with median TF
@@ -2514,7 +2515,7 @@ class Manager:
                     hdul.pop() #remove existing THROUGHPUT extension
                     hdul[1].header['ORIGFILE'] = os.path.basename(path_list[0])
                     hdul.writeto(path_out, overwrite=True)
-                #update the QC throughput measurement too, so it does not affect thput calcumation
+                #update the QC throughput measurement too, so it does not affect thput calculation
                 self.qc_throughput_spectrum(path_out)
 
             # Copy the file into all required directories for each standard stars (e.g. LTT1788)
@@ -3858,10 +3859,8 @@ class Manager:
         for path_mean in path_list:
             hdulist_mean = pf.open(path_mean)
             header = hdulist_mean[0].header
-            if (('DATESTRT' not in header or
-                 epoch >= header['DATESTRT']) and
-                    ('DATEFNSH' not in header or
-                     epoch <= header['DATEFNSH'])):
+            if ('DATESTRT' not in header or
+                 epoch >= header['DATESTRT']):
                 # This file is suitable for use
                 found_mean = True
                 mean_throughput = hdulist_mean[0].data
