@@ -11,7 +11,8 @@ import matplotlib.pyplot as plt
 #
 #Functions for Gaussian fitting of Hector Arcframes
 #work together with mngr.reduce_arc()
-#10th July 2024
+#first version: 10th July 2024
+#version 0.1: 11th July 2024 - bug fixed
 #Susie Tuntipong
 #stun4076@uni.sydney.edu.au
 #
@@ -133,8 +134,8 @@ def fitting(reduced_arc_path, outdir):
         pass
 
     #write the text file if not existing
-    if len(glob(outdir + 'qc_values.txt'))==0:
-        with open(outdir + 'qc_values.txt', 'w') as f:
+    if len(glob(outdir + 'arc_fwhm_qc_values.txt'))==0:
+        with open(outdir + 'arc_fwhm_qc_values.txt', 'w') as f:
             f.write('Arcframe FWHM TELFOC TILTSPAT TILTSPEC PISTON')
             f.write('\n')
     else:
@@ -145,7 +146,7 @@ def fitting(reduced_arc_path, outdir):
         framename = (reduced_arc_path[r].split('/')[-1]).split('red')[0]
 
         #prevent repeating calculation
-        data = Table.read(outdir + 'qc_values.txt',format='ascii',delimiter=' ')
+        data = Table.read(outdir + 'arc_fwhm_qc_values.txt',format='ascii',delimiter=' ')
         data_framename = np.array(data['Arcframe'])
         data_fwhm = np.array(data['FWHM'])
         pos_framename = np.where(framename==data_framename)[0]
@@ -220,7 +221,7 @@ def fitting(reduced_arc_path, outdir):
             print(framename,' FWHM is ',median_fwhm)
 
             #Collect data onto a table
-            with open(outdir + 'qc_values.txt', 'a') as f:
+            with open(outdir + 'arc_fwhm_qc_values.txt', 'a') as f:
                 f.write(framename+' '+str(median_fwhm))
                 for xh in range(len(x_header)):
                     f.write(' '+str(x_header[xh]))
@@ -237,30 +238,31 @@ def plot_fwhm(outdir):
     '''
     
     print('Plotting...')
-    data = Table.read(outdir + 'qc_values.txt',format='ascii',delimiter=' ')
+    data = Table.read(outdir + 'arc_fwhm_qc_values.txt',format='ascii',delimiter=' ')
     data_header = ['Arcframe','FWHM','TELFOC','TILTSPAT','TILTSPEC','PISTON']
 
     n_ccd = np.array([int(np.array(data[data_header[0]])[xi][5]) for xi in range(len(data))])
     
+    if outdir[-1]!='/':
+        outdir = outdir + '/'
+    else:
+        pass
+    duration = outdir.split('/')[-3]
+    
     colour = ['b','r','b','r']
     lower_lim = [np.array([2.0,1.0,1.0,1.0]),[35,35,35,35],[1500,600,-0.5,-0.5],[2700,2000,-0.5,-0.5],[100,400,2700,2200]]
-    upper_lim = [np.array([3.3,2.0,2.0,2.0]),[45,45,45,45],[2500,2500,0.5,0.5],[3600,3100,0.5,0.5],[200,600,3000,2500]]
+    upper_lim = [np.array([4.0,2.0,2.0,2.0]),[45,45,45,45],[2500,2500,0.5,0.5],[3600,3100,0.5,0.5],[200,600,3000,2500]]
     
     
     for l in range(4):
         print('CCD ',l+1)
         pos = np.where(n_ccd==l+1)[0]
         x_plt = np.array(data[data_header[0]])[pos]
-        if outdir[-1]!='/':
-            outdir = outdir + '/'
-        else:
-            pass
-        duration = outdir.split('/')[-3]
-        
+
         #sorted by date
         date = np.array([datetime.date(int('20'+duration[:2]),datetime.datetime.strptime(x_plt[i][2:5], '%b').month,int(x_plt[i][:2])) for i in range(len(x_plt))])
         date_sorted = np.sort(date)
-        pos_date = np.array([np.where(date[i]==date_sorted)[0][0] for i in range(len(date))])
+        pos_date = np.array([np.where(date_sorted[i]==date)[0][0] for i in range(len(date_sorted))])
         
         #convert x_plt into numbers
         x_plt_order = np.arange(len(x_plt))
@@ -297,7 +299,7 @@ def plot_fwhm(outdir):
             axs.tick_params(axis='y',labelsize=8)
         
         #save figure
-        figname = 'CCD'+str(l+1)+'_qc_plots'
+        figname = 'arc_fwhm_CCD'+str(l+1)+'_qc_plots'
         fig.savefig(outdir + figname +'.png',dpi=300)
     print('Finish the process')
         
