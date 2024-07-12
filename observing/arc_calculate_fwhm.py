@@ -13,6 +13,7 @@ import matplotlib.pyplot as plt
 #work together with mngr.reduce_arc()
 #first version: 10th July 2024
 #version 0.1: 11th July 2024 - bug fixed
+#version 0.2: 12th July 2024 - bug fixed
 #Susie Tuntipong
 #stun4076@uni.sydney.edu.au
 #
@@ -134,8 +135,8 @@ def fitting(reduced_arc_path, outdir):
         pass
 
     #write the text file if not existing
-    if len(glob(outdir + 'arc_fwhm_qc_values.txt'))==0:
-        with open(outdir + 'arc_fwhm_qc_values.txt', 'w') as f:
+    if len(glob(outdir + 'qc_values.txt'))==0:
+        with open(outdir + 'qc_values.txt', 'w') as f:
             f.write('Arcframe FWHM TELFOC TILTSPAT TILTSPEC PISTON')
             f.write('\n')
     else:
@@ -146,7 +147,7 @@ def fitting(reduced_arc_path, outdir):
         framename = (reduced_arc_path[r].split('/')[-1]).split('red')[0]
 
         #prevent repeating calculation
-        data = Table.read(outdir + 'arc_fwhm_qc_values.txt',format='ascii',delimiter=' ')
+        data = Table.read(outdir + 'qc_values.txt',format='ascii',delimiter=' ')
         data_framename = np.array(data['Arcframe'])
         data_fwhm = np.array(data['FWHM'])
         pos_framename = np.where(framename==data_framename)[0]
@@ -221,7 +222,7 @@ def fitting(reduced_arc_path, outdir):
             print(framename,' FWHM is ',median_fwhm)
 
             #Collect data onto a table
-            with open(outdir + 'arc_fwhm_qc_values.txt', 'a') as f:
+            with open(outdir + 'qc_values.txt', 'a') as f:
                 f.write(framename+' '+str(median_fwhm))
                 for xh in range(len(x_header)):
                     f.write(' '+str(x_header[xh]))
@@ -238,7 +239,7 @@ def plot_fwhm(outdir):
     '''
     
     print('Plotting...')
-    data = Table.read(outdir + 'arc_fwhm_qc_values.txt',format='ascii',delimiter=' ')
+    data = Table.read(outdir + 'qc_values.txt',format='ascii',delimiter=' ')
     data_header = ['Arcframe','FWHM','TELFOC','TILTSPAT','TILTSPEC','PISTON']
 
     n_ccd = np.array([int(np.array(data[data_header[0]])[xi][5]) for xi in range(len(data))])
@@ -258,49 +259,54 @@ def plot_fwhm(outdir):
         print('CCD ',l+1)
         pos = np.where(n_ccd==l+1)[0]
         x_plt = np.array(data[data_header[0]])[pos]
-
-        #sorted by date
-        date = np.array([datetime.date(int('20'+duration[:2]),datetime.datetime.strptime(x_plt[i][2:5], '%b').month,int(x_plt[i][:2])) for i in range(len(x_plt))])
-        date_sorted = np.sort(date)
-        pos_date = np.array([np.where(date_sorted[i]==date)[0][0] for i in range(len(date_sorted))])
         
-        #convert x_plt into numbers
-        x_plt_order = np.arange(len(x_plt))
-        x_plt_order_min = min(x_plt_order) - 1
-        x_plt_order_max = max(x_plt_order) + 1
+        #skip the plot if there's no datapoint
+        if len(x_plt)==0:
+            print('No datapoints, skip plotting')
+        else:
+            #continue working
+            #sorted by date
+            date = np.array([datetime.date(int('20'+duration[:2]),datetime.datetime.strptime(x_plt[i][2:5], '%b').month,int(x_plt[i][:2])) for i in range(len(x_plt))])
+            date_sorted = np.sort(date)
+            pos_date = np.array([np.where(date_sorted[i]==date)[0][0] for i in range(len(date_sorted))])
+        
+            #convert x_plt into numbers
+            x_plt_order = np.arange(len(x_plt))
+            x_plt_order_min = min(x_plt_order) - 1
+            x_plt_order_max = max(x_plt_order) + 1
 
-        nrow = 2
-        ncol = 3
-        fig = plt.figure(figsize=(1.5*(ncol + 7.0), (nrow + 7.0)))
-        ax = fig.add_gridspec(nrow, ncol, wspace=0.3,hspace=0.3,top=1. - 0.25 / (nrow + 1), bottom=0.4 / (nrow + 1),
+            nrow = 2
+            ncol = 3
+            fig = plt.figure(figsize=(1.5*(ncol + 7.0), (nrow + 7.0)))
+            ax = fig.add_gridspec(nrow, ncol, wspace=0.3,hspace=0.3,top=1. - 0.25 / (nrow + 1), bottom=0.4 / (nrow + 1),
                 left=0.3 / (ncol + 1), right=1 - 0.2 / (ncol + 1))
-        fig.suptitle('CCD '+str(l+1)+', run '+duration+', QC plots')
+            fig.suptitle('CCD '+str(l+1)+', run '+duration+', QC plots')
         
-        for p in range(len(data_header)-1):
-            axs = fig.add_subplot(ax[p],frameon=True)
-            y_plt = np.array(data[data_header[p+1]])[pos][pos_date]
+            for p in range(len(data_header)-1):
+                axs = fig.add_subplot(ax[p],frameon=True)
+                y_plt = np.array(data[data_header[p+1]])[pos][pos_date]
 
-            axs.scatter(x_plt_order,y_plt,c='k',s=15)
+                axs.scatter(x_plt_order,y_plt,c='k',s=15)
 
-            axs.grid(color = 'k', linestyle = '--', linewidth = 0.5, alpha=0.4, which='major')
-            axs.grid(color = 'k', linestyle = ':', linewidth = 0.5, alpha=0.1, which='minor')
-            axs.minorticks_on()
-            axs.tick_params(axis='both',which='major',direction='in',length=6,pad=3,
-                   top=True, right=True,bottom=True,left=True,
-                 labeltop=False, labelright=False,labelbottom=True,labelleft=True)
-            axs.tick_params(axis='both',which='minor',direction='in',length=3,
-                   top=True, right=True,bottom=True,left=True,
-                 labeltop=False, labelright=False,labelbottom=True,labelleft=True)
-            axs.set_title(data_header[p+1])
-            axs.set_ylim(lower_lim[p][l],upper_lim[p][l])
-            axs.set_xlim(x_plt_order_min,x_plt_order_max)
-            axs.set_xticks(x_plt_order,x_plt[pos_date],rotation = 90)
-            axs.tick_params(axis='x',labelsize=5)
-            axs.tick_params(axis='y',labelsize=8)
+                axs.grid(color = 'k', linestyle = '--', linewidth = 0.5, alpha=0.4, which='major')
+                axs.grid(color = 'k', linestyle = ':', linewidth = 0.5, alpha=0.1, which='minor')
+                axs.minorticks_on()
+                axs.tick_params(axis='both',which='major',direction='in',length=6,pad=3,
+                       top=True, right=True,bottom=True,left=True,
+                     labeltop=False, labelright=False,labelbottom=True,labelleft=True)
+                axs.tick_params(axis='both',which='minor',direction='in',length=3,
+                       top=True, right=True,bottom=True,left=True,
+                     labeltop=False, labelright=False,labelbottom=True,labelleft=True)
+                axs.set_title(data_header[p+1])
+                axs.set_ylim(lower_lim[p][l],upper_lim[p][l])
+                axs.set_xlim(x_plt_order_min,x_plt_order_max)
+                axs.set_xticks(x_plt_order,x_plt[pos_date],rotation = 90)
+                axs.tick_params(axis='x',labelsize=5)
+                axs.tick_params(axis='y',labelsize=8)
         
-        #save figure
-        figname = 'arc_fwhm_CCD'+str(l+1)+'_qc_plots'
-        fig.savefig(outdir + figname +'.png',dpi=300)
+            #save figure
+            figname = 'CCD'+str(l+1)+'_qc_plots'
+            fig.savefig(outdir + figname +'.png',dpi=300)
     print('Finish the process')
         
 
