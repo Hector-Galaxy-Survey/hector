@@ -14,6 +14,7 @@ import matplotlib.pyplot as plt
 #first version: 10th July 2024
 #version 0.1: 11th July 2024 - bug fixed
 #version 0.2: 12th July 2024 - bug fixed
+#version 0.3: 13th July 2024 - at a plot for all-CCDs FWHM 
 #Susie Tuntipong
 #stun4076@uni.sydney.edu.au
 #
@@ -253,28 +254,69 @@ def plot_fwhm(outdir):
     colour = ['b','r','b','r']
     lower_lim = [np.array([2.0,1.0,1.0,1.0]),[35,35,35,35],[1500,600,-0.5,-0.5],[2700,2000,-0.5,-0.5],[100,400,2700,2200]]
     upper_lim = [np.array([4.0,2.0,2.0,2.0]),[45,45,45,45],[2500,2500,0.5,0.5],[3600,3100,0.5,0.5],[200,600,3000,2500]]
+    median_all = np.array([2.6409,1.5598,1.4461,1.2554])
     
+    #Plot for FWHM only
+    nrow = 2
+    ncol = 2
+    fig0 = plt.figure(figsize=((ncol + 7.0), (nrow + 7.0)))
+    ax0 = fig0.add_gridspec(nrow, ncol, wspace=0.3,hspace=0.3,top=1. - 0.25 / (nrow + 1), bottom=0.4 / (nrow + 1),
+            left=0.3 / (ncol + 1), right=1 - 0.2 / (ncol + 1))
+    fig0.suptitle('FWHM for all CCDs, run '+duration)
     
     for l in range(4):
         print('CCD ',l+1)
         pos = np.where(n_ccd==l+1)[0]
-        x_plt = np.array(data[data_header[0]])[pos]
+        x_plt0 = np.array(data[data_header[0]])[pos]
         
         #skip the plot if there's no datapoint
-        if len(x_plt)==0:
+        if len(x_plt0)==0:
             print('No datapoints, skip plotting')
         else:
             #continue working
             #sorted by date
-            date = np.array([datetime.date(int('20'+duration[:2]),datetime.datetime.strptime(x_plt[i][2:5], '%b').month,int(x_plt[i][:2])) for i in range(len(x_plt))])
-            date_sorted = np.sort(date)
-            pos_date = np.array([np.where(date_sorted[i]==date)[0][0] for i in range(len(date_sorted))])
-        
+            date = np.array([datetime.date(int('20'+duration[:2]),datetime.datetime.strptime(x_plt0[i][2:5], '%b').month,int(x_plt0[i][:2])) for i in range(len(x_plt0))])
+            x_plt = np.concatenate([np.sort(x_plt0[np.where(date==d)[0]]) for d in np.sort(np.unique(date))])
+            pos_date = np.array([np.where(x_plt[i]==x_plt0)[0][0] for i in range(len(x_plt))])
+
             #convert x_plt into numbers
             x_plt_order = np.arange(len(x_plt))
             x_plt_order_min = min(x_plt_order) - 1
             x_plt_order_max = max(x_plt_order) + 1
+            
+            #FWHM plot
+            axs0 = fig0.add_subplot(ax0[l],frameon=True)
+            y_plt0 = np.array(data[data_header[1]])[pos][pos_date]
+            axs0.scatter(x_plt_order,y_plt0,c='k',s=15)
+            axs0.plot(np.linspace(x_plt_order_min,x_plt_order_max,10),
+                    [median_all[l]]*10,c=colour[l],ls='dashed',
+                 label='Median FWHM = '+'{:.4f}'.format(median_all[l])+r' $\AA$')
+            axs0.fill_between(np.linspace(x_plt_order_min,x_plt_order_max,10),
+                    [median_all[l]*0.95]*10,[median_all[l]]*10,color=colour[l],alpha=0.2,
+                 label='-5% = '+'{:.4f}'.format(median_all[l]*0.95)+r' $\AA$')
+            axs0.fill_between(np.linspace(x_plt_order_min,x_plt_order_max,10),
+                    [median_all[l]*1.05]*10,[median_all[l]]*10,color=colour[l],alpha=0.2,
+                 label='+5% = '+'{:.4f}'.format(median_all[l]*1.05)+r' $\AA$')
+            axs0.legend(loc='upper right',fontsize=10)
+            axs0.grid(color = 'k', linestyle = '--', linewidth = 0.5, alpha=0.4, which='major')
+            axs0.grid(color = 'k', linestyle = ':', linewidth = 0.5, alpha=0.1, which='minor')
+            axs0.minorticks_on()
+            axs0.tick_params(axis='both',which='major',direction='in',length=6,pad=3,
+                       top=True, right=True,bottom=True,left=True,
+                     labeltop=False, labelright=False,labelbottom=True,labelleft=True)
+            axs0.tick_params(axis='both',which='minor',direction='in',length=3,
+                       top=True, right=True,bottom=True,left=True,
+                     labeltop=False, labelright=False,labelbottom=True,labelleft=True)
+            axs0.legend(loc='upper right',fontsize=6.5)
+            axs0.set_title('CCD '+str(l+1))
+            axs0.set_ylim(lower_lim[0][l],upper_lim[0][l])
+            axs0.set_xlim(x_plt_order_min,x_plt_order_max)
+            axs0.set_xticks(x_plt_order,x_plt,rotation = 90)
+            axs0.tick_params(axis='x',labelsize=5)
+            axs0.tick_params(axis='y',labelsize=8)
+            axs0.set_ylabel(r'FWHM$_{Gaussian}$ / $\AA$')
 
+            #Plot all 5 parameters
             nrow = 2
             ncol = 3
             fig = plt.figure(figsize=(1.5*(ncol + 7.0), (nrow + 7.0)))
@@ -285,9 +327,20 @@ def plot_fwhm(outdir):
             for p in range(len(data_header)-1):
                 axs = fig.add_subplot(ax[p],frameon=True)
                 y_plt = np.array(data[data_header[p+1]])[pos][pos_date]
-
                 axs.scatter(x_plt_order,y_plt,c='k',s=15)
-
+                if p==0:
+                    axs.plot(np.linspace(x_plt_order_min,x_plt_order_max,10),[median_all[l]]*10,c=colour[l],ls='dashed',
+                 label='Median FWHM = '+'{:.4f}'.format(median_all[l])+r' $\AA$')
+                    axs.fill_between(np.linspace(x_plt_order_min,x_plt_order_max,10),
+                        [median_all[l]*0.95]*10,[median_all[l]]*10,color=colour[l],alpha=0.2,
+                     label='-5% = '+'{:.4f}'.format(median_all[l]*0.95)+r' $\AA$')
+                    axs.fill_between(np.linspace(x_plt_order_min,x_plt_order_max,10),
+                        [median_all[l]*1.05]*10,[median_all[l]]*10,color=colour[l],alpha=0.2,
+                     label='+5% = '+'{:.4f}'.format(median_all[l]*1.05)+r' $\AA$')
+                    axs.legend(loc='upper right',fontsize=10)
+                else:
+                    pass
+                
                 axs.grid(color = 'k', linestyle = '--', linewidth = 0.5, alpha=0.4, which='major')
                 axs.grid(color = 'k', linestyle = ':', linewidth = 0.5, alpha=0.1, which='minor')
                 axs.minorticks_on()
@@ -300,13 +353,18 @@ def plot_fwhm(outdir):
                 axs.set_title(data_header[p+1])
                 axs.set_ylim(lower_lim[p][l],upper_lim[p][l])
                 axs.set_xlim(x_plt_order_min,x_plt_order_max)
-                axs.set_xticks(x_plt_order,x_plt[pos_date],rotation = 90)
+                axs.set_xticks(x_plt_order,x_plt,rotation = 90)
                 axs.tick_params(axis='x',labelsize=5)
                 axs.tick_params(axis='y',labelsize=8)
         
-            #save figure
+            #save figure for all parameters
             figname = 'CCD'+str(l+1)+'_qc_plots'
             fig.savefig(outdir + figname +'.png',dpi=300)
+    
+    #save figure for FWHM only
+    figname0 = 'FWHM_qc_plots'
+    fig0.savefig(outdir + figname0 +'.png',dpi=300)
+            
     print('Finish the process')
         
 
