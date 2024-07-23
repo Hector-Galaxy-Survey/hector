@@ -2937,18 +2937,22 @@ def calculate_mean_transfer(path_in, path_root):
     for x in run_list_all:
         if (np.abs(int(date_start)-int(x[7:13])) < 10000) and (np.abs(int(date_start)-int(x[7:13])) >0) and int(x[7:13]) > 230101:
             run_list.append(x)
-    print('    ',run_list)
+    run_list = sorted(run_list, key=lambda x: int(x[:6]))
+
 
     #find TRANSFERcombined.fits from each run
     transfer_name = 'TRANSFERcombined.fits'
-    transfer_found = []; use_median = False
+    transfer_found = []; valid_run_list=[]; use_median = False
     for run in run_list:  
         target_dir = os.path.dirname(path_root)+'/'+run+'/reduced/'
         for root, dirs, files in os.walk(target_dir):
             if(('/ccd_'+str(ccd) in root) and ('main' not in root) and ('outdir' not in root)):
                 for file in files:
                     if file == transfer_name:
-                        transfer_found.append(os.path.join(root, file))
+                        with pf.open(os.path.join(root, file)) as hdul:
+                            if 'MEDTF' not in hdul[0].header:
+                                transfer_found.append(os.path.join(root, file))
+                                valid_run_list.append(run)
                         break  
                 else:
                     continue
@@ -2956,6 +2960,8 @@ def calculate_mean_transfer(path_in, path_root):
         else:
             continue
         continue
+    run_list = valid_run_list
+    print('    ',run_list)
    
     #read transfer function from each run
     n_file = len(transfer_found); n_pixel = pf.getval(transfer_found[0], 'NAXIS1')
@@ -2987,11 +2993,16 @@ def calculate_mean_transfer(path_in, path_root):
 
     # 3-sigma clipping to exclude outliers in TF
     std_tf_eachrow = np.nanstd(transfer_array, axis=1)
-    ind = np.ones(n_file); med_tf = np.nanmean(transfer_array, axis=1); std_tf = np.std(med_tf[ind>0]); pcount = n_file+1
-    ind[med_tf == np.max(med_tf)] = 0 #exclude maximum TF
+    ind = np.ones(n_file); med_tf = np.nanmean(transfer_array, axis=1); med_tf_start=np.nanmean(transfer_array[:,0:100], axis=1);med_tf_end=np.nanmean(transfer_array[:,-100:-1], axis=1); std_tf = np.std(med_tf[ind>0]); pcount = n_file+1
+#    ind[med_tf == np.max(med_tf)] = 0 #exclude maximum TF
+    ind[np.abs(1.-med_tf_start/np.median(med_tf_start))>0.2] = 0
+    ind[np.abs(1.-med_tf_end/np.median(med_tf_end))>0.2]=0 #exclude TF
+    if ccd == '4':
+        ind[run_list == '230809_230814']=0 # this run has much higher thuputs in the blue end of Spector red.
     while True:
         std_tf = np.std(med_tf[ind>0])
         ind[med_tf > np.median(med_tf[ind>0])+3*std_tf] = 0 #3 sigma clipping
+#        ind[med_tf < np.median(med_tf[ind>0])-3*std_tf] = 0 #3 sigma clipping
         ind[std_tf_eachrow > np.nanstd(np.median(transfer_array[ind>0,:],axis=0))*10] =0 #exclude TF with large variations
         ncount = np.count_nonzero(ind)
         if ncount == pcount:
@@ -3001,10 +3012,8 @@ def calculate_mean_transfer(path_in, path_root):
     # We get lots of invalid value warnings arising because of divide by zero errors.
         warnings.filterwarnings('ignore', message="All-NaN slice encountered")
         median_tf = np.nanmedian(transfer_array[ind>0,:],axis=0)
-    print('  ccd_'+ccd+' (current TF / median TF): ',np.nanmedian(current_tf / median_tf))
 
-#    print(std_tf_eachrow, np.nanstd(np.median(transfer_array[ind>0,:], axis=0)))
-#    print(ccd, med_tf, np.median(med_tf[ind>0]), std_tf, np.median(med_tf[ind>0]) + 3 * std_tf,np.min(med_tf) + 3 * std_tf, ind)
+    print('  ccd_'+ccd+' (current TF / median TF): ',np.nanmedian(current_tf / median_tf))
 
     #dibbuging plots
     fig, (ax1,ax2) = plt.subplots(2,1,figsize=(8, 12))
