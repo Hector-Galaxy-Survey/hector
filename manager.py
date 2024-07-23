@@ -1961,13 +1961,14 @@ class Manager:
         if self.fit_arc_model_2d:
             input_list=[]
             for fits in reduced_files:
+                print(fits.lamp)
                 tdfdr_options = tuple(self.tdfdr_options(fits,verbose=False))
                 arc_reduced = fits.reduced_path
                 arcfit_name = os.path.join(fits.reduced_dir,os.path.basename(fits.filename)[0:10]+'_outdir/arcfits.dat')
                 tlm_name = os.path.join(fits.reduced_dir,tdfdr_options[-1])
                 with pf.open(arc_reduced, mode='readonly') as hdul:
-                    applied = any(hdu.name == 'OLDWAVELA'  for hdu in hdul)
-                if not applied:
+                    applied = any(hdu.name == 'OLDWAVELA'  for hdu in hdul) #to avoid applying it multiple times
+                if not applied and (fits.lamp == 'Helium+CuAr+FeAr' or fits.lamp=='CuAr'):
                     input_list.append((arc_reduced,arcfit_name,tlm_name))
             if input_list:
                 self.map(fit_arc_model_wrapper, input_list)
@@ -2489,6 +2490,8 @@ class Manager:
             path_list = [fits.reduced_path for fits in fits_list]
             path_out = os.path.join(os.path.dirname(path_list[0]),
                                     'TRANSFERcombined.fits')
+            if overwrite:
+                os.remove(path_out)
             if overwrite or not os.path.exists(path_out):
                 print('\nCombining files to create', path_out)
                 fluxcal2.combine_transfer_functions(path_list, path_out)
@@ -2503,10 +2506,13 @@ class Manager:
             #If current TF/median TF > 1.1, we use median TF instead of the current TF from the run
             #TODO: this is an additional task having issues on extracting standard star flux.
             #this step might be skipped, if we can confirm our flux extraction is accurate enough.
-            if self.speed == 'slow':
+            if (self.speed == 'slow'):
                 median_tf, use_median = fluxcal2.calculate_mean_transfer(path_out,self.abs_root)
             else:
                 use_median = False
+            if(('ccd_4' in path_out) and ('220914_220925' in path_out)): #the median TF is dominated by Aug 2023 where thput is ridicularsly high in ccd4 blue end
+                use_median = False
+
             if (use_median or use_median_TF):
                 with pf.open(path_out, mode='update') as hdul:
                     #replace the TF with median TF
@@ -2919,7 +2925,7 @@ class Manager:
         self.next_step('measure_offsets', print_message=True)
         return
 
-    def cube(self, overwrite=False, min_exposure=599.0, name='main',
+    def cube(self, overwrite=False, min_exposure=1499.0, name='main',
              star_only=False, drop_factor=None, tag='', update_tol=0.02,
              size_of_grid=80, output_pix_size_arcsec=0.5,
              min_transmission=0.333, max_seeing=4.0, min_frames=6, **kwargs):
@@ -3847,6 +3853,7 @@ class Manager:
         absolute_throughput = throughput(path)
         # Check the CCD and date for this file
         file_input = pf.getval(path, 'ORIGFILE', 1)
+        print(path, file_input)
         path_input = os.path.join(
             self.fits_file(file_input[:10]).reduced_dir, file_input)
         detector = pf.getval(path_input, 'DETECTOR')
@@ -3988,7 +3995,7 @@ class Manager:
             text += '+' * 75 + '\n'
             text += field_id + '\n'
             text += '-' * 75 + '\n'
-            text += 'File        Exposure  FWHM (")  Transmission  Sky residual\n'
+            text += 'File        Exposure  FWHM(")  Transmission  Sky_residual\n'
             for fits in sorted(fits_list, key=lambda f: f.filename):
                 fwhm = '       -'
                 transmission = '           -'
@@ -6296,8 +6303,8 @@ def run_2dfdr_single_wrapper(group):
 def fit_arc_model_wrapper(input_list):
     """fit 2d arc modelling"""
     arc_reduced, arcfit_name, tlm_name = input_list
+    print(' Performing a 2D wavelength fit of the arc frames.',arc_reduced)
     arc_model_2d(arc_reduced, arcfit_name, tlm_name)
-    print(' Performed a 2D wavelength fit of the arc frames.',arc_reduced)
     return
 
 

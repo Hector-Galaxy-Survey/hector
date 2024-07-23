@@ -138,8 +138,8 @@ def arc_model_2d(reduced_arc_filename, arcdata_filename, tlm_filename, plot_resi
         arc_hdu["WAVELA"].data = new_wavela
         arc_hdu["SHIFTS"].data = new_shifts_array
 
-        if verbose:
-            print(f"\tWriting to {output_filename}")
+        #if verbose:
+        print(f"\tWriting to {output_filename}")
         arc_hdu.writeto(output_filename, overwrite=True)
 
 def load_tlm_map(tlm_filename):
@@ -441,11 +441,11 @@ def fit_model(X, y, alpha=1e-3, fit_intercept=False):
     Returns:
         Sklearn.Model: the Sklearn model instance
     """
-    print("Doing the fitting...")
+    #print("Doing the fitting...")
 
     model = Ridge(alpha=alpha, fit_intercept=fit_intercept)
     model.fit(X, y)
-    print("\tDone!\n")
+    #print("\tDone!\n")
     return model
 
 
