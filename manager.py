@@ -1151,7 +1151,7 @@ class Manager:
             self.set_name(fits, trust_header=trust_header)
             print('Adding file: ', filename, fits.ndf_class, fits.plate_id, fits.name)
             f = open(self.abs_root+'/filelist_'+str(self.abs_root)[-13:]+'.txt', 'a')
-            f.write(filename+' '+fits.ndf_class+' '+(fits.plate_id or 'None')+' '+(fits.name or 'None')+' '+(str(fits.spectrophotometric) or 'None')+' '+(str(fits.do_not_use) or 'None')+' '+fits.exposure_str+'\n')
+            f.write(filename+' '+fits.ndf_class+' '+(fits.plate_id or 'None')+' '+(fits.name or 'None')+' '+(str(fits.spectrophotometric) or 'None')+' '+(str(fits.do_not_use) or 'None')+' '+fits.exposure_str+' '+(str(fits.lamp) or 'None')+'\n')
             f.close()
             
         fits.set_check_data()
@@ -1194,6 +1194,9 @@ class Manager:
                 pass
         if fits.grating not in self.idx_files:
             # Without an idx file we would have no way to reduce this file
+            self.disable_files([fits])
+        print(fits.lamp)
+        if fits.lamp == 'Helium+CuAr+FeAr+CuNe': #Dither script had a wrong arc lamp settings until July 2024 run. 
             self.disable_files([fits])
 
         self.file_list.append(fits)
@@ -1961,14 +1964,14 @@ class Manager:
         if self.fit_arc_model_2d:
             input_list=[]
             for fits in reduced_files:
-                print(fits.lamp)
+                print(fits.lamp, fits.lamp[0:16])
                 tdfdr_options = tuple(self.tdfdr_options(fits,verbose=False))
                 arc_reduced = fits.reduced_path
                 arcfit_name = os.path.join(fits.reduced_dir,os.path.basename(fits.filename)[0:10]+'_outdir/arcfits.dat')
                 tlm_name = os.path.join(fits.reduced_dir,tdfdr_options[-1])
                 with pf.open(arc_reduced, mode='readonly') as hdul:
                     applied = any(hdu.name == 'OLDWAVELA'  for hdu in hdul) #to avoid applying it multiple times
-                if not applied and (fits.lamp == 'Helium+CuAr+FeAr' or fits.lamp=='CuAr'):
+                if not applied and (fits.lamp[0:16] == 'Helium+CuAr+FeAr'): #only correct wavelength solutions with the right lamp
                     input_list.append((arc_reduced,arcfit_name,tlm_name))
             if input_list:
                 self.map(fit_arc_model_wrapper, input_list)
@@ -2210,15 +2213,21 @@ class Manager:
         return new_path
 
     def reduce_object(self, overwrite=False, recalculate_throughput=True,
-                      sky_residual_limit=0.025, **kwargs):
+                      sky_residual_limit=0.025, this_only=None, **kwargs):
         """Reduce all object frames matching given criteria."""
         # Reduce long exposures first, to make sure that any required
         # throughput measurements are available
         file_iterable_long = self.files(
             ndf_class='MFOBJECT', do_not_use=False,
             min_exposure=self.min_exposure_for_throughput, **kwargs)
+        if this_only:
+            if '.fits' not in this_only:
+                this_only = this_only+'.fits'
+            file_iterable_long = self.files(ndf_class='MFOBJECT', do_not_use=False, 
+                    min_exposure=self.min_exposure_for_throughput, filename=[this_only], **kwargs)
         reduced_files = self.reduce_file_iterable(
             file_iterable_long, overwrite=overwrite, check='OBJ')
+
         # Check how good the sky subtraction was
         for fits in reduced_files:
             self.qc_sky(fits)
@@ -2255,6 +2264,9 @@ class Manager:
         file_iterable_short = self.files(
             ndf_class='MFOBJECT', do_not_use=False,
             max_exposure=upper_limit, **kwargs)
+        if this_only:
+            file_iterable_short = self.files(
+                ndf_class='MFOBJECT', do_not_use=False, max_exposure=upper_limit, filename=[this_only], **kwargs)
         file_iterable_sky_lines = []
         file_iterable_default = []
         for fits in file_iterable_short:
@@ -2460,7 +2472,7 @@ class Manager:
                                 'speed':self.speed,'tellcorprim':self.telluric_correct_primary})
         self.map(derive_transfer_function_pair, inputs_list)
         self.next_step('derive_transfer_function', print_message=True)
-        return
+        return/
 
     def combine_transfer_function(self, overwrite=False, use_median_TF=False, **kwargs):
         """Combine and save transfer functions from multiple files."""
@@ -2511,6 +2523,8 @@ class Manager:
             else:
                 use_median = False
             if(('ccd_4' in path_out) and ('220914_220925' in path_out)): #the median TF is dominated by Aug 2023 where thput is ridicularsly high in ccd4 blue end
+                use_median = False
+            if('230809_230814' in path_out): #thput is ridicularsly high in ccd4 blue end in Aug 2023 run
                 use_median = False
 
             if (use_median or use_median_TF):
@@ -3940,8 +3954,14 @@ class Manager:
         text = 'QC summary table\n'
         text += '=' * 75 + '\n'
         text += 'Use space bar and cursor keys to move up and down; q to quit.\n'
-        text += 'If one file in a pair is disabled it is marked with a +\n'
-        text += 'If both are disabled it is marked with a *\n'
+        text += 'Disabled ccds are marked with T, and usable ccds with F.\n'
+        text += '   If any of ccds are disabled, it is marked with a *\n'
+        text += '   E.g., when ccd_1 and ccd_4 are disabled, it will be shown as TFFT\n'
+        text += 'FWHM, Transmission, Sky_residual, Sky_brightness are shown for both AAOmega and Spector.\n'
+        text += '   The first values are estimates from AAOmega, while the values after / are from Spector.\n'
+        text += '\n'
+
+        text += 'This table is saved to '+self.abs_root+'/qc_summary_'+self.abs_root[-13:]+'.txt\n'
         text += '\n'
 
         #
@@ -3988,18 +4008,19 @@ class Manager:
         text += "  TOTAL Flux Standards: {} frames\n".format(total_all_stds)
         text += "\n"
 
-        # Summarize field observations
+        # Summarize field observations. Start with AAOmega
         for (field_id,), fits_list in self.group_files_by(
                 'field_id', ndf_class='MFOBJECT', min_exposure=min_exposure,
                 ccd=ccd, **kwargs).items():
             text += '+' * 75 + '\n'
             text += field_id + '\n'
             text += '-' * 75 + '\n'
-            text += 'File        Exposure  FWHM(")  Transmission  Sky_residual\n'
+            text += 'File       Disabled   Exposure     FWHM(")        Transmission      Sky_residual     Sky_brightness\n'
             for fits in sorted(fits_list, key=lambda f: f.filename):
                 fwhm = '       -'
-                transmission = '           -'
-                sky_residual = '           -'
+                transmission = '              -'
+                sky_residual = '              -'
+                mean_sky_brightness = '              -'
                 try:
                     header = pf.getheader(best_path(fits), 'QC')
                 except (IOError, KeyError):
@@ -4008,19 +4029,71 @@ class Manager:
                     if 'FWHM' in header:
                         fwhm = '{:8.2f}'.format(header['FWHM'])
                     if 'TRANSMIS' in header:
-                        transmission = '{:12.3f}'.format(header['TRANSMIS'])
+                        transmission = '{:10.3f}'.format(header['TRANSMIS'])
                     if 'SKYMDCOF' in header:
-                        sky_residual = '{:12.3f}'.format(header['SKYMDCOF'])
+                        sky_residual = '{:10.3f}'.format(header['SKYMDCOF'])
+                    with pf.open(best_path(fits)) as hdul:
+                        if 'SKY' in [hdu.name for hdu in hdul]:
+                            sky_data = hdul['SKY'].data
+                            mean_sky_brightness='{:8.1f}'.format(np.median(sky_data))
+                # Disabled flag
                 fits_2 = self.other_arm(fits)
-                if fits.do_not_use and fits_2.do_not_use:
-                    disabled_flag = '*'
-                elif fits.do_not_use or fits_2.do_not_use:
-                    disabled_flag = '+'
+                if fits.do_not_use:
+                    disabled_flag = 'T'
                 else:
-                    disabled_flag = ' '
-                text += '{} {}{} {:8d}  {}  {}  {}\n'.format(
+                    disabled_flag = 'F'
+                if fits_2.do_not_use:
+                    disabled_flag = disabled_flag+'T'
+                else:
+                    disabled_flag = disabled_flag+'F'
+
+                # Estimations for Spector 
+                if fits.instrument == 'AAOMEGA-HECTOR':
+                    fits_3 = self.other_inst(fits)
+                    fits_4 = self.other_inst(fits_2)
+                    try:
+                        header = pf.getheader(best_path(fits_3), 'QC')
+                    except (IOError, KeyError):
+                        fwhm = fwhm+'/-'
+                        transmission = transmission+'/-'
+                        sky_residual = sky_residual+'/-'
+                        mean_sky_brightness = mean_sky_brightness+'/-'
+                        pass
+                    else:
+                        if 'FWHM' in header:
+                            fwhm = fwhm+'/{:.2f}'.format(header['FWHM'])
+                        else:
+                            fwhm = fwhm+'/-'
+                        if 'TRANSMIS' in header:
+                            transmission = transmission+'/{:.3f}'.format(header['TRANSMIS'])
+                        else:
+                            transmission = transmission+'/-'
+                        if 'SKYMDCOF' in header:
+                            sky_residual = sky_residual+'/{:.3f}'.format(header['SKYMDCOF'])
+                        else:
+                            sky_residual = sky_residual+'/-'
+                        with pf.open(best_path(fits_3)) as hdul:
+                            if 'SKY' in [hdu.name for hdu in hdul]:
+                                sky_data = hdul['SKY'].data
+                                mean_sky_brightness=mean_sky_brightness+'/{:.1f}'.format(np.median(sky_data))
+                    if fits_3.do_not_use:
+                        disabled_flag = disabled_flag+'T'
+                    else:
+                        disabled_flag = disabled_flag+'F'
+                    if fits_4.do_not_use:
+                        disabled_flag = disabled_flag+'T'
+                    else:
+                        disabled_flag = disabled_flag+'F'
+
+                if 'T' in disabled_flag:
+                    disabled_flag = disabled_flag+'*'
+                else:
+                    disabled_flag = disabled_flag+' '
+
+
+                text += '{}X{}   {}  {:8d}  {}  {}  {}  {}\n'.format(
                     fits.filename[:5], fits.filename[6:10], disabled_flag,
-                    int(fits.exposure), fwhm, transmission, sky_residual)
+                    int(fits.exposure), fwhm, transmission, sky_residual, mean_sky_brightness)
             text += '+' * 75 + '\n'
             text += '\n'
         pager(text)
@@ -4029,6 +4102,7 @@ class Manager:
         f.write(text)
         f.close()
         return
+
 
     def tdfdr_options(self, fits, throughput_method='default', tlm=False, verbose=True):
         """Set the 2dfdr reduction options for this file."""
@@ -4650,6 +4724,25 @@ class Manager:
         other_fits = self.fits_file(
             other_filename, include_linked_managers=include_linked_managers)
         return other_fits
+
+    def other_inst(self, fits, include_linked_managers=False):
+        """Return the FITSFile from the other spectrograph."""
+        if fits.ccd == 'ccd_1':
+            other_number = '3'
+        elif fits.ccd == 'ccd_2':
+            other_number = '4'
+        elif fits.ccd == 'ccd_3':
+            other_number = '1'
+        elif fits.ccd == 'ccd_4':
+            other_number = '2'
+        else:
+            raise ValueError('Unrecognised CCD: ' + fits.ccd)
+        other_filename = fits.filename[:5] + other_number + fits.filename[6:]
+        other_fits = self.fits_file(
+            other_filename, include_linked_managers=include_linked_managers)
+        return other_fits
+
+
 
     def cubed_path(self, name, arm, fits_list, field_id, gzipped=False,
                    exists=False, tag=None, **kwargs):
