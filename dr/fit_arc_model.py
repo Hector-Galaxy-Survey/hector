@@ -139,8 +139,8 @@ def arc_model_2d(reduced_arc_filename, arcdata_filename, tlm_filename, plot_resi
         arc_hdu["SHIFTS"].data = new_shifts_array
 
         #if verbose:
-        print(f"\tWriting to {output_filename}")
         arc_hdu.writeto(output_filename, overwrite=True)
+        print(f"\tWriting to {output_filename}")
 
 def load_tlm_map(tlm_filename):
     """
