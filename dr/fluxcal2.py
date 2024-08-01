@@ -2998,7 +2998,7 @@ def calculate_mean_transfer(path_in, path_root):
     ind[np.abs(1.-med_tf_start/np.median(med_tf_start))>0.2] = 0
     ind[np.abs(1.-med_tf_end/np.median(med_tf_end))>0.2]=0 #exclude TF
     if ccd == '4':
-        ind[run_list == '230809_230814']=0 # this run has much higher thuputs in the blue end of Spector red.
+        ind[run_list == '230809_230814']=0 # this run has a distinct thuputs in the blue end of Spector red.
     while True:
         std_tf = np.std(med_tf[ind>0])
         ind[med_tf > np.median(med_tf[ind>0])+3*std_tf] = 0 #3 sigma clipping
