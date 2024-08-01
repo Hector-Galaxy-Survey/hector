@@ -2472,7 +2472,7 @@ class Manager:
                                 'speed':self.speed,'tellcorprim':self.telluric_correct_primary})
         self.map(derive_transfer_function_pair, inputs_list)
         self.next_step('derive_transfer_function', print_message=True)
-        return/
+        return
 
     def combine_transfer_function(self, overwrite=False, use_median_TF=False, **kwargs):
         """Combine and save transfer functions from multiple files."""
