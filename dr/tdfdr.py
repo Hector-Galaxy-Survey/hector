@@ -95,7 +95,7 @@ def subprocess_call(command_line, t_max=1200., **kwargs):
     # Run the command 
     p = subprocess.Popen(command_line, shell=False, stdout=f, stderr=None, **kwargs)
     try: 
-        print("Waiting for timeout...")
+        #print("Waiting for timeout...")
         # Cause the command to time out after t_max seconds 
         _, _ = p.communicate(timeout=t_max)
     except subprocess.TimeoutExpired as e:
@@ -129,11 +129,6 @@ def call_2dfdr_reduce(dirname, root=None, options=None, dummy=False):
             print('#####################')
             print()
         else:
-#            print('2dfdr call options (will be removed from tdfdr.py):')
-            print(' '.join(command_line))
-            #print('#####################')
-            #print()
-
             # Set up the environment:
             environment = dict(os.environ)
             environment["IMP_SCRATCH"] = imp_scratch
@@ -149,7 +144,7 @@ def call_2dfdr_reduce(dirname, root=None, options=None, dummy=False):
             with directory_lock(dirname):
                 # add some debug printing:
                # print('2dfdr call options:')
-               # print(command_line,dirname)
+                print(' '.join(command_line))
                 tdfdr_stdout = subprocess_call(command_line, cwd=dirname, env=environment)
                # print(tdfdr_stdout)
 
@@ -280,9 +275,8 @@ def run_2dfdr_single(fits, idx_file, root=None, options=None, dummy=False):
             shutil.move(file, os.path.join(out_dirname_full,file_name))
         shutil.rmtree(out_dirname_tmp)
 
-    print("-- running time %s seconds --- will remove this from tdfdr.py" % (time.time() - start_time))  #sree will remove this after testing
+    print("-- running time for "+fits.filename+" %s seconds --- will remove this from tdfdr.py" % (time.time() - start_time))  #sree will remove this after testing
     print('')
-    print()
 
     return '2dfdr Reduced file:' + fits.filename
 
