@@ -1151,7 +1151,8 @@ class Manager:
             self.set_name(fits, trust_header=trust_header)
             print('Adding file: ', filename, fits.ndf_class, fits.plate_id, fits.name)
             f = open(self.abs_root+'/filelist_'+str(self.abs_root)[-13:]+'.txt', 'a')
-            f.write(filename+' '+fits.ndf_class+' '+(fits.plate_id or 'None')+' '+(fits.name or 'None')+' '+(str(fits.spectrophotometric) or 'None')+' '+(str(fits.do_not_use) or 'None')+' '+fits.exposure_str+' '+(str(fits.lamp) or 'None')+'\n')
+            #f.write(filename+' '+fits.ndf_class+' '+(fits.plate_id or 'None')+' '+(fits.name or 'None')+' '+(str(fits.spectrophotometric) or 'None')+' '+(str(fits.do_not_use) or 'None')+' '+fits.exposure_str+' '+(str(fits.lamp) or 'None')+'\n')
+            f.write(filename+' '+fits.ndf_class+' '+(fits.plate_id or 'None')+' '+(fits.name or 'None')+' '+(str(fits.spectrophotometric) or 'None')+' '+(str(fits.do_not_use) or 'None')+' '+fits.exposure_str+'\n')
             f.close()
             
         fits.set_check_data()
@@ -1195,9 +1196,9 @@ class Manager:
         if fits.grating not in self.idx_files:
             # Without an idx file we would have no way to reduce this file
             self.disable_files([fits])
-        print(fits.lamp)
         if fits.lamp == 'Helium+CuAr+FeAr+CuNe': #Dither script had a wrong arc lamp settings until July 2024 run. 
             self.disable_files([fits])
+            print('  diasble this file with a wrong arc lamp: ',fits.lamp)
 
         self.file_list.append(fits)
         return
@@ -2076,7 +2077,7 @@ class Manager:
         # apply correction to all the blue arcs
         if  self.improve_blue_wavecorr:
            # ccdlist = ['ccd_1','ccd_3']
-            ccdlist = ['ccd_1'] #TODO:Sree: the correction make it worst for Spector. Now it is turned off for Spector but I will revisit this.
+            ccdlist = ['ccd_1'] #TODO:Sree: the correction make it worse for Spector. Now it is turned off for Spector but I will revisit this.
             for nccd in ccdlist:
                 file_list_tw = []
                 for f in file_list:
@@ -2213,7 +2214,7 @@ class Manager:
         return new_path
 
     def reduce_object(self, overwrite=False, recalculate_throughput=True,
-                      sky_residual_limit=0.025, this_only=None, **kwargs):
+                      sky_residual_limit=0.025, this_only=None, check_failure=True, **kwargs):
         """Reduce all object frames matching given criteria."""
         # Reduce long exposures first, to make sure that any required
         # throughput measurements are available
@@ -2225,10 +2226,27 @@ class Manager:
                 this_only = this_only+'.fits'
             file_iterable_long = self.files(ndf_class='MFOBJECT', do_not_use=False, 
                     min_exposure=self.min_exposure_for_throughput, filename=[this_only], **kwargs)
+        print( '\n Reduction for long exposure frames')
         reduced_files = self.reduce_file_iterable(
             file_iterable_long, overwrite=overwrite, check='OBJ')
 
+        # Sree: double check if there was any failure mostly due to memory shortage..
+        print( '\n Checking reduction failures')
+        rereduce=[]
+        if check_failure:
+            file_iterable_check = self.files(
+                ndf_class='MFOBJECT', do_not_use=False,
+                min_exposure=self.min_exposure_for_throughput, reduced=True, **kwargs)
+        else:
+            file_iterable_check = reduced_files
+        rereduce = [fits for fits in file_iterable_check if fits.reduce_options() is None]
+        if len(rereduce) >= 1:
+            print( '\n Re-reduction for failures')
+            self.reduce_file_iterable(
+            rereduce, overwrite=True, check='OBJ')
+
         # Check how good the sky subtraction was
+        print('\n Reduction for frames with bad sky residuals')
         for fits in reduced_files:
             self.qc_sky(fits)
         if sky_residual_limit is not None:
@@ -2247,6 +2265,7 @@ class Manager:
             bad_fields = []
         if recalculate_throughput and (self.speed == 'slow'):
             # Average over individual throughputs measured from sky lines
+            print('\n Reduction for frames with bad throughputs')
             extra_files = self.correct_bad_throughput(
                 overwrite=overwrite, **kwargs)
             for fits in extra_files:
@@ -2277,6 +2296,7 @@ class Manager:
         # Although 'skylines' is requested, these will be throughput calibrated
         # by matching to long exposures, because they will be recognised as
         # short
+        print('\n Reduction for short exposure frames')
         print('file_iterable_sky_lines',file_iterable_sky_lines,overwrite)
         print('file_iterable_default',file_iterable_default,overwrite)
         reduced_files.extend(self.reduce_file_iterable(
@@ -2429,7 +2449,7 @@ class Manager:
                 if edited:
                     rereduce.append(fits)
         reduced_files = self.reduce_file_iterable(
-            rereduce, throughput_method='external', overwrite=True)
+            rereduce, throughput_method='external', overwrite=True, check='OBJ')
         return reduced_files
 
     def derive_transfer_function(self,
@@ -3949,7 +3969,7 @@ class Manager:
         hdulist.close()
         return
 
-    def qc_summary(self, min_exposure=599.0, ccd='ccd_1', **kwargs):
+    def qc_summary(self, min_exposure=599.0, ccd='ccd_2', **kwargs):
         """Print a summary of the QC information available."""
         text = 'QC summary table\n'
         text += '=' * 75 + '\n'
@@ -4018,78 +4038,48 @@ class Manager:
             text += 'File       Disabled   Exposure     FWHM(")        Transmission      Sky_residual     Sky_brightness\n'
             for fits in sorted(fits_list, key=lambda f: f.filename):
                 fwhm = '       -'
-                transmission = '              -'
-                sky_residual = '              -'
-                mean_sky_brightness = '              -'
-                try:
-                    header = pf.getheader(best_path(fits), 'QC')
-                except (IOError, KeyError):
-                    pass
-                else:
-                    if 'FWHM' in header:
-                        fwhm = '{:8.2f}'.format(header['FWHM'])
-                    if 'TRANSMIS' in header:
-                        transmission = '{:10.3f}'.format(header['TRANSMIS'])
-                    if 'SKYMDCOF' in header:
-                        sky_residual = '{:10.3f}'.format(header['SKYMDCOF'])
-                    with pf.open(best_path(fits)) as hdul:
-                        if 'SKY' in [hdu.name for hdu in hdul]:
-                            sky_data = hdul['SKY'].data
-                            mean_sky_brightness='{:8.1f}'.format(np.median(sky_data))
-                # Disabled flag
-                fits_2 = self.other_arm(fits)
-                if fits.do_not_use:
-                    disabled_flag = 'T'
-                else:
-                    disabled_flag = 'F'
-                if fits_2.do_not_use:
-                    disabled_flag = disabled_flag+'T'
-                else:
-                    disabled_flag = disabled_flag+'F'
-
-                # Estimations for Spector 
-                if fits.instrument == 'AAOMEGA-HECTOR':
-                    fits_3 = self.other_inst(fits)
-                    fits_4 = self.other_inst(fits_2)
+                transmission = sky_residual = mean_sky_brightness = '              -'
+                if fits is not None:
                     try:
-                        header = pf.getheader(best_path(fits_3), 'QC')
+                        header = pf.getheader(best_path(fits), 'QC')
                     except (IOError, KeyError):
-                        fwhm = fwhm+'/-'
-                        transmission = transmission+'/-'
-                        sky_residual = sky_residual+'/-'
-                        mean_sky_brightness = mean_sky_brightness+'/-'
                         pass
                     else:
                         if 'FWHM' in header:
-                            fwhm = fwhm+'/{:.2f}'.format(header['FWHM'])
-                        else:
-                            fwhm = fwhm+'/-'
+                            fwhm = '{:8.2f}'.format(header['FWHM'])
                         if 'TRANSMIS' in header:
-                            transmission = transmission+'/{:.3f}'.format(header['TRANSMIS'])
-                        else:
-                            transmission = transmission+'/-'
+                            transmission = '{:10.3f}'.format(header['TRANSMIS'])
                         if 'SKYMDCOF' in header:
-                            sky_residual = sky_residual+'/{:.3f}'.format(header['SKYMDCOF'])
-                        else:
-                            sky_residual = sky_residual+'/-'
-                        with pf.open(best_path(fits_3)) as hdul:
+                            sky_residual = '{:10.3f}'.format(header['SKYMDCOF'])
+                        with pf.open(best_path(fits)) as hdul:
                             if 'SKY' in [hdu.name for hdu in hdul]:
-                                sky_data = hdul['SKY'].data
-                                mean_sky_brightness=mean_sky_brightness+'/{:.1f}'.format(np.median(sky_data))
-                    if fits_3.do_not_use:
-                        disabled_flag = disabled_flag+'T'
-                    else:
-                        disabled_flag = disabled_flag+'F'
-                    if fits_4.do_not_use:
-                        disabled_flag = disabled_flag+'T'
-                    else:
-                        disabled_flag = disabled_flag+'F'
+                                mean_sky_brightness='{:8.1f}'.format(np.median(hdul['SKY'].data))
+                # Disabled flag
+                    fits_2 = self.other_arm(fits)
+                disabled_flag = 'T' if (fits is not None and fits.do_not_use) else 'F'
+                disabled_flag += 'T' if (fits_2 is not None and fits_2.do_not_use) else 'F'
 
-                if 'T' in disabled_flag:
-                    disabled_flag = disabled_flag+'*'
-                else:
-                    disabled_flag = disabled_flag+' '
-
+                # Sree: Estimations for Spector 
+                if fits.instrument == 'AAOMEGA-HECTOR':
+                    fits_3 = self.other_inst(fits)
+                    fits_4 = self.other_inst(fits_2)
+                    if fits_3 is None:
+                        fwhm, transmission, sky_residual, mean_sky_brightness = [x + '/-' for x in [fwhm, transmission, sky_residual, mean_sky_brightness]]
+                    else:
+                        try:
+                            header = pf.getheader(best_path(fits_3), 'QC')
+                        except (IOError, KeyError):
+                            fwhm, transmission, sky_residual, mean_sky_brightness = [x + '/-' for x in [fwhm, transmission, sky_residual, mean_sky_brightness]]
+                            pass
+                        else:
+                            fwhm += '/{:.2f}'.format(header['FWHM']) if 'FWHM' in header else '/-'
+                            transmission += '/{:.3f}'.format(header['TRANSMIS']) if 'TRANSMIS' in header else '/-'
+                            sky_residual += '/{:.3f}'.format(header['SKYMDCOF']) if 'SKYMDCOF' in header else '/-'
+                            with pf.open(best_path(fits_3)) as hdul:
+                                mean_sky_brightness += '/{:8.1f}'.format(np.median(hdul['SKY'].data)) if any(hdu.name == 'SKY' for hdu in hdul) else '/-'
+                    disabled_flag += 'T' if (fits_3 is not None and fits_3.do_not_use) else 'F'
+                    disabled_flag += 'T' if (fits_4 is not None and fits_4.do_not_use) else 'F'
+                disabled_flag += '*' if 'T' in disabled_flag else ' '
 
                 text += '{}X{}   {}  {:8d}  {}  {}  {}  {}\n'.format(
                     fits.filename[:5], fits.filename[6:10], disabled_flag,
@@ -4136,15 +4126,15 @@ class Manager:
         if fits.ccd == 'ccd_2':
             # Turn off bias and dark subtraction
             if fits.detector == 'E2V3':
-                options.extend(['-USEBIASIM', '0','-BIAS_FILENAME', ' ', '-USEDARKIM', '0','-DARK_FILENAME', ' '])
+                options.extend(['-USEBIASIM', '0','-BIAS_FILENAME', '', '-USEDARKIM', '0','-DARK_FILENAME', ''])
             elif fits.detector == 'E2V3A':
-                options.extend(['-USEBIASIM', '0','-BIAS_FILENAME', ' '])
+                options.extend(['-USEBIASIM', '0','-BIAS_FILENAME', ''])
 
         # turn off bias and dark for new CCD. These are named
         # E2V2A (blue) and E2V3A (red).  The old ones are E2V2 (blue
         # and E2V3 (red).
         if fits.detector == 'E2V2A':
-            options.extend(['-USEBIASIM', '0','-BIAS_FILENAME', ' ', '-USEDARKIM', '0','-DARK_FILENAME', ' '])
+            options.extend(['-USEBIASIM', '0','-BIAS_FILENAME', '', '-USEDARKIM', '0','-DARK_FILENAME', ''])
 
         if fits.ndf_class == 'BIAS':
             files_to_match = []
@@ -4231,11 +4221,11 @@ class Manager:
         # Disable bias/dark/lflat if they're not being used
         # If you don't, 2dfdr might barf
         if 'bias' not in files_to_match and '-USEBIASIM' not in options:
-            options.extend(['-USEBIASIM', '0','-BIAS_FILENAME', ' '])
+            options.extend(['-USEBIASIM', '0','-BIAS_FILENAME', ''])
         if 'dark' not in files_to_match and '-USEDARKIM' not in options:
-            options.extend(['-USEDARKIM', '0','-DARK_FILENAME', ' '])
+            options.extend(['-USEDARKIM', '0','-DARK_FILENAME', ''])
         if 'lflat' not in files_to_match and '-USEFLATIM' not in options:
-            options.extend(['-USEFLATIM', '0','-LFLAT_FILENAME', ' '])
+            options.extend(['-USEFLATIM', '0','-LFLAT_FILENAME', ''])
         for match_class in files_to_match:
             # this is the main call to the matching routine:
             filename_match = self.match_link(fits, match_class)
@@ -4245,19 +4235,19 @@ class Manager:
                     if verbose:
                         print('Warning: Bias frame not found. '
                           'Turning off bias subtraction for ' + fits.filename)
-                    options.extend(['-USEBIASIM', '0','-BIAS_FILENAME', ' '])
+                    options.extend(['-USEBIASIM', '0','-BIAS_FILENAME', ''])
                     continue
                 elif match_class == 'dark':
                     if verbose:
                         print('Warning: Dark frame not found. '
                           'Turning off dark subtraction for ' + fits.filename)
-                    options.extend(['-USEDARKIM', '0','-DARK_FILENAME', ' '])
+                    options.extend(['-USEDARKIM', '0','-DARK_FILENAME', ''])
                     continue
                 elif match_class == 'lflat':
                     if verbose:
                         print('Warning: LFlat frame not found. '
                           'Turning off LFlat division for ' + fits.filename)
-                    options.extend(['-USEFLATIM', '0','-LFLAT_FILENAME', ' '])
+                    options.extend(['-USEFLATIM', '0','-LFLAT_FILENAME', ''])
                     continue
                 elif match_class == 'thput':
                     # Try to find a fake MFSKY made from a dome flat
@@ -6055,8 +6045,14 @@ class FITSFile:
         """Return a dictionary of options used to reduce the file."""
         if not os.path.exists(self.reduced_path):
             return None
-        print(self.reduced_path) #activate this for the error, KeyError: "Extension ('REDUCTION_ARGS', 1) not found."
-        return dict(pf.getdata(self.reduced_path, 'REDUCTION_ARGS'))
+        with pf.open(self.reduced_path) as hdul:
+            # Check if 'REDUCTION_ARGS' extension exists
+            if 'REDUCTION_ARGS' in [hdu.name for hdu in hdul]:
+                #print(self.reduced_path)
+                return dict(pf.getdata(self.reduced_path, 'REDUCTION_ARGS'))
+            else:
+                print('No REDUCTION_ARGS extensions: ',self.reduced_path) #activate this for the error, KeyError: "Extension ('REDUCTION_ARGS', 1) not found."
+                return None
 
     def update_name(self, name):
         """Change the object name assigned to this file."""
