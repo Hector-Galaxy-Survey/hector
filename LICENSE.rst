@@ -1,4 +1,4 @@
-Copyright (c) 2011-2014, Hector Team
+Copyright (c) 2021-2024, Hector Team
 
 All rights reserved.
 
