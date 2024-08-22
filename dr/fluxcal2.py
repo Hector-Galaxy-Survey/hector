@@ -81,7 +81,7 @@ import pylab as py
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
-
+import matplotlib as mpl
 from multiprocessing import Process
 
 
@@ -736,6 +736,10 @@ def interp_cvd(cen_data, f_cvd, wavelength, plateCentre=None):
 
     return cvd_pos
 
+#for figures
+size=16
+@mpl.rc_context({'font.size':size, 'axes.titlesize':size, 'axes.labelsize':size, 'ytick.labelsize': size, 'xtick.labelsize': size, 'legend.fontsize':size-2,'figure.titlesize':size})
+
 def derive_transfer_function(path_list, max_sep_arcsec=60.0,
                              catalogues=STANDARD_CATALOGUES,
                              model_name='ref_centre_alpha_circ_hdr_cvd',
@@ -808,50 +812,81 @@ def derive_transfer_function(path_list, max_sep_arcsec=60.0,
             mf_av=molecfit_available,
             tell_corr_primary=tell_corr_primary)
         transfer_function = median_filter(transfer_function,5)
+        print('  Saving transfer function: ',path2 )
         save_transfer_function(path2, transfer_function)
         
         ######################
         # MLPG & Sree: Diagnostic plot showing extracted flux versus summed flux, saved in
         # the data reduction location. Active when debug = True
         if debug:
-            fig, (ax1, ax2, ax3, ax4) = plt.subplots(4, 1, figsize=(8, 12))
-            ax1.set(ylabel='flux', title=os.path.basename(path)+' Hexa'+star_match['probename']+' '+star_match['name'])
+            fig, (ax1, ax2, ax3, ax4) = plt.subplots(4, 1, figsize=(8, 14), sharex=True, gridspec_kw={'hspace': 0})
+            ax1.set(xlabel='Wavelength [Å]', ylabel='Counts', title=os.path.basename(path)+' Hexabundle '+star_match['probename']+' '+star_match['name'])
             data, wavelength = ifu.data, ifu.lambda_range
             good_fibre = (ifu.fib_type == 'P')
             data = data[good_fibre, :]; data = nansum(data, axis=0)
-            ax1.plot(wavelength, data, 'b', alpha=0.5, label='Summed over bundle')
-            ax1.plot(ifu.lambda_range, observed_flux, 'r', alpha=0.5, label='Extracted after CVD')
-            ax1.legend(loc='best')
+            ax1.plot(wavelength, data, 'grey', alpha=0.7, label='Summed over bundle')
+            ax1.plot(ifu.lambda_range, observed_flux, 'blue', alpha=0.5, label='Extracted after CvD')
+            ax1.annotate('(a)',xy=(0, 1), xycoords='axes fraction',
+            xytext=(+0.5, -0.5), textcoords='offset fontsize',
+            fontsize=16, verticalalignment='top', fontfamily='serif',
+            bbox=dict(facecolor='white', edgecolor='none', pad=3.0))
+            ax1.legend(loc='upper left', bbox_to_anchor=(0.01, 0.9))
+            ax1.tick_params(axis='x', direction='in', which='both')
 
-            ax2.set(ylabel='Extracted/Summed')
+            ax2.set(xlabel='Wavelength [Å]', ylabel='Extracted/Summed')
             f = interp1d(wavelength, data)
-            ax2.plot(ifu.lambda_range, median_filter(observed_flux/f(ifu.lambda_range),15), 'g', alpha=0.5, label='Extracted/Summed')
+            ax2.plot(ifu.lambda_range, median_filter(observed_flux/f(ifu.lambda_range),15), 'grey', alpha=0.9, label='Extracted/Summed')
             ax2.plot(ifu.lambda_range, np.repeat(1.0, len(ifu.lambda_range)), 'k--', alpha=0.5, label='Extracted/Summed')
-            ax2.set_ylim(-0.8, 2.5)
+            ax2.set_ylim(0.1, 2.4)
+            ax2.annotate('(b)',xy=(0, 1), xycoords='axes fraction',
+            xytext=(+0.5, -0.5), textcoords='offset fontsize',
+            fontsize=16, verticalalignment='top', fontfamily='serif',
+            bbox=dict(facecolor='white', edgecolor='none', pad=3.0))
+            ax2.tick_params(axis='x', direction='in', which='both')
 
-            ax3.set(ylabel='Normalized Flux')            
+            ax3.set(xlabel='Wavelength [Å]', ylabel='Transfer Function')
+            f = interp1d(standard_data['wavelength'],standard_data['flux'])
+            ax3.plot(ifu.lambda_range,f(wavelength)/observed_flux, 'grey', alpha=0.7, label='Reference/Observed')
+            ax3.plot(ifu.lambda_range, transfer_function, 'r', alpha=0.5, label='Transfer function',linewidth=2,linestyle='--')
+            ylim = np.max(transfer_function)*1.5
+            if ylim > 200:
+                ylim=200
+            ax3.set_ylim(0,ylim)
+            ax3.annotate('(c)',xy=(0, 1), xycoords='axes fraction',
+            xytext=(+0.5, -0.5), textcoords='offset fontsize',
+            fontsize=16, verticalalignment='top', fontfamily='serif',
+            bbox=dict(facecolor='white', edgecolor='none', pad=3.0))
+            ax3.legend(loc='upper left', bbox_to_anchor=(0.01, 0.9))
+            ax3.tick_params(axis='x', direction='in', which='both')
+
+            ax4.set(xlabel='Wavelength [Å]', ylabel='Normalized Flux')            
             observed_flux_fcal = observed_flux * transfer_function
             FWHM_obs = ifu.lambda_range[1]-ifu.lambda_range[0]
             FWHM_standard = standard_data['wavelength'][1]-standard_data['wavelength'][0]
             FWHM_diff = np.sqrt(FWHM_standard**2 - FWHM_obs**2)
             sigma_diff=FWHM_diff/2.355/(ifu.lambda_range[1]-ifu.lambda_range[0])
             norm_factor =  np.nanmax(standard_data['flux'][(standard_data['wavelength'] > ifu.lambda_range[200]) & (standard_data['wavelength'] < ifu.lambda_range[-200])])
-            ax3.plot(ifu.lambda_range, gaussian_filter1d(observed_flux_fcal,sigma_diff)/norm_factor, 'g', alpha=0.5, label='Flux calibrated')
-            ax3.plot(ifu.lambda_range, observed_flux/np.nanmax(observed_flux[200:-200]), 'b', alpha=0.5, label='Observed')
-            ax3.plot(standard_data['wavelength'],standard_data['flux'] / norm_factor ,'r', alpha=0.5, label='Reference')
-            ax3.set_ylim(0, 1.4)
-            ax3.legend(loc='best')
-            ax3.set_xlim(min(ifu.lambda_range)-100,max(ifu.lambda_range)+100)
-
-            ax4.set(ylabel='Transfer Function')
-            f = interp1d(standard_data['wavelength'],standard_data['flux'])
-            ax4.plot(ifu.lambda_range,f(wavelength)/observed_flux, 'g', alpha=0.5, label='Reference/Observed')
-            ax4.plot(ifu.lambda_range, transfer_function, 'r', alpha=0.5, label='TF',linewidth=2)
-            ylim = np.max(transfer_function)*1.5
-            if ylim > 200:
-                ylim=200
-            ax4.set_ylim(0,ylim)
+            ax4.plot(ifu.lambda_range, observed_flux/np.nanmax(observed_flux[200:-200]), 'b', alpha=0.5, label='Observed')
+            ax4.plot(ifu.lambda_range, gaussian_filter1d(observed_flux_fcal,sigma_diff)/norm_factor, 'g', alpha=0.5, label='Flux calibrated')
+            ax4.plot(standard_data['wavelength'],standard_data['flux'] / norm_factor ,'black', alpha=0.7, label='Reference',linestyle=':')
+            ax4.set_ylim(0, 1.4)
+            ax4.set_xlim(min(ifu.lambda_range)-100,max(ifu.lambda_range)+100)
             ax4.legend(loc='best')
+            ax4.annotate('(d)',xy=(0, 1), xycoords='axes fraction',
+            xytext=(+0.5, -0.5), textcoords='offset fontsize',
+            fontsize=16, verticalalignment='top', fontfamily='serif',
+            bbox=dict(facecolor='white', edgecolor='none', pad=3.0))
+            ax4.tick_params(axis='x', direction='in', which='both')
+
+            #ax4.set(xlabel='Wavelength [Å]', ylabel='Transfer Function')
+            #f = interp1d(standard_data['wavelength'],standard_data['flux'])
+            #ax4.plot(ifu.lambda_range,f(wavelength)/observed_flux, 'grey', alpha=0.7, label='Reference/Observed')
+            #3ax4.plot(ifu.lambda_range, transfer_function, 'r', alpha=0.5, label='TF',linewidth=2,linestyle='--')
+            #ylim = np.max(transfer_function)*1.5
+            #if ylim > 200:
+            #    ylim=200
+            #ax4.set_ylim(0,ylim)
+            #ax4.legend(loc='best')
 
             dest_path = path[0:path.find('/reduced')]+'/derive_TF'
             if not os.path.isdir(dest_path):
@@ -859,7 +894,7 @@ def derive_transfer_function(path_list, max_sep_arcsec=60.0,
 
             fig.savefig(dest_path+"/"+star_match['name']+"_"+os.path.basename(path)[:10]+"_derive_TF.pdf", bbox_inches='tight')
             plt.close(fig)  # Close the figure object
-            print('   Saving debugging plot '+dest_path+"/"+star_match['name']+"_"+os.path.basename(path)[:10]+"_derive_TF.pdf")
+            print('   Saving debugging plot '+dest_path+"/"+star_match['name']+"_"+os.path.basename(path)[:10]+"_derive_TF.pdf \n")
         #######################        
     return
 
@@ -1130,6 +1165,7 @@ def take_ratio(standard_flux, standard_wavelength, observed_flux,
     if(np.isfinite(sigma_diff)):
         observed_flux_convolved=gaussian_filter1d(observed_flux_rebinned, sigma_diff)
         observed_flux_convolved[standard_wavelength > 4500.]=observed_flux_rebinned[standard_wavelength > 4500.]
+        observed_flux_convolved[:20]=observed_flux_rebinned[:20] #to save the share in the very blue 
         ratio1 = standard_flux / observed_flux_convolved
 
     if smooth == 'gauss':
