@@ -835,7 +835,6 @@ def sum_spectrum_from_cube(file_pair, radius):
 
 def read_stellar_spectrum(file_pair):
     """Read and return the measured spectrum of a star from a single frame."""
-    print(file_pair)
     flux = []
     noise = []
     wavelength = []
@@ -852,9 +851,6 @@ def read_stellar_spectrum(file_pair):
         goodred = np.where(wavelength[1] > wavelength_mid+100)
         nwavelength = list(wavelength[0][goodblue])
         nwavelength.append(list(wavelength[1][goodred]))
-        print('hi',np.min(wavelength[1]),np.max(wavelength[0]),np.min(wavelength[1]), wavelength_mid)
-        print(np.min(nwavelength[1]),np.max(nwavelength[0]),np.min(nwavelength[1]))
-        
         nflux = list(flux[0][goodblue])
         nflux.append(list(flux[1][goodred]))
         nnoise = list(noise[0][goodblue])
@@ -862,9 +858,6 @@ def read_stellar_spectrum(file_pair):
         flux = nflux
         wavelength = nwavelength
         noise = nnoise
-
-#    print('poi',np.min(wavelength[1]),np.max(wavelength[0]),np.min(wavelength[1]), wavelength_mid)
-
 
     flux = np.hstack(flux)
     noise = np.hstack(noise)
@@ -983,7 +976,6 @@ def measure_band(band, flux, wavelength, sdss_dir=sdss_path):
 def measure_mags(flux, noise, wavelength):
     """Do clipping and interpolation, then return g and r band mags."""
     good = clip_spectrum(flux, noise, wavelength, limit_flux=20.0)
-    print('qc.fluxcal.measure_mages good', good)
     flux, noise, wavelength = interpolate_arms(
         flux, noise, wavelength, good)
     mags = {}

@@ -2263,7 +2263,7 @@ class Manager:
             bad_fields = set([fits.field_id for fits in fits_list])
         else:
             bad_fields = []
-        if recalculate_throughput and (self.speed == 'slow'):
+        if recalculate_throughput: # and (self.speed == 'slow'):
             # Average over individual throughputs measured from sky lines
             print('\n Reduction for frames with bad throughputs')
             extra_files = self.correct_bad_throughput(
@@ -4076,7 +4076,7 @@ class Manager:
                             transmission += '/{:.3f}'.format(header['TRANSMIS']) if 'TRANSMIS' in header else '/-'
                             sky_residual += '/{:.3f}'.format(header['SKYMDCOF']) if 'SKYMDCOF' in header else '/-'
                             with pf.open(best_path(fits_3)) as hdul:
-                                mean_sky_brightness += '/{:8.1f}'.format(np.median(hdul['SKY'].data)) if any(hdu.name == 'SKY' for hdu in hdul) else '/-'
+                                mean_sky_brightness += '/{:.1f}'.format(np.median(hdul['SKY'].data)) if any(hdu.name == 'SKY' for hdu in hdul) else '/-'
                     disabled_flag += 'T' if (fits_3 is not None and fits_3.do_not_use) else 'F'
                     disabled_flag += 'T' if (fits_4 is not None and fits_4.do_not_use) else 'F'
                 disabled_flag += '*' if 'T' in disabled_flag else ' '
@@ -6457,6 +6457,7 @@ def scale_frame_pair(inputs):
     else:
         print('Calculating scaling for RSS files to give star correct magnitude, but NOT applying: %s' %
           str((os.path.basename(path_pair[0]), os.path.basename(path_pair[1]))))
+    print(path_pair)
         
     stellar_mags_frame_pair(path_pair, save=True)
     star = pf.getval(path_pair[0], 'STDNAME', 'FLUX_CALIBRATION')
@@ -6465,7 +6466,7 @@ def scale_frame_pair(inputs):
     found = assign_true_mag(path_pair, star, catalogue=None,
                             hdu='FLUX_CALIBRATION')
     if found:
-        scale_cube_pair_to_mag(path_pair, 1, hdu='FLUX_CALIBRATION',apply_scale=apply_scale)
+        scale_cube_pair_to_mag(path_pair, 1, hdu='FLUX_CALIBRATION',band='g',apply_scale=apply_scale)
     else:
         print('No photometric data found for', star)
     return
