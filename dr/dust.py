@@ -1,8 +1,8 @@
 """
-Functions for defining the effect of Milky Way dust on SAMI observations.
+Functions for defining the effect of Milky Way dust on SAMI/Hector observations.
 
 For a variety of published maps (currently 2) this module will download the
-maps and use them to measure the E(B-V) value at the position of a SAMI
+maps and use them to measure the E(B-V) value at the position of a SAMI/Hector
 observation. Then for different parameterisations of the dust attenuation
 law it will calculate the transmission curve for the observation. The
 results are saved in the FITS file, but no correction is made to the data
@@ -75,14 +75,16 @@ def download_map(name, overwrite=False):
     """Download a single dust map."""
     map_info = MAPS_FILES[name]
     if os.path.exists(map_info['filename']) and not overwrite:
-        print('{} map already downloaded; returning')
+        print('    {} map already downloaded; returning'.format(
+                map_info['comment_name']))
         return
     dirname = os.path.dirname(map_info['filename'])
     if not os.path.exists(dirname):
         os.makedirs(dirname)
     response = urllib2.urlopen(map_info['url'])
-    with open(map_info['filename'], 'w') as f_out:
+    with open(map_info['filename'], 'wb') as f_out:
         f_out.write(response.read())
+        print('    downloading {} map'.format(map_info['comment_name']))
 
 def download_all_maps(overwrite=False):
     """Download all the dust maps."""
@@ -149,11 +151,11 @@ def EBV(name, theta, phi):
     Valid names are 'planck', 'sfd98' or 'schlafly'.
     """
     success = load_map(name)
-    if success:
-        return hp.get_interp_val(MAPS[name], theta, phi)
-    else:
-        return None
-
+    if not success:
+        print('  {} dust map is not available. downloading dust maps'.format(name))
+        download_all_maps()
+        success = load_map(name)
+    return hp.get_interp_val(MAPS[name], theta, phi)
 
 
 
