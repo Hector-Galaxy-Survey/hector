@@ -15,6 +15,7 @@ import matplotlib.pyplot as plt
 #version 0.1: 11th July 2024 - bug fixed
 #version 0.2: 12th July 2024 - bug fixed
 #version 0.3: 13th July 2024 - at a plot for all-CCDs FWHM 
+#version 0.4: 03rd September 2024 - at a plot for CCD1 TILTSPAT upper limit 
 #Susie Tuntipong
 #stun4076@uni.sydney.edu.au
 #
@@ -253,9 +254,9 @@ def plot_fwhm(outdir):
     
     colour = ['b','r','b','r']
     lower_lim = [np.array([2.0,1.0,1.0,1.0]),[35,35,35,35],[1500,600,-0.5,-0.5],[2700,2000,-0.5,-0.5],[100,400,2700,2200]]
-    upper_lim = [np.array([4.0,2.0,2.0,2.0]),[45,45,45,45],[2500,2500,0.5,0.5],[3600,3100,0.5,0.5],[200,600,3000,2500]]
+    upper_lim = [np.array([4.0,2.0,2.0,2.0]),[45,45,45,45],[3000,2500,0.5,0.5],[3600,3100,0.5,0.5],[200,600,3000,2500]]
     median_all = np.array([2.6409,1.5598,1.4461,1.2554])
-    
+    mngr.im
     #Plot for FWHM only
     nrow = 2
     ncol = 2
