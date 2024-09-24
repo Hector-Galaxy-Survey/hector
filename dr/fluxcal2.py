@@ -867,7 +867,10 @@ def derive_transfer_function(path_list, max_sep_arcsec=60.0,
             sigma_diff=FWHM_diff/2.355/(ifu.lambda_range[1]-ifu.lambda_range[0])
             norm_factor =  np.nanmax(standard_data['flux'][(standard_data['wavelength'] > ifu.lambda_range[200]) & (standard_data['wavelength'] < ifu.lambda_range[-200])])
             ax4.plot(ifu.lambda_range, observed_flux/np.nanmax(observed_flux[200:-200]), 'b', alpha=0.5, label='Observed')
-            ax4.plot(ifu.lambda_range, gaussian_filter1d(observed_flux_fcal,sigma_diff)/norm_factor, 'g', alpha=0.5, label='Flux calibrated')
+            try:
+                ax4.plot(ifu.lambda_range, gaussian_filter1d(observed_flux_fcal,sigma_diff)/norm_factor, 'g', alpha=0.5, label='Flux calibrated')
+            except ValueError:
+                ax4.plot(ifu.lambda_range, observed_flux_fcal/norm_factor, 'g', alpha=0.5, label='Flux calibrated (without Gauss_filter1D)')
             ax4.plot(standard_data['wavelength'],standard_data['flux'] / norm_factor ,'black', alpha=0.7, label='Reference',linestyle=':')
             ax4.set_ylim(0, 1.4)
             ax4.set_xlim(min(ifu.lambda_range)-100,max(ifu.lambda_range)+100)
