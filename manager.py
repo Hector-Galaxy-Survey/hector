@@ -163,10 +163,10 @@ else:
 #                  '1500V': 'sami1500V.idx',
 #                  '1000R': 'sami1000R.idx',
 
-IDX_FILES_SLOW = {'580V': 'hector1_v2.idx',
-                  '1000R': 'hector2_v2.idx',
-                  'SPECTOR1':'hector3_v2.idx',
-                  'SPECTOR2':'hector4_v2.idx'}
+IDX_FILES_SLOW = {'580V': 'hector1_v3.idx',
+                  '1000R': 'hector2_v3.idx',
+                  'SPECTOR1':'hector3_v3.idx',
+                  'SPECTOR2':'hector4_v3.idx'}
 
 IDX_FILES_FAST = {'580V': 'hector1_v1.idx',
                   '1000R': 'hector2_v1.idx',
@@ -1149,7 +1149,7 @@ class Manager:
             self.set_name(fits, trust_header=trust_header)
         else:
             self.set_name(fits, trust_header=trust_header)
-            print('Adding file: ', filename, fits.ndf_class, fits.plate_id, fits.name)
+            print('Adding file: ', filename, fits.ndf_class, fits.plate_id, fits.name, fits.exposure_str, fits.lamp)
             f = open(self.abs_root+'/filelist_'+str(self.abs_root)[-13:]+'.txt', 'a')
             #f.write(filename+' '+fits.ndf_class+' '+(fits.plate_id or 'None')+' '+(fits.name or 'None')+' '+(str(fits.spectrophotometric) or 'None')+' '+(str(fits.do_not_use) or 'None')+' '+fits.exposure_str+' '+(str(fits.lamp) or 'None')+'\n')
             f.write(filename+' '+fits.ndf_class+' '+(fits.plate_id or 'None')+' '+(fits.name or 'None')+' '+(str(fits.spectrophotometric) or 'None')+' '+(str(fits.do_not_use) or 'None')+' '+fits.exposure_str+'\n')
@@ -1953,7 +1953,7 @@ class Manager:
                 check_focus = check_focus[0:10]
             date=check_focus[0:5];frame=check_focus[6:10]+'.fits'
             frames = [date+'1'+frame, date+'2'+frame, date+'3'+frame, date+'4'+frame]
-            file_iterable = self.files(ndf_class='MFARC', do_not_use=False, filename=frames,**kwargs)
+            file_iterable = list(self.files(ndf_class='MFARC', do_not_use=False, filename=frames,**kwargs))
             frames_reduced = [x.reduced_path for x in file_iterable]
 
         reduced_files = self.reduce_file_iterable(
@@ -1992,11 +1992,15 @@ class Manager:
         self.next_step('reduce_arc', print_message=True)
         return
 
-    def reduce_fflat(self, overwrite=False, twilight_only=False, this_only=None, **kwargs):
+    def reduce_fflat(self, overwrite=False, twilight_only=False, this_only=None, twilight_qc=True, **kwargs):
         """Reduce all fibre flat frames matching given criteria."""
 
         # check if ccd keyword argument is set, as we need to account for the
         # fact that it is also set for the twilight reductions (ccd1 only).
+        if this_only:
+            if '.fits' not in this_only:
+                this_only = this_only+'.fits'
+
         do_twilight = True
         if ('ccd' in kwargs):
             if ((kwargs['ccd'] == 'ccd_1') or (kwargs['ccd'] == 'ccd_3')): #marie: I think this should modify it to apply to ccd_3
@@ -2026,29 +2030,44 @@ class Manager:
             # make a copy with file type MFFFF.  The copied files are
             # placed in the list fits_twilight_list and then can be
             # processed as normal MFFFF files.
+            fits_twilight_list = []
+            file_iterable = self.files(ndf_class='MFSKY', do_not_use=False, ccd=ccdlist, **kwargs)
+            if this_only:
+                this_only = this_only[:6]+'0'+this_only[7:]
+                file_iterable = self.files(ndf_class='MFSKY', do_not_use=False, ccd=ccdlist, filename=[this_only], **kwargs)
+            for fits in file_iterable:
+                #TODO: does it need to be **kwargs or **kwargs_copy??? SAMI has **kwargs here. Why did I change this?
+                fits_twilight_list.append(self.copy_as(fits, 'MFFFF', overwrite=overwrite))
+
+            # use the iterable file reducer to loop over the copied twilight list and
+            # reduce them as MFFFF files:
+            reduced_twilights = self.reduce_file_iterable(fits_twilight_list, overwrite=overwrite, check='FLT')
 
             for nccd in ccdlist:
-                fits_twilight_list = []
-                for fits in self.files(ndf_class='MFSKY', do_not_use=False, ccd=nccd, **kwargs):
-                    #TODO: does it need to be **kwargs or **kwargs_copy??? SAMI has **kwargs here. Why did I change this?
-                    fits_twilight_list.append(self.copy_as(fits, 'MFFFF', overwrite=overwrite))
-
-                # use the iterable file reducer to loop over the copied twilight list and
-                # reduce them as MFFFF files:
-                reduced_twilights = self.reduce_file_iterable(fits_twilight_list, overwrite=overwrite, check='FLT')
-
+                reduced_twilights_ccd = [fits for fits in reduced_twilights if fits.ccd == nccd]
                 # Identify bad fibres and replace with an average over all other twilights
-                if len(reduced_twilights) >= 3:
-                    path_list = [os.path.join(fits.reduced_dir, fits.filename) for fits in reduced_twilights]
+                if len(reduced_twilights_ccd) >= 3:
+                    path_list = [os.path.join(fits.reduced_dir, fits.filename) for fits in reduced_twilights_ccd]
                     correct_bad_fibres(path_list)
+
+        #Sree: reduce one twilight frame per tile for qc purposes.
+        #It will be used with hector.qc.calibration.flat_spectral()
+        if twilight_qc and not this_only:
+            file_iterable = self.files(ndf_class='MFSKY', do_not_use=False, reduced=False, **kwargs)
+            fits_twilight_list = []; indexes = []
+            for fits in file_iterable:
+                index = fits.ccd+fits.plate_id
+                if(index not in indexes):
+                    fits_twilight_list.append(self.copy_as(fits, 'MFFFF', overwrite=overwrite))
+                indexes.append(index)
+            self.reduce_file_iterable(fits_twilight_list, overwrite=overwrite, tlm=True, leave_reduced=False,check='TLM')
+            self.reduce_file_iterable(fits_twilight_list, overwrite=overwrite, check='FLT')
 
         # now we will process the normal MFFFF files
         if (not twilight_only):
             file_iterable = self.files(ndf_class='MFFFF', do_not_use=False,
                                        **kwargs)
             if this_only:
-                if '.fits' not in this_only:
-                    this_only = this_only+'.fits'
                 file_iterable = self.files(ndf_class='MFFFF', do_not_use=False, filename=[this_only], **kwargs)
             self.reduce_file_iterable(
                 file_iterable, overwrite=overwrite, check='FLT')
