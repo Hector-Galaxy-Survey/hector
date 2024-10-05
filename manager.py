@@ -2805,6 +2805,9 @@ class Manager:
             #inputs_list.append((fits_1.telluric_path, fits_2.telluric_path))
             # get the path list for all the ccd_1 frames in this group:
             path_list = [fits.telluric_path for fits in fits_list if os.path.exists(fits.telluric_path)]
+            if self.speed == 'fast': #not to repeat every single frame while reducing them at the telescope
+                filtered_path_list = [path for path in path_list if 'CATMAGU' not in pf.getheader(path, extname='FLUX_CALIBRATION')]
+                path_list = filtered_path_list
             if len(path_list) == 0:
                 continue
             # also get the equivalent list for the ccd_2 frames:
