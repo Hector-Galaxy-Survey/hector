@@ -1773,7 +1773,7 @@ class Manager:
         self.next_step('make_tlm', print_message=True)
         return
 
-    def check_tramline(self, check_focus=True, overwrite=False, **kwargs):
+    def check_tramline(self, check_focus=False, overwrite=False, **kwargs):
         """Automatically detect tramline failure. It will properly work after running make_tlm(),reduce_arc(),and reduce_fflat()."""
         self.disable_files() #do not use diabled file listed in disable.txt
         file_iterable = self.files(ndf_class='MFFFF', do_not_use=False, reduced=True,**kwargs)
