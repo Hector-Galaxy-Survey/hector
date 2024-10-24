@@ -16,73 +16,61 @@ from __future__ import absolute_import, division, print_function, unicode_litera
 import numpy as np
 import astropy.io.fits as pf
 
-def correct_bad_fibres(path_list,debug=False):
+import numpy as np
+import astropy.io.fits as pf
 
-    """ Replace bad fibre flat values with an average """
+def correct_bad_fibres(path_list, debug=False):
+    """Replace bad fibre flat values with an average
+        Sree(9sep2024): corrected this script to be more efficient, fast and straightforward.
+    """
 
     # Define array to store fibre flats
     n_file = len(path_list)
-    n_fibre = pf.getval(path_list[0],'NAXIS2','PRIMARY')
-    n_spec = pf.getval(path_list[0],'NAXIS1','PRIMARY')
-
-    fflats = np.zeros((n_file,n_fibre,n_spec))
+    n_fibre = pf.getval(path_list[0], 'NAXIS2', 'PRIMARY')
+    n_spec = pf.getval(path_list[0], 'NAXIS1', 'PRIMARY')
 
     # Read in fibre flats from fits files to array
-    for index in range(n_file):
-        print(index, path_list[index], n_file,n_fibre,n_spec)
-        fflats[index,:,:] = pf.getdata(path_list[index],'PRIMARY')
+    fflats = np.array([pf.getdata(path, 'PRIMARY') for path in path_list])
 
-    # Determine the average fibre flat, per-pixel residual images
-    # and average residual per fibre
-    avg_fflat = np.nanmean(fflats,axis=0)
-
+    # Calculate the average fibre flat, residual images, and fibre residuals
+    avg_fflat = np.nanmean(fflats, axis=0)
     residual_fflats = fflats - avg_fflat
+    fibre_residuals = np.sqrt(np.nanmean(residual_fflats**2, axis=2))
 
-    fibre_residuals = np.sqrt(np.nanmean(residual_fflats**2,axis=2))
-
-    # Identify all 'bad' fibres that lie more than 3 sigma from
-    # the mean
+    # Identify all 'bad' fibres that lie more than 3 sigma from the mean
     mean_residual = np.nanmean(fibre_residuals)
     sig_residual = np.nanstd(fibre_residuals)
+    threshold = mean_residual + 3 * sig_residual
 
-    ww = np.where(fibre_residuals > mean_residual + 3*sig_residual)
+    # Initial identification of bad fibres
+    bad_fibres_mask = fibre_residuals > threshold
+    bad_fibres_index = np.argwhere(bad_fibres_mask)
 
-    # Replace worst fibre with nans, recalculate the residuals,
-    # then iterate until no bad fibres remain
-
-    bad_fibres_index = []
+    # Replace bad fibres iteratively until no bad fibres remain
     fflats_fixed = np.copy(fflats)
-    i = 0
-    n_bad_fibres = 1e9
+    while len(bad_fibres_index) > 0:
+        for file_index, fibre_index in bad_fibres_index:
+            fflats_fixed[file_index, fibre_index, :] = np.nan
 
-    while n_bad_fibres > 0:
-        worst_fibre_index = np.squeeze(np.where(fibre_residuals == 
-            np.nanmax(fibre_residuals)))
-        #print(i, worst_fibre_index)
-        bad_fibres_index.append(worst_fibre_index)
-        fflats_fixed[worst_fibre_index[0],worst_fibre_index[1],:] = np.nan
-        avg_fixed = np.nanmean(fflats_fixed,axis=0)
+        # Recompute average and residuals after replacing bad fibres
+        avg_fixed = np.nanmean(fflats_fixed, axis=0)
         residual_fflats = fflats_fixed - avg_fixed
-        fibre_residuals = np.sqrt(np.nanmean(residual_fflats**2,axis=2))
-        still_bad_fibres_index = np.where(fibre_residuals > 
-                mean_residual + 4*sig_residual)
-        n_bad_fibres = len(still_bad_fibres_index[0])
-        if i == 0: # to make bad_fibres_index have at least two elements
-            n_bad_fibres = 1e9 
-        i = i+1
+        fibre_residuals = np.sqrt(np.nanmean(residual_fflats**2, axis=2))
+
+        # Update bad fibres mask and index
+        bad_fibres_mask = fibre_residuals > (mean_residual + 4 * sig_residual)
+        bad_fibres_index = np.argwhere(bad_fibres_mask)
 
     # Replace all bad fibres with the average for that fibre
-    #print(bad_fibres_index, fflats_fixed.shape, avg_fixed.shape)
-    bad_fibres_index = np.squeeze(bad_fibres_index)
-    fflats_fixed[bad_fibres_index[:,0],bad_fibres_index[:,1],:] = avg_fixed[bad_fibres_index[:,1],:]
+    for file_index, fibre_index in np.argwhere(np.isnan(fflats_fixed)):
+        fflats_fixed[file_index, fibre_index, :] = avg_fixed[fibre_index, :]
 
     # Write new fibre flat field values to file
-    edited_files = np.unique(bad_fibres_index[:,0])
-    for index in range(len(edited_files)):
-        hdulist = pf.open(path_list[index],mode='update')
-        hdulist['PRIMARY'].data = fflats_fixed[index,:,:]
-        hdulist.flush()
-        hdulist.close()
+    edited_files = np.unique(np.argwhere(np.isnan(fflats_fixed))[:, 0])
+    for index in edited_files:
+        with pf.open(path_list[index], mode='update') as hdulist:
+            hdulist['PRIMARY'].data = fflats_fixed[index, :, :]
+            hdulist.flush()
 
     if debug:
         for val in edited_files:
