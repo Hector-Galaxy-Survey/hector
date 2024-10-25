@@ -1,6 +1,10 @@
 """
-This version of the code is implemented to Hector pipeline.
+Sree implemented Sam Vaughan's 2D arc modelling code into Hector repo.
+Visit https://dev.aao.org.au/datacentral/hector/Hector-Wave-Cal for further details.
+arc_model_2d is modularized one of Hector-Wave-Cal/workflow/scripts/fit_arc_model_from_command_line.py
+This code is from Hector-Wave-Cal/workflow/scripts/utils.py
 """
+
 import pandas as pd
 from tqdm import tqdm
 import numpy as np
@@ -13,6 +17,7 @@ from sklearn.linear_model import Ridge
 from sklearn.metrics import mean_squared_error
 import matplotlib.pyplot as plt
 import xarray as xr
+from matplotlib.backends.backend_pdf import PdfPages
 
 
 def load_tlm_map(tlm_filename):
@@ -449,7 +454,7 @@ def load_arc_data_file(datafile):
     return data, fibre_numbers, N_arc_lines, column_names
 
 
-def set_up_arc_fitting(df_full, N_x, N_y, N_pixels, s_min, s_max,intensity_cut=10,verbose=True):
+def set_up_arc_fitting(df_full, N_x, N_y, N_pixels, s_min, s_max,intensity_cut=10,verbose=True,firstpass=True):
     """
     Set up all the arrays and things we need for the arc fitting.
 
@@ -459,6 +464,10 @@ def set_up_arc_fitting(df_full, N_x, N_y, N_pixels, s_min, s_max,intensity_cut=1
         N_y (int): Polynomial order in the y direction.
         N_pixels (int): Number of pixels in the x direction (from TLM).
         intensity_cut (int): Ignore all arc lines fainter than this value. Default is 10.
+        verbose: Boolian flag controlling output to terminal
+        firstpass: Boolian flag to say whether this is the first time we are running
+                   the routine (so normalization is needed), or its a later pass, that
+                   is used for clipping and doesn't need the rescaling
 
     Returns:
         tuple:
@@ -468,6 +477,8 @@ def set_up_arc_fitting(df_full, N_x, N_y, N_pixels, s_min, s_max,intensity_cut=1
         ccd_number
     )
 
+    # make a copy of 
+    
     # Ignore any duplicated columns we may have- e.g if an arc was added twice
     df_full = df_full.drop_duplicates()
 
@@ -481,9 +492,7 @@ def set_up_arc_fitting(df_full, N_x, N_y, N_pixels, s_min, s_max,intensity_cut=1
 
     # These are y values **within a slitlet**, normalized to the min and max values
     # within each slit:
-    #df_full["y_slitlet"] = (
-    #    2 * (df_full["y_pixel"] - s_max.values) / (s_max.values - s_min.values)
-    #) + 1
+    # these numbers are passed from an earlier routine to make sure they are consistent:
     df_full["y_slitlet"] = (
         2 * (df_full["y_pixel"] - s_max) / (s_max - s_min)
     ) + 1
@@ -681,15 +690,55 @@ def plot_residuals(df, predictions, wavelengths,plot_filename='residual_plots.pd
     """
     # Get the residuals
     residuals = wavelengths - predictions
+    print(residuals)
+    print(wavelengths)
+    print(predictions)
+    print(np.nanstd(residuals))
+    print(np.size(residuals))
+
+    # get the unique wavelength values:
+    wav_uni = np.unique(wavelengths)
+    print('Unique wavelengths in arclist (individual lines):')
+    nuni = np.size(wav_uni)
+    res_mean = np.zeros(nuni)
+    res_med = np.zeros(nuni)
+    res_std = np.zeros(nuni)
+    res_n = np.zeros(nuni)
+    print('Number of unique wavelengths: ',nuni)
+    # now loop over unique lines to se what the stats look like for each one:
+    print('Residuals per line.  Last col is how many sigma the mean is from zero:')
+    print(' lam     mean   median  stdev   n   nsig')
+    for i in range(nuni):
+        lam = wav_uni[i]
+        idx = np.where(wavelengths==lam)
+        res_mean[i] = np.nanmean(residuals[idx])
+        res_med[i] = np.nanmedian(residuals[idx])
+        res_std[i] = np.nanstd(residuals[idx])
+        res_n[i] = np.size(residuals[idx])
+        if ((res_std[i] > 0.0) & (res_n[i] > 1)):
+            nsig = res_mean[i]/(res_std[i]/np.sqrt(res_n[i]))
+        else:
+            nsig = 0.0
+        print('{0:7.2f} {1:7.4f} {2:7.4f} {3:7.4f} {4:4d} {5:7.2f}'.format(lam,res_mean[i],res_med[i],res_std[i],int(res_n[i]),nsig))
+    
+
+    
     fig, axs = plt.subplots(ncols=2, nrows=2, figsize=(13, 7), constrained_layout=True)
 
+    stdev = residuals.std()
+    aresiduals = np.abs(residuals)
+
+    # set range to plot:
+    r1 = -2.0*np.nanpercentile(aresiduals,99.0)
+    r2 = -1.0*r1
+    
     axs[0, 0].hist(residuals, bins="fd")
     axs[0, 0].set_title(rf"$\sigma$(Wavelength) = {residuals.std():.3f} A")
     axs[0, 0].set_xlabel("Residuals ($\mathrm{\AA}$)")
     axs[0, 0].set(xlim=[-1.0,1.0])
 
     plot1 = axs[0, 1].scatter(
-        df.x_pixel, df.y_pixel, c=residuals, vmin=-0.5, vmax=0.5, rasterized=True
+        df.x_pixel, df.y_pixel, c=residuals, vmin=r1, vmax=r2, rasterized=True
     )
     axs[0, 1].set_xlabel("Detector x pixel")
     axs[0, 1].set_ylabel("Detector y pixel")
@@ -713,14 +762,50 @@ def plot_residuals(df, predictions, wavelengths,plot_filename='residual_plots.pd
     axs[1, 0].scatter(df.x_pixel, residuals, c=df.slitlet.astype(int), cmap="prism")
     axs[1, 0].set_xlabel("Detector x pixel")
     axs[1, 0].set_ylabel("Residuals ($\mathrm{\AA}$)")
+    axs[1, 0].set(ylim=[r1,r2])
+    axs[1, 0].axhline(0.0,color='k',linestyle=':')
 
     axs[1, 1].scatter(df.y_pixel, residuals, c=df.slitlet.astype(int), cmap="prism")
     axs[1, 1].set_xlabel("Detector y pixel")
     axs[1, 1].set_ylabel("Residuals ($\mathrm{\AA}$)")
-
+    axs[1, 1].set(ylim=[r1,r2])
+    axs[1, 1].axhline(0.0,color='k',linestyle=':')
+    
     # add a colourbar for the slitlet number?
     
     fig.savefig(plot_filename, bbox_inches="tight")
+
+    # now generate a multi-page plots that show a zoom in for the
+    
+    pdf = PdfPages('slitlet_residuals.pdf')
+    #
+    nslitlet=13
+    print(df)
+    xp = np.array(df.x_pixel)
+    yp = np.array(df.y_pixel)
+    slitlet = np.array(df.slitlet)
+    for i in range(nslitlet):
+        fig1 = plt.figure()
+        ax1 = fig1.add_subplot(1,1,1)
+        idx = np.where(slitlet==(i+1))
+        idxs = np.where(((slitlet==(i+1)) & (aresiduals>5.0*stdev)))
+        # plot residuals
+        plot1 = ax1.scatter(xp[idx],yp[idx], c=residuals[idx], vmin=-0.5, vmax=0.5, rasterized=True)
+        # mark residuals that are more than 5 sigma:
+        plot2 = ax1.plot(xp[idxs],yp[idxs],'x',color='r')
+        # calculate std dev for this slitlet:
+        stdev_slitlet = residuals[idx].std()
+        ax1.set_xlabel("Detector x pixel")
+        ax1.set_ylabel("Detector y pixel")
+        ax1.set_title("Slitlet "+str(i+1)+" std dev = "+f"{stdev_slitlet:7.4f}")
+        plt.colorbar(plot1,ax=ax1)
+        pdf.savefig()  # saves the current figure into a pdf page
+        plt.close()
+
+    pdf.close()
+
+
+    
     return fig, axs
 
 
@@ -827,3 +912,43 @@ def set_up_WAVELA_predictions(tlm_filename, ccd_number, N_x, N_y, slitlet_info,v
     )
 
     return df_predict, wave_standardised, X2, N_pixels_x, N_fibres_total
+
+def clip_data(X2,wave_standardised,wavelengths,predictions,mse,verbose=False):
+    """
+    Clip outliers from the fits from the data, so we can refit.
+
+    Args:
+      X2 (np.ndarray): A design matrix
+      wave_standardised (np.ndarray): original wavelengths normalized for fitting.
+      wavelengths (np.ndarray): The original wavelength array. The predictions will be multiplied by the standard deviation of this array and the mean of this array will be added.
+      predictions (np.ndarray): array of model predictions
+      mse (float): mean square error of residuals.
+    """
+
+    # calculate absolute residuals:
+    residuals = np.abs(wavelengths - predictions)
+
+    # size of arrays:
+    n = np.size(residuals)
+
+    # make an array flagging good/bad values:
+    good = np.ones((n), dtype=bool)
+    good = np.where((residuals>5.0*mse),False,True)
+    idx = np.where(good)
+    ngood = good.sum()
+
+    # use squeeze here, as for some reason the command hear adds an extra size 1 dimension
+    X2_c = np.squeeze(X2[idx,:].copy())
+    wave_standardised_c = wave_standardised[idx].copy()
+    wavelengths_c = wavelengths[idx].copy()
+
+    if (verbose):
+        print('Done clipping...')
+        print('Number of points:',n)
+        print('Number of good points:',ngood)
+        print('Percentage rejected:', 100*float(n-ngood)/float(n),' %')
+    
+    return X2_c, wave_standardised_c,wavelengths_c
+    
+    
+    
