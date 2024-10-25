@@ -88,6 +88,7 @@ import astropy.io.fits as pf
 from astropy.table import Table
 from astropy import __version__ as ASTROPY_VERSION
 import numpy as np
+from pathlib import Path
 import hector
 hector_path = str(hector.__path__[0])+'/'
 #np.set_printoptions(threshold=np.inf)
@@ -1970,10 +1971,12 @@ class Manager:
                 arc_reduced = fits.reduced_path
                 arcfit_name = os.path.join(fits.reduced_dir,os.path.basename(fits.filename)[0:10]+'_outdir/arcfits.dat')
                 tlm_name = os.path.join(fits.reduced_dir,tdfdr_options[-1])
+                N_x = 4 if fits.instrument == 'AAOMEGA-HECTOR' else 6
+                N_y = 2 
                 with pf.open(arc_reduced, mode='readonly') as hdul:
                     applied = any(hdu.name == 'OLDWAVELA'  for hdu in hdul) #to avoid applying it multiple times
                 if not applied and (fits.lamp[0:16] == 'Helium+CuAr+FeAr'): #only correct wavelength solutions with the right lamp
-                    input_list.append((arc_reduced,arcfit_name,tlm_name))
+                    input_list.append((arc_reduced,arcfit_name,tlm_name,N_x,N_y))
             if input_list:
                 self.map(fit_arc_model_wrapper, input_list)
             else:
@@ -2853,7 +2856,6 @@ class Manager:
                     hdulist2 = pf.open(path_out2, 'update')
                     hdu = 'TEMPLATE_OPT'
                     for band in 'ugriz':
-                        print('ugriz',path1,path_out,path_out2)
                         starmag = pf.getval(path1,'CATMAG'+ band.upper(),extname='FLUX_CALIBRATION')
                         hdulist1[hdu].header['CATMAG' + band.upper()] = (starmag, band + ' mag from catalogue')
                         hdulist2[hdu].header['CATMAG' + band.upper()] = (starmag, band + ' mag from catalogue')
@@ -6413,9 +6415,11 @@ def run_2dfdr_single_wrapper(group):
 @safe_for_multiprocessing
 def fit_arc_model_wrapper(input_list):
     """fit 2d arc modelling"""
-    arc_reduced, arcfit_name, tlm_name = input_list
+    arc_reduced, arcfit_name, tlm_name, Nx, Ny = input_list
+    param_filename = Path(arc_reduced).parent / (Path(arc_reduced).stem + "_2dfit_params.nc")
+        # To overwrite the arc completely, uncomment this line
     print(' Performing a 2D wavelength fit of the arc frames.',arc_reduced)
-    arc_model_2d(arc_reduced, arcfit_name, tlm_name)
+    arc_model_2d(arc_reduced, arcfit_name, tlm_name, N_x=Nx, N_y=Ny, save_params=param_filename,verbose=True)
     return
 
 
