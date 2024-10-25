@@ -84,7 +84,6 @@ import matplotlib.pyplot as plt
 import matplotlib as mpl
 from multiprocessing import Process
 
-
 from ..utils.ifu import IFU
 from ..utils.mc_adr import parallactic_angle, adr_r
 from ..utils.other import saturated_partial_pressure_water
@@ -1182,18 +1181,6 @@ def take_ratio(standard_flux, standard_wavelength, observed_flux,
     # Put the ratio back onto the observed wavelength scale
 #    ratio = 1.0 / np.interp(observed_wavelength, standard_wavelength, 1.0 / ratio2)
     ratio = np.interp(observed_wavelength, standard_wavelength,ratio2)
-# for debugging:
-#    f0 = open('/storage2/sree/hector/dr/v0_01/take_ratio.txt', 'w')
-#    f0.write('# ind ratio\n')
-#    for r1,w1 in zip(ratio1,standard_wavelength):
-#        f0.write('r1 '+str(w1)+' '+str(r1)+'\n')
-#    for r2,w2 in zip(ratio2,standard_wavelength):
-#        f0.write('r2 '+str(w2)+' '+str(r2)+'\n')
-#    for r,w in zip(ratio,observed_wavelength):
-#        f0.write('r '+str(w)+' '+str(r)+'\n')
-#    f0.close()
-#    if((observed_wavelength[0]>6000.)):
-#        stop
     return ratio
 
 def smooth_ratio(ratio, width=10.0):
