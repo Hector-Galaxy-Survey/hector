@@ -8,3 +8,4 @@ from . import cubing
 from . import covariance
 from . import sky
 from . import arc
+from . import psf_cubes_and_rss
