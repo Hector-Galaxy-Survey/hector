@@ -1261,9 +1261,13 @@ def fit_spline(wavelength, ratio, mf_av=False,tell_corr_primary=False):
     if (not tell_corr_primary):
         knots = knots[~in_telluric_band(knots)]
         
+#    spline = LSQUnivariateSpline(
+#        wavelength[good], 1.0/ratio[good], knots[1:-1], k=3)
+#    fit = 1.0 / spline(wavelength)
+
     spline = LSQUnivariateSpline(
-        wavelength[good], 1.0/ratio[good], knots[1:-1], k=3)
-    fit = 1.0 / spline(wavelength)
+        wavelength[good], ratio[good], knots[1:-1], k=3)
+    fit = spline(wavelength)    
 
     # Mark with NaNs anything outside the fitted wavelength range
     #fit[:good[0]] = np.nan
