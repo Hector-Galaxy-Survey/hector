@@ -1,8 +1,8 @@
 """
 Sree implemented Sam Vaughan's 2D arc modelling code into Hector repo.
 Visit https://dev.aao.org.au/datacentral/hector/Hector-Wave-Cal for further details.
-arc_model_2d is modularized one of Hector-Wave-Cal/workflow/scripts/fit_arc_model_from_command_line.py
-This code is from Hector-Wave-Cal/workflow/scripts/utils.py
+fit_arc_model is the modularized one of Hector-Wave-Cal/workflow/scripts/fit_arc_model_from_command_line.py
+fit_arc_model_utils is a copy of Hector-Wave-Cal/workflow/scripts/utils.py
 """
 
 import pandas as pd
@@ -39,7 +39,7 @@ def load_tlm_map(tlm_filename):
 
 
 def read_arc(
-    arcdata_filename, tlm_filename, reduced_arc_filename, return_column_subset=True, verbose=True):
+    arcdata_filename, tlm_filename, reduced_arc_filename, return_column_subset=True, verbose=True, global_fit=True):
     """
     Make a pandas dataframe of the data in an Arc file.
     Read in the arc data file, the tlm map and the reduced arc itself, then
@@ -60,6 +60,8 @@ def read_arc(
         tlm_filename (str): Filename of the TLM map
         reduced_arc_filename (str): Filename of the reduced Arc
         return_column_subset (bool): If True, only return the columns we need for the fitting.
+        global_fit (bool): if True, then force data to act as one slitlet and fit the entire
+                           frame in one go.
 
     Returns:
         pd.DataFrame: data frame that contains the following columns:
@@ -111,10 +113,10 @@ def read_arc(
         print(file_id,', CCD number:',ccd)
 
     # Load the arc .dat file
-    data, fibre_numbers, N_arc_lines, column_names = load_arc_data_file(datafile)
+    data, fibre_numbers, column_names = load_arc_data_file(datafile)
     df = pd.DataFrame(data, columns=column_names)
-
-    df["fibre_number"] = np.repeat(fibre_numbers, N_arc_lines)
+    
+    #df["fibre_number"] = np.repeat(fibre_numbers, N_arc_lines)
     df["CCD"] = ccd
     df["file_id"] = file_id
 
@@ -141,7 +143,15 @@ def read_arc(
         how="left",
     )
 
-    # do some renaming and only keep certain columns
+    # copy slitlet IDs to a second column in case we overwrite them for
+    # calculating the global fit:
+    df['slitlet_orig'] = df['SLITLET']
+    
+    # force there to be just one slitlet for a global fit:
+    if (global_fit):
+        df['SLITLET'] = 1
+    
+    # do some renaming and only    certain columns
     df = df.rename(
         dict(INTEN="intensity", LNEWID="linewidth", SLITLET="slitlet", CCD="ccd"),
         axis=1,
@@ -173,6 +183,7 @@ def read_arc(
                 "slitlet",
                 "ccd",
                 "file_id",
+                "slitlet_orig"
             ],
         ]
 
@@ -420,7 +431,7 @@ def load_arc_data_file(datafile):
     This function returns a tuple of:
         - The data in each row of the file
         - A list of fibre numbers in the file
-        - The number of arc lines found in each fibre
+        - The number of arc lines found in each fibre (no longer returned)
         - The column names of the file
 
     Args:
@@ -439,6 +450,9 @@ def load_arc_data_file(datafile):
         for line in tqdm(f):
             if line.startswith(" # FIBNO:"):
                 fibre_numbers.append(int(line.split()[2]))
+                # reset nlines and fibno for this fibre:
+                nlines = 0
+                fibno = int(line.split()[2])
                 continue
             elif line.startswith(" # fit parameters: "):
                 N_arc_lines.append(int(line.split()[3]))
@@ -449,9 +463,19 @@ def load_arc_data_file(datafile):
                 column_names = line.lstrip("#").split()[1:]
                 continue
             else:
-                data.append([float(value) for value in line.split()])
+                # get row data and also append the fibre number to the end of the row.
+                # do this as sometimes the fibres have no data so the N_arc_lines
+                # gets messed up.  if there are no lines, then the "# fit parameters..."
+                # line is not in the file for that fibre
+                row = [float(value) for value in line.split()]
+                row.append(fibno)
+                #data.append([float(value) for value in line.split()])
+                data.append(row)
 
-    return data, fibre_numbers, N_arc_lines, column_names
+    # append fibre_number label:
+    column_names.append("fibre_number")
+                
+    return data, fibre_numbers, column_names
 
 
 def set_up_arc_fitting(df_full, N_x, N_y, N_pixels, s_min, s_max,intensity_cut=10,verbose=True,firstpass=True):
@@ -623,9 +647,9 @@ def get_predictions(model, X, wavelengths):
     return predictions
 
 
-def calculate_MSE(model, X, wavelengths):
+def calculate_RMS(model, X, wavelengths):
     """
-    Given a model, a design matrix and a set of observed wavelengths, calculate the mean-squared error of the fit.
+    Given a model, a design matrix and a set of observed wavelengths, calculate the root mean-squared error of the fit.
 
     Args:
         model (Sklearn.Model): An Sklearn fitted model.
@@ -637,13 +661,13 @@ def calculate_MSE(model, X, wavelengths):
     """
     predictions = get_predictions(model, X, wavelengths)
     
-    mse = np.sqrt(
+    rmse = np.sqrt(
         mean_squared_error(
             y_true=wavelengths,
             y_pred=predictions,
         )
     )
-    return mse
+    return rmse
 
 
 def get_info(ccd_number):
@@ -677,7 +701,7 @@ def get_info(ccd_number):
     return ccd_name, N_slitlets_total, N_fibres_total, N_fibres_per_slitlet
 
 
-def plot_residuals(df, predictions, wavelengths,plot_filename='residual_plots.pdf',debug=False):
+def plot_residuals(df, predictions, wavelengths,plot_filename='residual_plots.pdf',debug=False,pixscale=None):
     """Plot the residuals between a fit and the original data
 
     Args:
@@ -690,11 +714,8 @@ def plot_residuals(df, predictions, wavelengths,plot_filename='residual_plots.pd
     """
     # Get the residuals
     residuals = wavelengths - predictions
-    print(residuals)
-    print(wavelengths)
-    print(predictions)
-    print(np.nanstd(residuals))
-    print(np.size(residuals))
+    xp = np.array(df.x_pixel)
+    yp = np.array(df.y_pixel)
 
     # get the unique wavelength values:
     wav_uni = np.unique(wavelengths)
@@ -707,7 +728,7 @@ def plot_residuals(df, predictions, wavelengths,plot_filename='residual_plots.pd
     print('Number of unique wavelengths: ',nuni)
     # now loop over unique lines to se what the stats look like for each one:
     print('Residuals per line.  Last col is how many sigma the mean is from zero:')
-    print(' lam     mean   median  stdev   n   nsig')
+    print(' lam     mean   median  stdev   n   nsig x_mean')
     for i in range(nuni):
         lam = wav_uni[i]
         idx = np.where(wavelengths==lam)
@@ -715,11 +736,12 @@ def plot_residuals(df, predictions, wavelengths,plot_filename='residual_plots.pd
         res_med[i] = np.nanmedian(residuals[idx])
         res_std[i] = np.nanstd(residuals[idx])
         res_n[i] = np.size(residuals[idx])
+        mean_x = np.nanmean(xp[idx])
         if ((res_std[i] > 0.0) & (res_n[i] > 1)):
             nsig = res_mean[i]/(res_std[i]/np.sqrt(res_n[i]))
         else:
             nsig = 0.0
-        print('{0:7.2f} {1:7.4f} {2:7.4f} {3:7.4f} {4:4d} {5:7.2f}'.format(lam,res_mean[i],res_med[i],res_std[i],int(res_n[i]),nsig))
+        print('{0:7.2f} {1:7.4f} {2:7.4f} {3:7.4f} {4:4d} {5:7.2f} {6:6.1f}'.format(lam,res_mean[i],res_med[i],res_std[i],int(res_n[i]),nsig,mean_x))
     
 
     
@@ -729,17 +751,26 @@ def plot_residuals(df, predictions, wavelengths,plot_filename='residual_plots.pd
     aresiduals = np.abs(residuals)
 
     # set range to plot:
-    r1 = -2.0*np.nanpercentile(aresiduals,99.0)
+    r1 = -1.0*np.nanpercentile(aresiduals,99.0)
     r2 = -1.0*r1
     
     axs[0, 0].hist(residuals, bins="fd")
-    axs[0, 0].set_title(rf"$\sigma$(Wavelength) = {residuals.std():.3f} A")
+    if (pixscale):
+        title = "$\sigma$(Wavelength) = {0:.3f} A.  1 pixel is {1:4.2f} A.".format(residuals.std(),pixscale)
+    else:
+        title = "$\sigma$(Wavelength) = {0:.3f} A.".format(residuals.std())
+    axs[0, 0].set_title(title)
     axs[0, 0].set_xlabel("Residuals ($\mathrm{\AA}$)")
     axs[0, 0].set(xlim=[-1.0,1.0])
+    axs[0, 0].axvline(0.0,linestyle='--',color='k')
+    if (pixscale):
+        axs[0, 0].axvline(pixscale,linestyle=':',color='k')
+        axs[0, 0].axvline(-1.0*pixscale,linestyle=':',color='k')
+        axs[0, 0].axvline(0.1*pixscale,linestyle=':',color='k')
+        axs[0, 0].axvline(-0.1*pixscale,linestyle=':',color='k')
 
     plot1 = axs[0, 1].scatter(
-        df.x_pixel, df.y_pixel, c=residuals, vmin=r1, vmax=r2, rasterized=True
-    )
+        df.x_pixel, df.y_pixel, c=residuals, vmin=r1, vmax=r2, s=2, rasterized=True, cmap="RdYlBu")
     axs[0, 1].set_xlabel("Detector x pixel")
     axs[0, 1].set_ylabel("Detector y pixel")
     #axs[0,1].set(xlim=[1000,1060],ylim=[930,990])
@@ -759,18 +790,84 @@ def plot_residuals(df, predictions, wavelengths,plot_filename='residual_plots.pd
                 print(i,xp,yp,wavelengths[i],predictions[i],residuals[i],df.iloc[i]['fibre_number'],df.iloc[i]['slitlet'],df.iloc[i]['y_slitlet'])
 
     
-    axs[1, 0].scatter(df.x_pixel, residuals, c=df.slitlet.astype(int), cmap="prism")
+    axs[1, 0].scatter(df.x_pixel, residuals, c=df.slitlet.astype(int), cmap="prism",s=2)
     axs[1, 0].set_xlabel("Detector x pixel")
     axs[1, 0].set_ylabel("Residuals ($\mathrm{\AA}$)")
     axs[1, 0].set(ylim=[r1,r2])
-    axs[1, 0].axhline(0.0,color='k',linestyle=':')
 
-    axs[1, 1].scatter(df.y_pixel, residuals, c=df.slitlet.astype(int), cmap="prism")
+    axs[1, 1].scatter(df.y_pixel, residuals, c=df.slitlet.astype(int), cmap="prism",s=2)
     axs[1, 1].set_xlabel("Detector y pixel")
     axs[1, 1].set_ylabel("Residuals ($\mathrm{\AA}$)")
     axs[1, 1].set(ylim=[r1,r2])
+
+    # break up image into bins and calc mean/median:
+    # calc boundaries:
+    nbx= 16
+    nby= 16
+    x_grid = np.zeros((nbx,nby))
+    y_grid = np.zeros((nbx,nby))
+    mean_grid = np.zeros((nbx,nby))
+    stder_grid = np.zeros((nbx,nby))
+    xmin = np.nanmin(xp)
+    xmax = np.nanmax(xp)
+    ymin = np.nanmin(yp)
+    ymax = np.nanmax(yp)
+    xstep = (xmax-xmin)/float(nbx)
+    ystep = (ymax-ymin)/float(nby)
+    for j in range(nbx):
+        x1 = xmin + xstep*j
+        x2 = x1 + xstep
+        # plot lines for grid:
+        for k in range(nby):
+            y1 = ymin + ystep*k
+            y2 = y1 + ystep
+            idxb = np.where(((xp > x1) & (xp < x2) & (yp > y1) & (yp < y2)))
+            nb = np.size(residuals[idxb])
+            #med = np.nanmedian(residuals[idxb])
+            # 1 sigma percentile ranges:
+            # 0.1587 and 0.8413
+            #per1 = np.nanpercentile(residuals[idxb],15.87)
+            #per2 = np.nanpercentile(residuals[idxb],84.13)
+            #medstd = np.abs(per2-per1)
+            #medstder = medstd/np.sqrt(nb)
+            if (nb > 0):
+                mean = np.nanmean(residuals[idxb])
+                std = np.nanstd(residuals[idxb])
+                stder = std/np.sqrt(nb)
+                mean_grid[j,k] = mean
+                stder_grid[j,k] = stder
+            else:
+                mean_grid[j,k] = np.nan
+                stder_grid[j,k] = np.nan
+                    
+            x_grid[j,k] = (x1+x2)/2
+            y_grid[j,k] = (y1+y2)/2
+
+    # plot the mean points in the grid on plots:
+    for j in range(nby):
+        lab = 'y={0:4d}'.format(int(y_grid[0,j]))
+        axs[1, 0].errorbar(x_grid[:,j],mean_grid[:,j],yerr=stder_grid[:,j],linestyle='-',marker='x',label=lab)
+    for j in range(nbx):
+        lab = 'x={0:4d}'.format(int(x_grid[j,0]))
+        axs[1, 1].errorbar(y_grid[j,:],mean_grid[j,:],yerr=stder_grid[j,:],linestyle='-',marker='x',label=lab)
+        
+    axs[1, 0].axhline(0.0,color='k',linestyle=':')
     axs[1, 1].axhline(0.0,color='k',linestyle=':')
-    
+    if (pixscale):
+        axs[1, 0].axhline(0.1*pixscale,color='k',linestyle=':')
+        axs[1, 0].axhline(-0.1*pixscale,color='k',linestyle=':')
+        axs[1, 0].text(0.0,0.11*pixscale,'0.1 pix',horizontalalignment='left',color='k')
+        axs[1, 1].axhline(0.1*pixscale,color='k',linestyle=':')
+        axs[1, 1].axhline(-0.1*pixscale,color='k',linestyle=':')
+        axs[1, 1].text(0.0,0.11*pixscale,'0.1 pix',horizontalalignment='left',color='k')
+
+    axs[1, 0].legend(loc='upper center',bbox_to_anchor=(0.5, 1.05),fontsize=6,ncols=nby/4)
+
+    #ax.legend(loc='upper center', bbox_to_anchor=(0.5, -0.05),
+    #      fancybox=True, shadow=True, ncol=5)
+    axs[1, 1].legend(loc='upper center',bbox_to_anchor=(0.5, 1.05),fontsize=6,ncols=nby/4)
+    #axs[1, 1].legend()
+        
     # add a colourbar for the slitlet number?
     
     fig.savefig(plot_filename, bbox_inches="tight")
@@ -779,18 +876,23 @@ def plot_residuals(df, predictions, wavelengths,plot_filename='residual_plots.pd
     
     pdf = PdfPages('slitlet_residuals.pdf')
     #
-    nslitlet=13
+    nslitlet = np.size(np.unique(df.slitlet_orig))
+    #nslitlet=13
     print(df)
-    xp = np.array(df.x_pixel)
-    yp = np.array(df.y_pixel)
-    slitlet = np.array(df.slitlet)
+    slitlet = np.array(df.slitlet_orig)
+    # number of block to sub-divide slitlet into for averages:
+    nbx= 5
+    nby= 3
+
+    usemedian = True
+    
     for i in range(nslitlet):
         fig1 = plt.figure()
         ax1 = fig1.add_subplot(1,1,1)
         idx = np.where(slitlet==(i+1))
         idxs = np.where(((slitlet==(i+1)) & (aresiduals>5.0*stdev)))
         # plot residuals
-        plot1 = ax1.scatter(xp[idx],yp[idx], c=residuals[idx], vmin=-0.5, vmax=0.5, rasterized=True)
+        plot1 = ax1.scatter(xp[idx],yp[idx], c=residuals[idx], vmin=-0.5, vmax=0.5, rasterized=True,cmap="RdYlBu",s=5)
         # mark residuals that are more than 5 sigma:
         plot2 = ax1.plot(xp[idxs],yp[idxs],'x',color='r')
         # calculate std dev for this slitlet:
@@ -799,6 +901,55 @@ def plot_residuals(df, predictions, wavelengths,plot_filename='residual_plots.pd
         ax1.set_ylabel("Detector y pixel")
         ax1.set_title("Slitlet "+str(i+1)+" std dev = "+f"{stdev_slitlet:7.4f}")
         plt.colorbar(plot1,ax=ax1)
+        # break up slitlet into sections and calculate median/mean in each section:
+        # calc boundaries:
+        xmin = np.nanmin(xp[idx])
+        xmax = np.nanmax(xp[idx])
+        ymin = np.nanmin(yp[idx])
+        ymax = np.nanmax(yp[idx])
+        xstep = (xmax-xmin)/float(nbx)
+        ystep = (ymax-ymin)/float(nby)
+        for j in range(nbx):
+            x1 = xmin + xstep*j
+            x2 = x1 + xstep
+            # plot lines for grid:
+            ax1.axvline(x1,linestyle=':',color='k')
+            for k in range(nby):
+                y1 = ymin + ystep*k
+                y2 = y1 + ystep
+                # plot lines for grid (for first loop in x):
+                if (j == 0):
+                    ax1.axhline(y1,linestyle=':',color='k')
+                    
+                idxb = np.where(((slitlet==(i+1)) & (xp > x1) & (xp < x2) & (yp > y1) & (yp < y2)))
+                nb = np.size(residuals[idxb])
+                med = np.nanmedian(residuals[idxb])
+                # 1 sigma percentile ranges:
+                # 0.1587 and 0.8413
+                per1 = np.nanpercentile(residuals[idxb],15.87)
+                per2 = np.nanpercentile(residuals[idxb],84.13)
+                medstd = np.abs(per2-per1)
+                medstder = medstd/np.sqrt(nb)
+                mean = np.nanmean(residuals[idxb])
+                std = np.nanstd(residuals[idxb])
+                stder = std/np.sqrt(nb)
+                if (usemedian):
+                    nsig = np.abs(mean/stder)
+                    label = '{0:7.4f}\n+-{1:6.4f}'.format(med,medstder)
+                else:
+                    nsig = np.abs(med/stder)
+                    label = '{0:7.4f}\n+-{1:6.4f}'.format(mean,stder)
+
+                if (nsig < 2):
+                    col = 'k'
+                elif ((nsig <3) & (nsig>2)):
+                    col = 'b'
+                else:
+                    col = 'r'
+                
+                ax1.text((x1+x2)/2,(y1+y2)/2,label,horizontalalignment='center',color=col)
+        ax1.axvline(xmax,linestyle=':',color='k')
+        ax1.axhline(ymax,linestyle=':',color='k')
         pdf.savefig()  # saves the current figure into a pdf page
         plt.close()
 
@@ -809,7 +960,7 @@ def plot_residuals(df, predictions, wavelengths,plot_filename='residual_plots.pd
     return fig, axs
 
 
-def save_parameters(output_file, df, model, N_params_per_slitlet, mse, arc_name):
+def save_parameters(output_file, df, model, N_params_per_slitlet, rms, arc_name):
     """
     Save the fitted parameters from a model to a netcdf output file, using the xarray package.
 
@@ -818,7 +969,7 @@ def save_parameters(output_file, df, model, N_params_per_slitlet, mse, arc_name)
         df (pd.DataFrame): A dataframe from set_up_arc_fitting
         model (sklearn.Model): A fitted model. Must have a .coef_ attribute.
         N_params_per_slitlet (int): Number of params per slitlet (N_x + 1) * (N_y + 1)
-        mse (float): The mean-squared error of the fit
+        rms (float): The root mean-squared error of the fit
         arc_name (str): The name of the arc file
 
     Returns:
@@ -848,12 +999,12 @@ def save_parameters(output_file, df, model, N_params_per_slitlet, mse, arc_name)
         ),
         name="slitlet parameters",
     )
-    mse_values = xr.DataArray(mse, name="MSE")
+    rms_values = xr.DataArray(rms, name="RMS")
     dataset = xr.Dataset(
         data_vars=dict(
             fibre_constants=fibre_constants,
             slitlet_params=slitlet_params,
-            mse=mse_values,
+            rms=rms_values,
         ),
         coords=dict(arc_ID=arc_name, ccd=int(ccd_number)),
     )
@@ -862,7 +1013,7 @@ def save_parameters(output_file, df, model, N_params_per_slitlet, mse, arc_name)
     return dataset
 
 
-def set_up_WAVELA_predictions(tlm_filename, ccd_number, N_x, N_y, slitlet_info,verbose=True):
+def set_up_WAVELA_predictions(tlm_filename, ccd_number, N_x, N_y, slitlet_info,verbose=True,global_fit=False):
     """
     Set up the needed arrays in order to make predictions to create a new WAVELA array
 
@@ -880,8 +1031,13 @@ def set_up_WAVELA_predictions(tlm_filename, ccd_number, N_x, N_y, slitlet_info,v
         ccd_number
     )
 
+    # if a global fit (treating as one slitlet) then update the details above to handle this.
+    if (global_fit):
+        N_slitlets_total = 1
+        N_fibres_per_slitlet = N_fibres_total
+    
     y_values = tlm.ravel().astype(float)  # Casting to float64 is important
-    # get x values.  Note that we need to use arnage 1 to N_pixels_x+1 due
+    # get x values.  Note that we need to use arange 1 to N_pixels_x+1 due
     # python starting at zero:  
     x_values = np.tile(np.arange(1,N_pixels_x+1), N_fibres_total).ravel()
     fibre_numbers = np.arange(1, N_fibres_total + 1).repeat(N_pixels_x)
@@ -913,7 +1069,7 @@ def set_up_WAVELA_predictions(tlm_filename, ccd_number, N_x, N_y, slitlet_info,v
 
     return df_predict, wave_standardised, X2, N_pixels_x, N_fibres_total
 
-def clip_data(X2,wave_standardised,wavelengths,predictions,mse,verbose=False):
+def clip_data(X2,wave_standardised,wavelengths,predictions,rms,verbose=False):
     """
     Clip outliers from the fits from the data, so we can refit.
 
@@ -922,7 +1078,7 @@ def clip_data(X2,wave_standardised,wavelengths,predictions,mse,verbose=False):
       wave_standardised (np.ndarray): original wavelengths normalized for fitting.
       wavelengths (np.ndarray): The original wavelength array. The predictions will be multiplied by the standard deviation of this array and the mean of this array will be added.
       predictions (np.ndarray): array of model predictions
-      mse (float): mean square error of residuals.
+      rms (float): root mean square error of residuals.
     """
 
     # calculate absolute residuals:
@@ -933,7 +1089,7 @@ def clip_data(X2,wave_standardised,wavelengths,predictions,mse,verbose=False):
 
     # make an array flagging good/bad values:
     good = np.ones((n), dtype=bool)
-    good = np.where((residuals>5.0*mse),False,True)
+    good = np.where((residuals>5.0*rms),False,True)
     idx = np.where(good)
     ngood = good.sum()
 

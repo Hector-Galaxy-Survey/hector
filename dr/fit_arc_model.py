@@ -1,8 +1,8 @@
 """
 Sree implemented Sam Vaughan's 2D arc modelling code into Hector repo.
 Visit https://dev.aao.org.au/datacentral/hector/Hector-Wave-Cal for further details.
-arc_model_2d is modularized one of Hector-Wave-Cal/workflow/scripts/fit_arc_model_from_command_line.py
-This code is from Hector-Wave-Cal/workflow/scripts/utils.py
+fit_arc_model is the modularized one of Hector-Wave-Cal/workflow/scripts/fit_arc_model_from_command_line.py
+fit_arc_model_utils is a copy of Hector-Wave-Cal/workflow/scripts/utils.py
 """
 
 import hector.dr.fit_arc_model_utils as utils
@@ -23,8 +23,9 @@ import xarray as xr
 import os
 
 
-def arc_model_2d(reduced_arc_filename, arcdata_filename, tlm_filename, plot_residuals=False, save_params=None, clip=True,
-        no_update_arc=False, saved_file_suffix=None, intensity_cut=20, N_x=6, N_y=2, alpha=1e-3, verbose=False, debug=False):
+def arc_model_3d(reduced_arc_filename, arcdata_filename, tlm_filename, plot_residuals=False, save_params=None, clip=True, 
+        global_fit=False,no_update_arc=False, saved_file_suffix=None, intensity_cut=20, N_x=6, N_y=2, alpha=1e-3, 
+        verbose=False, debug=False):
     """
     Run the 2D wavelength fitting from the command line. 
     Take a reduced arc file, an arc data file and a TLM map and run the 2D wavelength fitting code on them. 
@@ -33,6 +34,24 @@ def arc_model_2d(reduced_arc_filename, arcdata_filename, tlm_filename, plot_resi
     The updated arc is then written to a file which has the same filename as the input 
     with a "_wavela_updated" suffix (which can be specified on the command line). 
     Optionally, plot the residuals and save the fitting parameters.
+
+    Inputs:
+    reduced_arc_filename = The filename of the reduced arc file, which usually ends in red.fits
+    dat_filename = The filename of the arc data file, which usually ends in arcfits.dat
+    tlm_filename = The filename of the TLM map
+
+    Options:
+    intensity-cut = Ignore arc lines with an intensity lower than this value
+
+    N_x = Polynomial order in the x direction. Default is 4 for AAOmega and 6 for Spector
+    N_y = Polynomial order in the y direction. Default is 2. When global_fit=True N_y=N_x.
+    alpha = Ridge regression regularisation term
+    plot_residuals = Whether to display a plot of the residuals or not
+    clip = Whether to do a global fit to the whole detector at once, rather than by slitlet
+    save-params = The netcdf filename of the paramters. Must end in .nc
+    no-update-arc = If given, do not update the WAVELA and SHIFTS extensions of the reduced arc file
+    saved-file-suffix = The suffix to add to the reduced arc filename (before the .fits). 
+                        Set to an empty string to **silently** overwrite the original file
     """
 
     arcdata_filename = Path(arcdata_filename)
@@ -66,8 +85,11 @@ def arc_model_2d(reduced_arc_filename, arcdata_filename, tlm_filename, plot_resi
     # "y_pixel", "wave" etc.  See read_arc() for details.
     if verbose:    
         print("Reading in the Arc Data...\n")
-    df_full,N_pixels,s_min,s_max,slitlet_info = utils.read_arc(arcdata_filename, tlm_filename, reduced_arc_filename,verbose=verbose)
+    df_full,N_pixels,s_min,s_max,slitlet_info = (utils.read_arc(arcdata_filename, tlm_filename, reduced_arc_filename,verbose=verbose,global_fit=global_fit))
 
+    # get the pixel scale (just for plottign and diagnostics:
+    pixscale = fits.getval(reduced_arc_filename, 'CDELT1', ext=0)
+    print('Pixel scale is ',pixscale,' ang/pix')
 
     # Set up the fitting
     print(df_full)
@@ -78,9 +100,6 @@ def arc_model_2d(reduced_arc_filename, arcdata_filename, tlm_filename, plot_resi
         df_full, N_x=N_x, N_y=N_y, N_pixels=N_pixels, s_min=s_min, s_max=s_max, intensity_cut=intensity_cut, verbose=verbose
     )
     
-    print(df_full)
-    print('compare:')
-    print(df_full_c.compare(df_full))
 
     print('X2 shape:',np.shape(X2))
     print('wave_standardize shape:',np.shape(wave_standardised))
@@ -98,32 +117,31 @@ def arc_model_2d(reduced_arc_filename, arcdata_filename, tlm_filename, plot_resi
 
     # Get the predictions and the mean squared error
     predictions = utils.get_predictions(model, X2, wavelengths)
-    mse = utils.calculate_MSE(model, X2, wavelengths)
+    rms = utils.calculate_RMS(model, X2, wavelengths)
     if verbose:
-        print(f"The MSE is {mse:.3f} A\n")
+        print(f"The RMS is {rms:.3f} A\n")
     residuals = wavelengths - predictions
 
     # clip the data and refit:
     if (clip):
         # generate clipped data for fitting:
-        X2_clip, wave_standardised_clip,wavelengths_clip = utils.clip_data(X2,wave_standardised,wavelengths,predictions,mse,verbose=verbose)
+        X2_clip, wave_standardised_clip,wavelengths_clip = utils.clip_data(X2,wave_standardised,wavelengths,predictions,rms,verbose=verbose)
         # fitted the clipped data:
         model = utils.fit_model(X=X2_clip, y=wave_standardised_clip, alpha=alpha)
         #model = utils.fit_model(X=X2, y=wave_standardised, alpha=alpha)
         predictions_clip = utils.get_predictions(model, X2_clip, wavelengths_clip)
         #predictions_clip = utils.get_predictions(model, X2, wavelengths)
-        mse_clip = utils.calculate_MSE(model, X2_clip, wavelengths_clip)
-        #mse_clip = utils.calculate_MSE(model, X2, wavelengths)
+        rms_clip = utils.calculate_RMS(model, X2_clip, wavelengths_clip)
+        #rms_clip = utils.calculate_RMS(model, X2, wavelengths)
 
         residuals_clip = wavelengths_clip - predictions_clip
 
+        # for some reason the utils.calculate_RMS() routine does not return the correct number
+        # for the clipped RMS.  Don't know why.  Instead, estimate it directly here:
+        rms_clip = residuals_clip.std()
+        print(f"The RMS after clipping is {rms_clip:.3f} A (ignoring clipped data)\n")
+
         if (verbose):
-            print(f"The MSE after clipping is {mse_clip:.3f} A\n")
-            print(residuals_clip)
-            print(wavelengths_clip)
-            print(predictions_clip)
-            print(np.nanstd(residuals_clip))
-            print(np.size(residuals_clip))
             print('Model:')
             print(model.coef_)
             print('X2:')
@@ -131,8 +149,8 @@ def arc_model_2d(reduced_arc_filename, arcdata_filename, tlm_filename, plot_resi
 
         # recalculate predictions for all data based on new model
         predictions = utils.get_predictions(model, X2, wavelengths)
-        mse = utils.calculate_MSE(model, X2, wavelengths)
-        print(f"The MSE after clipping for all data is {mse:.3f} A\n")
+        rms = utils.calculate_RMS(model, X2, wavelengths)
+        print(f"The RMS after clipping for all data is {rms:.3f} A\n")
 
     # Save the parameters
     if save_params is not None:
@@ -141,7 +159,7 @@ def arc_model_2d(reduced_arc_filename, arcdata_filename, tlm_filename, plot_resi
             df_fitting,
             model,
             N_params_per_slitlet,
-            mse,
+            rms,
             arc_name,
         )
 
@@ -149,7 +167,7 @@ def arc_model_2d(reduced_arc_filename, arcdata_filename, tlm_filename, plot_resi
     if plot_residuals:
         print('Plotting residuals...')
         plt.ion()
-        fig, axs = utils.plot_residuals(df_fitting, predictions, wavelengths, debug=debug)
+        fig, axs = utils.plot_residuals(df_fitting, predictions, wavelengths, debug=debug,pixscale=pixscale)
         fig.show()
 
     # If we are going to update the arc...
@@ -158,7 +176,7 @@ def arc_model_2d(reduced_arc_filename, arcdata_filename, tlm_filename, plot_resi
         if verbose:
             print("Predicting new values for the WAVELA array... (This may take a while)")
         df_predict, wave_standardised, X2_predict, N_pixels_x, N_fibres_total = (
-            utils.set_up_WAVELA_predictions(tlm_filename, ccd_number, N_x, N_y,slitlet_info,verbose=verbose)
+            utils.set_up_WAVELA_predictions(tlm_filename, ccd_number, N_x, N_y,slitlet_info,verbose=verbose,global_fit=global_fit)
         )
 
         WAVELA_predictions = utils.get_predictions(model, X2_predict, wavelengths)

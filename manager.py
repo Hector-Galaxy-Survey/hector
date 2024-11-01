@@ -1942,8 +1942,8 @@ class Manager:
         e.g. check_focus='06mar10003'
         """
 
-        file_iterable = self.files(ndf_class='MFARC', do_not_use=False,
-                                   **kwargs)
+        file_iterable = list(self.files(ndf_class='MFARC', do_not_use=False,
+                                   **kwargs))
         if this_only:
             if '.fits' not in this_only:
                 this_only = this_only+'.fits'
@@ -1965,18 +1965,28 @@ class Manager:
         # Run Sam's 2D arc modelling for better wavelength solutions
         if self.fit_arc_model_2d:
             input_list=[]
+            if len(reduced_files) == 0:
+                reduced_list=[]
+                for fits in file_iterable:
+                    tdfdr_options = tuple(self.tdfdr_options(fits))
+                    reduced_list.append((fits, self.idx_files[fits.grating], tdfdr_options, self.dummy, self.abs_root))
+                reduced_files = [item[0] for item in reduced_list]
+
             for fits in reduced_files:
-                print(fits.lamp, fits.lamp[0:16])
                 tdfdr_options = tuple(self.tdfdr_options(fits,verbose=False))
                 arc_reduced = fits.reduced_path
                 arcfit_name = os.path.join(fits.reduced_dir,os.path.basename(fits.filename)[0:10]+'_outdir/arcfits.dat')
                 tlm_name = os.path.join(fits.reduced_dir,tdfdr_options[-1])
+                global_fit = True
                 N_x = 4 if fits.instrument == 'AAOMEGA-HECTOR' else 6
                 N_y = 2 
+                if global_fit:
+                    N_y = N_x
                 with pf.open(arc_reduced, mode='readonly') as hdul:
                     applied = any(hdu.name == 'OLDWAVELA'  for hdu in hdul) #to avoid applying it multiple times
                 if not applied and (fits.lamp[0:16] == 'Helium+CuAr+FeAr'): #only correct wavelength solutions with the right lamp
-                    input_list.append((arc_reduced,arcfit_name,tlm_name,N_x,N_y))
+                    input_list.append((arc_reduced,arcfit_name,tlm_name,N_x,N_y,global_fit))
+            print(input_list)
             if input_list:
                 self.map(fit_arc_model_wrapper, input_list)
             else:
@@ -6415,11 +6425,11 @@ def run_2dfdr_single_wrapper(group):
 @safe_for_multiprocessing
 def fit_arc_model_wrapper(input_list):
     """fit 2d arc modelling"""
-    arc_reduced, arcfit_name, tlm_name, Nx, Ny = input_list
+    arc_reduced, arcfit_name, tlm_name, Nx, Ny, global_fit = input_list
     param_filename = Path(arc_reduced).parent / (Path(arc_reduced).stem + "_2dfit_params.nc")
         # To overwrite the arc completely, uncomment this line
     print(' Performing a 2D wavelength fit of the arc frames.',arc_reduced)
-    arc_model_2d(arc_reduced, arcfit_name, tlm_name, N_x=Nx, N_y=Ny, save_params=param_filename,verbose=True)
+    arc_model_2d(arc_reduced, arcfit_name, tlm_name, N_x=Nx, N_y=Ny, save_params=param_filename,global_fit=global_fit, verbose=False)
     return
 
 
