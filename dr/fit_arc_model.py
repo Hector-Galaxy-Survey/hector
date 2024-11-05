@@ -23,7 +23,7 @@ import xarray as xr
 import os
 
 
-def arc_model_3d(reduced_arc_filename, arcdata_filename, tlm_filename, plot_residuals=False, save_params=None, clip=True, 
+def arc_model_2d(reduced_arc_filename, arcdata_filename, tlm_filename, plot_residuals=False, save_params=None, clip=True, 
         global_fit=False,no_update_arc=False, saved_file_suffix=None, intensity_cut=20, N_x=6, N_y=2, alpha=1e-3, 
         verbose=False, debug=False):
     """
