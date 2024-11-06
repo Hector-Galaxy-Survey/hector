@@ -1083,21 +1083,25 @@ class Manager:
             #modify header or fibre table following modified_frames.txt
             if os.path.exists(str(self.abs_root)+'/modified_frames_'+str(self.abs_root)[-13:]+'.txt'): 
                 moditem = np.loadtxt(str(self.abs_root)+'/modified_frames_'+str(self.abs_root)[-13:]+'.txt',delimiter=',',dtype={'names': ('frame','type','key','fibre','value','comment','reason'), 'formats': ('U10','U10','U20','U20','U20','U100','U100')})
+                if moditem.ndim == 0:
+                    moditem = np.array([moditem], dtype=moditem.dtype)
                 if (fits.filename[0:10] in moditem['frame']): #the name is on it
                     sub = np.where(moditem['frame'] == fits.filename[0:10])
                     for ind in sub[0]:
                         mtype = moditem['type'][ind]; mkey = moditem['key'][ind]; mvalue = moditem['value'][ind]; mcomment = moditem['comment'][ind];mfibre= moditem['fibre'][ind]
                         if(mtype.strip() == 'header'): #change primary header
                             fits.add_header_item(mkey,mvalue.strip(),mcomment)
-                            print('  Change the header keyword '+mkey+' to be '+mvalue)
+                            print('  Change the header keyword '+mkey+' to '+mvalue)
                         if(mtype.strip() == 'ftable'): #change fibre table
                             hdulist=pf.open(fits.raw_path,'update')
                             tab=hdulist['MORE.FIBRES_IFU'].data
-                            tab[mkey][int(mfibre)-1] = mvalue
-                            print('  Change the '+mkey+' of fibre '+mfibre+' to be '+mvalue)
+                            if mfibre.isdigit():
+                                tab[mkey][int(mfibre)-1] = mvalue
+                                print('  Change the '+mkey+' of fibre '+mfibre+' to '+mvalue)
+                            elif mfibre.isalpha():
+                                tab[mkey][np.where(np.char.strip(tab['PROBENAME'])==mfibre)] = mvalue
+                                print('  Change the '+mkey+' of all fibre in bundle '+mfibre+' to '+mvalue)
                             hdulist.flush(); hdulist.close()
-
-
 
 
     def file_filter(self, filename):
