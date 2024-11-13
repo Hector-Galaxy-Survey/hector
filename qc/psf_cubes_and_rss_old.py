@@ -1,26 +1,21 @@
 """
-                    ****** Quality control for checking CvD corrections *******
+****** Quality control for checking CvD corrections *******
 This function can be run independently of the hector module, the only dependence is the term colours
 
-Authors: Madusha Gunawardhana (primary author, 2024+) -- converted to use the moffat integrated for the CvD fitting
-         Yifan Mai (2024) -- MLPG included the original functions from Yifan in this script, however, they do not do
+Authors: Madusha Gunawardhana (2024+) -- converted to use the moffat integrated for the CvD fitting
+         Yifan Mai (2024) -- MLPG included the original functions from Yifan in this script, however, they do not
                              integration across the pixels, so need to be careful in using them
 
 To Run: > import hector
-            # To get the psf parameters from cubes
-        > hector.qc.psf_cubes_and_rss.psf_check_cubes(parent_path="path_to_data", write_file="file_name_to_write")
-            # To get the psf parameters from RSS frames
-        > hector.qc.psf_cubes_and_rss.psf_check_rss(parent_path="path_to_data", write_file="file_name_to_write")
+        > hector.qc.psf_cubes_and_rss.psf_check_cubes()  # To get the psf parameters from cubes
+        > hector.qc.psf_cubes_and_rss.psf_check_rss() # To get the psf parameters from RSS frames
 
         # TODO list for MLPG
         TODO: Both measurements based on Cubes and RSS frames must be in the same units. Currently,
             cubes=pixel units RSS frame = arcseconds. The "fit_moffat_image" includes xfibpos, yfibpos keywords.
-            Just need to propage them across to the cube routine.
-            ---> SOLUTION: In writing to the *.csv file, the pixels are times by 0.5" to convert to arcseconds
+            Just need to propage them across to the cube routine
 
-        TODO: In ingrating_moffat profile check X_SUB, Y_SUB, against the definition of the grids of the same in fluxcal2.py
-              to ensure the integration is performed correctly
-
+        TODO: Turn on the write to *csv files
 """
 
 from __future__ import absolute_import, division, print_function, unicode_literals
@@ -39,39 +34,34 @@ from scipy.optimize import curve_fit, leastsq
 
 from ..utils.ifu import IFU
 from ..dr import fluxcal2
+# from . import fluxcal
 from ..utils.term_colours import *
 
 
-def psf_check_cubes(parent_path=None, write_file='Moffat_Circular_Cubes_gband.csv'):
-    # parent_path = '/Volumes/USyd_2022v2/HECTOR DR/Busy Week September2024/drop_factor/cube_drop_v0_01/cubed_drop_1/'
-    assert parent_path is not None, prRed(f"Please provide the parent path to the data cubes")
+def psf_check_cubes(parent_path=None):
+    parent_path = '/Volumes/USyd_2022v2/HECTOR DR/Busy Week September2024/drop_factor/stars_cubed_drop_0_75/'
 
     all_fits_list = os.listdir(parent_path)
     new_list = []
+    all_fits_list_cp = all_fits_list[:]
 
-    for (root, dirs, files) in os.walk(parent_path, topdown=True):
-        for cube in files:
-            extract_name = cube.split('_blue')[0]
+    for fitsfiles in all_fits_list_cp:
+        for cube in os.listdir(f"{parent_path}/{fitsfiles}/"):
             if 'blue' in cube:
-                fitsname = f"{root}/{cube}"
-                fitsname_other = f"{root}/{cube.replace('_blue', '_red')}"
+                fitsname = f"{parent_path}/{fitsfiles}/{cube}"
+                # d = pf.open(fitsname)
+                # print(d[1].header)
+            else: fitsname_other = f"{parent_path}/{fitsfiles}/{cube}"
 
-                small_list = [fitsname, fitsname_other]
-                # new_list is a 2-d list, each row is a 1-d list include red_arm_fits_path and blue_arm_fits_path
-                new_list.append(small_list)
-
-    # for dates in os.listdir(parent_path):
-    #     for fitsfiles in os.listdir(f"{parent_path}/{dates}/"):
-    #         for cube in os.listdir(f"{parent_path}/{dates}/{fitsfiles}/"):
-    #             if 'blue' in cube:
-    #                 fitsname = f"{parent_path}/{dates}/{fitsfiles}/{cube}"
-    #             else:
-    #                 fitsname_other = f"{parent_path}/{dates}/{fitsfiles}/{cube}"
+        small_list = [fitsname, fitsname_other]
+        # new_list is a 2-d list, each row is a 1-d list include red_arm_fits_path and blue_arm_fits_path
+        new_list.append(small_list)
 
 
     # create an empty dataframe, it will be used to save all moffat function parameters
     para_all = pd.DataFrame()
     error_list = []
+
     for list2 in new_list:
         blue_path = list2[0]
         red_path = list2[1]
@@ -80,7 +70,8 @@ def psf_check_cubes(parent_path=None, write_file='Moffat_Circular_Cubes_gband.cs
 
         # try:
             # df = fit_2D_Gaussian_model__get_parameters_from_cubed_data(path_list=[blue_path, red_path], n_chunk=4) # n_chunk redundant
-        df = fit_integrate_moffat_func_and_get_parameters_from_cubes(path_list=[blue_path, red_path], n_chunk=4, band=[4700-200, 4700+200], elliptical=False)
+        # df = fit_ellip_moffat_f_model_and_get_parameters_from_cubed_data(path_list=[blue_path, red_path], n_chunk=4, band=[4700-200, 4700+200])
+        df = fit_integrate_moffat_func_and_get_parameters_from_cubes(path_list=[blue_path, red_path], n_chunk=4, band=[4700-200, 4700+200], elliptical=True)
         # except:
         #     prRed(f"**** {blue_path} has failed fitting due to a problem....**** \n")
         #     continue
@@ -88,14 +79,13 @@ def psf_check_cubes(parent_path=None, write_file='Moffat_Circular_Cubes_gband.cs
         para_all = para_all.append(df)
         prGreen(f"{blue_path} is done.")
 
-    para_all.to_csv(write_file)
+    # para_all.to_csv('Moffat_Elliptical_dropsize_0p75_gband.csv')
 
     return
 
 
-def psf_check_rss(parent_path=None, write_file='Moffat_Circular_RSS_gband.csv'):
-    # parent_path = '/Volumes/USyd_2022v2/HECTOR DR/Busy Week September2024/drop_factor/cube_drop_v0_01/rss/'
-    assert parent_path is not None, prRed(f"Please provide the parent path to the RSS frames")
+def psf_check_rss(parent_path=None):
+    parent_path = '/Volumes/USyd_2022v2/HECTOR DR/Busy Week September2024/drop_factor/stars_rss_frames/Madusha_rss_dropsize_241024/'
 
     all_fits_list = os.listdir(parent_path)
     new_list = []
@@ -149,7 +139,7 @@ def psf_check_rss(parent_path=None, write_file='Moffat_Circular_RSS_gband.csv'):
         para_all = para_all.append(df)
         prGreen(f"{blue_path} is done.")
 
-    para_all.to_csv(write_file)
+    # para_all.to_csv('Moffat_Elliptical_dropsize_0p75_gband.csv')
 
     return
 
@@ -367,7 +357,7 @@ def get_cube_data(path_list, band=None):
         noise_cube = np.sqrt(hdulist['VARIANCE'].data)
         hdulist.close()
 
-    return wavelength, flux_cube, noise_cube, ccd_flag, hdr
+    return wavelength, flux_cube, noise_cube, ccd_flag
 
 
 def fit_2D_Gaussian_model__get_parameters_from_cubed_data(path_list, n_chunk, band=None):
@@ -441,34 +431,27 @@ def fit_integrate_moffat_func_and_get_parameters_from_cubes(path_list, n_chunk,b
 
         This is the routine we should be using
     """
-    # Save to a pandas dataframe
-    c = '/'
-    index_of_slash = [pos for pos, char in enumerate(path_list[0]) if char == c]
-    index = index_of_slash[-1]
-    file_name = path_list[0][index + 1:]
 
     # Get blue/red wavelength arrays
-    wavelength, flux_cube, noise_cube, ccd_flag, hdr_primary = get_cube_data(path_list, band=band)
+    wavelength, flux_cube, noise_cube, ccd_flag = get_cube_data(path_list, band=band)
     prPurple(f"selecting {ccd_flag} cube for the analysis to cover the lambda range {band}")
 
     # Get the collapsed image over the wave band
     flux_image, noise_image, wave_image = chunk_cube(flux_cube, noise_cube, wavelength, band=band)
 
     coords = np.meshgrid(np.arange(flux_image.shape[0]), np.arange(flux_image.shape[1]))
-    x_mesh, y_mesh = np.meshgrid(np.arange(flux_image.shape[0]), np.arange(flux_image.shape[1]))
 
     # Using the moffat fitting function in fluxcal
-    elliptical = False # Moffat model fitted is an elliptical or circular
-    params, sigma = fit_moffat_to_image(flux_image, noise_image, elliptical=elliptical, background=False, elliptical_f=False)
+    params, sigma = fit_moffat_to_image(flux_image, noise_image, elliptical=True, background=False, elliptical_f=False)
+    moffat = moffat_elliptical(coords[0], coords[1], *params)
+    prPurple(f"Best-fitting params: {params}")
 
-    if elliptical:
-        moffat = moffat_elliptical(x_mesh, y_mesh, *params)
-        prPurple(f"Best-fitting params from the RSS frame {file_name} are alpha1={params[0]}, alpha2={params[1]}, "
-                 f"rho={params[2]}, beta={params[3]}, x00={params[4]}, y00={params[5]}, intensity={params[6]}")
-    else:
-        moffat = moffat_circular(x_mesh, y_mesh, *params)
-        prPurple(f"Best-fitting params from the RSS frame {file_name} are ALPHA={params[0]}, BETA={params[1]}, "
-                 f"X00={params[2]}, Y00={params[3]}, INTENSITY={params[4]}, LAMBDA={band}")
+
+    # Save to a pandas dataframe
+    c = '/'
+    index_of_slash = [pos for pos, char in enumerate(path_list[0]) if char == c]
+    index = index_of_slash[-1]
+    file_name = path_list[0][index + 1:]
 
     # Calculate the FWHM
     if elliptical:
@@ -494,7 +477,7 @@ def fit_integrate_moffat_func_and_get_parameters_from_cubes(path_list, n_chunk,b
                            'fwhm_semi_minor': fwhm_small,
                            'wavelength': np.nanmedian(band)})
     else:
-        fwhm_large = params[0] * 2.0 * np.sqrt(2. ** (1. / params[1]) - 1.)
+        fwhm_large = params[0] * 2.0 * np.sqrt(2. ** (1. / params[3]) - 1.)
 
         df = pd.DataFrame({'Date': [file_name],
                            'CCD': 'N/A',
@@ -507,8 +490,7 @@ def fit_integrate_moffat_func_and_get_parameters_from_cubes(path_list, n_chunk,b
                            'x0': params[2],
                            'y0': params[3],
                            'intensity': params[4],
-                           'fwhm_semi_major_pixels': fwhm_large,
-                           'fwhm_semi_major_arcsec': fwhm_large * 0.5,
+                           'fwhm_semi_major': fwhm_large,
                            'fwhm_semi_minor': 'N/A',
                            'wavelength': np.nanmedian(band)})
 
@@ -520,7 +502,7 @@ def fit_integrate_moffat_func_and_get_parameters_from_cubes(path_list, n_chunk,b
     ax.contour(x, y, moffat.reshape(flux_image.shape[0], flux_image.shape[1]), 8, colors='w')
 
     plt.tight_layout()
-    plt.savefig(f"Cube_Moffat_elliptical_{elliptical}_integrated_{file_name}.png", dpi=300)
+    plt.savefig(f"Moffat_integrated_{file_name}.png", dpi=300)
     plt.close()
 
     return df
@@ -640,22 +622,17 @@ def fit_integrated_moffat_func_and_get_parameters_from_rss(path_list, probenum, 
     x_mesh, y_mesh = np.meshgrid(x, y)
 
     # Using the moffat fitting function in fluxcal
-    elliptical = False  # Moffat model fitted is an elliptical or circular
     params, sigma = fit_moffat_to_image(flux_image, np.sqrt(var_image), _x, _y,
-                                        elliptical=elliptical, background=False,
+                                        elliptical=True, background=False,
                                         elliptical_f=False, rss=True)
-
     # Get the fitted model
-    if elliptical:
-        fit_flux = moffat_elliptical(x_mesh, y_mesh, *params)
-        prPurple(f"Best-fitting params (ELLIPTICAL MOFFAT) from the RSS frame {file_name} are alpha1={params[0]}, alpha2={params[1]}, "
-                 f"rho={params[2]}, beta={params[3]}, x00={params[4]}, y00={params[5]}, intensity={params[6]}")
-    else:
-        fit_flux = moffat_circular(x_mesh, y_mesh, *params)
-        prPurple(f"Best-fitting params (CIRCULAR MOFFAT) from the RSS frame {file_name} are ALPHA={params[0]}, BETA={params[1]}, "
-                 f"X00={params[2]}, Y00={params[3]}, INTENSITY={params[4]}, LAMBDA={band}")
+    fit_flux = moffat_elliptical(x_mesh, y_mesh, *params)
+    prPurple(f"Best-fitting params from the RSS frame {file_name} are alpha1={params[0]}, alpha2={params[1]}, "
+             f"rho={params[2]}, beta={params[3]}, x00={params[4]}, y00={params[5]}, intensity={params[6]}")
+
 
     # Calculate the FWHM and create a data frame
+    elliptical = True # Moffat model fitted is an elliptical
     if elliptical:
         if np.abs(params[0]) > np.abs(params[1]):
             fwhm_large = params[0] * 2.0 * np.sqrt(2. ** (1. / params[3]) - 1.)
@@ -679,7 +656,7 @@ def fit_integrated_moffat_func_and_get_parameters_from_rss(path_list, probenum, 
                            'fwhm_semi_minor': fwhm_small,
                            'wavelength': np.nanmedian(band)})
     else:
-        fwhm_large = params[0] * 2.0 * np.sqrt(2. ** (1. / params[1]) - 1.)
+        fwhm_large = params[0] * 2.0 * np.sqrt(2. ** (1. / params[3]) - 1.)
 
         df = pd.DataFrame({'Date': [file_name],
                            'CCD': 'N/A',
@@ -710,10 +687,7 @@ def fit_integrated_moffat_func_and_get_parameters_from_rss(path_list, probenum, 
     cb0.set_label('Flux')
 
     del fit_flux
-    if elliptical:
-        fit_flux = moffat_elliptical(_x, _y, *params)
-    else:
-        fit_flux = moffat_circular(_x, _y, *params)
+    fit_flux = moffat_elliptical(_x, _y, *params)
 
     ax[1].set(xlabel='Xfibre [arcsec]', ylabel='Yfibre [arcsec]', title='Fitted Data')
     im1 = ax[1].scatter(_x.ravel(), _y.ravel(), c=fit_flux, vmin=min_v, vmax=max_v, cmap='Oranges')
@@ -736,7 +710,7 @@ def fit_integrated_moffat_func_and_get_parameters_from_rss(path_list, probenum, 
                         hspace=0.4)
 
     plt.tight_layout()
-    plt.savefig(f"RSS_Moffat_elliptical_{elliptical}_integrated_{file_name}.png", dpi=300)
+    plt.savefig(f"RSS_Moffat_elliptical_integrated_{file_name}.png", dpi=300)
     plt.close()
 
     return df
@@ -1020,6 +994,7 @@ def moffat_integrated(x, y, params, elliptical=False, background=False,
     return moffat
 
 
+
 def get_coords(header, axis):
     """Return coordinates for a given axis from a header."""
     axis_str = str(axis)
@@ -1029,176 +1004,3 @@ def get_coords(header, axis):
     crval = header['CRVAL' + axis_str]
     coords = crval + cdelt * (np.arange(naxis) + 1.0 - crpix)
     return coords
-
-
-"""
-    CvD checking functions used in fluxcal2 in "derive_transfer_function"
-"""
-def interp_cvd_for_rss(cen_data, f_cvd, wavelength, plateCentre=None):
-    # MLPG - 23/09/2023: Adding this function which interpolate the information from cvd_model
-    # xfibre and yfibre positions in arcsec relative to the field centre, assumed to be at the plate centre
-    if plateCentre is None: plateCentre = 0.0
-    cvd_pos = cen_data + np.polyval(f_cvd, wavelength)
-
-    return cvd_pos
-
-def check_centroids(data, variance, wavelength, xfib_cvd, yfib_cvd, wavebin=None):
-    nlambda = len(wavelength)
-    lambda_bins = np.arange(0, nlambda, wavebin)
-
-    _data, _var, _wavelength, _xfib_cvd, _yfib_cvd = [], [], [], [], []
-    for ibin in range(1, len(lambda_bins)):
-        start = lambda_bins[ibin-1]
-        end   = lambda_bins[ibin]
-
-        data_tmp = np.nanmean(data[:, start:end], axis=1)
-        var_tmp = (np.nansum(variance[:, start:end], axis=1) /
-                   np.sum(np.isfinite(variance[:, start:end]), axis=1) ** 2.0)
-
-        # Replace any remaining NaNs with 0.0; not ideal but should be very rare
-        bad_data = ~np.isfinite(data_tmp)
-        data_tmp[bad_data] = 0.0
-        var_tmp[bad_data] = np.inf
-
-        _data.append( data_tmp )
-        _var.append( var_tmp )
-        _wavelength.append( np.median(wavelength[start:end], axis=0) )
-        _xfib_cvd.append( np.nanmean(xfib_cvd[:, start:end], axis=1) )
-        _yfib_cvd.append( np.nanmean(yfib_cvd[:, start:end], axis=1) )
-
-        del data_tmp, var_tmp, start, end
-
-    return np.array(_data).T, np.array(_var).T, np.array(_wavelength), np.array(_xfib_cvd).T, np.array(_yfib_cvd).T
-
-
-def fit_integrated_moffat_func_and_get_parameters_for_primary(path_list, flux_image, var_image, wave, _x, _y, xref=None, yref=None):
-    c = '/'
-    index_of_slash = [pos for pos, char in enumerate(path_list[0]) if char == c]
-    index = index_of_slash[-1]
-    file_name = path_list[0][index + 1:]
-
-    # Get the collapsed image over the wave band
-    # x, y  = np.linspace(_x.min(), _x.max(), 100), np.linspace(_y.min(), _y.max(), 100)
-    x, y  = np.linspace(xref.min(), xref.max(), 100), np.linspace(yref.min(), yref.max(), 100)
-    x_mesh, y_mesh = np.meshgrid(x, y)
-
-    # Using the moffat fitting function in fluxcal
-    elliptical = False # Moffat model fitted is an elliptical or circular
-    params, sigma = fit_moffat_to_image(flux_image, np.sqrt(var_image), _x, _y,
-                                        elliptical=elliptical, background=False,
-                                        elliptical_f=False, rss=True)
-    # Get the fitted model
-    if elliptical:
-        fit_flux = moffat_elliptical(x_mesh, y_mesh, *params)
-        prPurple(f"Best-fitting params from the RSS frame {file_name} are alpha1={params[0]}, alpha2={params[1]}, "
-                 f"rho={params[2]}, beta={params[3]}, x00={params[4]}, y00={params[5]}, intensity={params[6]}")
-    else:
-        fit_flux = moffat_circular(x_mesh, y_mesh, *params)
-        prPurple(f"Best-fitting params from the RSS frame {file_name} are ALPHA={params[0]}, BETA={params[1]}, "
-                 f"X00={params[2]}, Y00={params[3]}, INTENSITY={params[4]}, LAMBDA={wave}")
-
-
-    # Calculate the FWHM and create a data frame
-    if elliptical:
-        if np.abs(params[0]) > np.abs(params[1]):
-            fwhm_large = params[0] * 2.0 * np.sqrt(2. ** (1. / params[3]) - 1.)
-            fwhm_small = params[1] * 2.0 * np.sqrt(2. ** (1. / params[3]) - 1.)
-        else:
-            fwhm_large = params[1] * 2.0 * np.sqrt(2. ** (1. / params[3]) - 1.)
-            fwhm_small = params[0] * 2.0 * np.sqrt(2. ** (1. / params[3]) - 1.)
-
-        central_x = xref.min() + (xref.max() - xref.min())/2.0
-        central_y = yref.min() + (yref.max() - yref.min())/2.0
-        radius = np.sqrt( (params[4] - central_x)**2.0 + (params[5] - central_y)**2.0 )
-        df = pd.DataFrame({'Date': [file_name],
-                           'CCD': 'N/A',
-                           'observ_num': 'N/A',
-                           'probenum': 'N/A',
-                           'alpha1': params[0],
-                           'alpha2': params[1],
-                           'rho': params[2],
-                           'beta': params[3],
-                           'x0': params[4],
-                           'y0': params[5],
-                           'intensity': params[6],
-                           'fwhm_semi_major': fwhm_large,
-                           'fwhm_semi_minor': fwhm_small,
-                           'radius_from_centre': radius,
-                           'wavelength': wave})
-    else:
-        fwhm_large = params[0] * 2.0 * np.sqrt(2. ** (1. / params[1]) - 1.)
-
-        df = pd.DataFrame({'Date': [file_name],
-                           'CCD': 'N/A',
-                           'observ_num': 'N/A',
-                           'probenum': 'N/A',
-                           'alpha1': params[0],
-                           'alpha2': 'N/A',
-                           'rho': 'N/A',
-                           'beta': params[1],
-                           'x0': params[2],
-                           'y0': params[3],
-                           'intensity': params[4],
-                           'fwhm_semi_major': fwhm_large,
-                           'fwhm_semi_minor': 'N/A',
-                           'wavelength': wave})
-
-
-    # Plotting......
-    fig, ax = plt.subplots(1, 3, figsize=(9, 3), constrained_layout = True)
-
-    max_v = np.max(flux_image)
-    min_v = np.min(flux_image)
-
-    ax[0].set(xlabel='Xfibre [arcsec]', ylabel='Yfibre [arcsec]', title=f"Data {params[3]}")
-    im0 = ax[0].scatter(xref, yref, c=flux_image, vmin=min_v, vmax=max_v, cmap='Oranges')
-    ax[0].contour(x_mesh, y_mesh, fit_flux, 4, colors='k')
-    cb0 = plt.colorbar(im0, ax=ax[0], fraction=0.047)
-    cb0.ax.locator_params(nbins=5)
-    cb0.set_label('Flux', fontsize=8)
-    cb0.ax.tick_params(labelsize=8)
-    ax[0].tick_params(axis = 'both', labelsize = 8)
-    ax[0].xaxis.get_label().set_fontsize(8)
-    ax[0].yaxis.get_label().set_fontsize(8)
-
-    del fit_flux
-    if elliptical:
-        fit_flux = moffat_elliptical(xref, yref, *params)
-    else:
-        fit_flux = moffat_circular(xref, yref, *params)
-
-    ax[1].set(xlabel='Xfibre [arcsec]', ylabel='Yfibre [arcsec]', title='Fitted Data')
-    im1 = ax[1].scatter(xref.ravel(), yref.ravel(), c=fit_flux, vmin=min_v, vmax=max_v, cmap='Oranges')
-    cb1 = plt.colorbar(im1, ax=ax[1], fraction=0.047)
-    cb1.ax.locator_params(nbins=5)
-    cb1.set_label('Flux', fontsize=8)
-    cb1.ax.tick_params(labelsize=8)
-    ax[1].tick_params(axis='both', labelsize=8)
-    ax[1].xaxis.get_label().set_fontsize(8)
-    ax[1].yaxis.get_label().set_fontsize(8)
-    max_res = np.max((flux_image - fit_flux) / flux_image)
-
-    ax[2].set(xlabel='Xfibre [arcsec]', ylabel='Yfibre [arcsec]', title='Residual')
-    im2 = ax[2].scatter(xref.ravel(), yref.ravel(), c=(flux_image - fit_flux) / flux_image, cmap='RdYlBu_r', vmin=-0.3, vmax=0.3)
-    cb2 = plt.colorbar(im2, ax=ax[2], fraction=0.047)
-    cb2.ax.locator_params(nbins=5)
-    cb2.set_label('(Data - Fit_Data)/Data', fontsize=8)
-    cb2.ax.tick_params(labelsize=8)
-    ax[2].tick_params(axis='both', labelsize=8)
-    ax[2].xaxis.get_label().set_fontsize(8)
-    ax[2].yaxis.get_label().set_fontsize(8)
-
-    plt.subplots_adjust(left=0.1,
-                        bottom=0.1,
-                        right=0.9,
-                        top=0.9,
-                        wspace=0.8,
-                        hspace=0.4)
-
-    # plt.tight_layout()
-    plt.savefig(f"Primary_Moffat_elliptical_integrated_{file_name}_{np.round(wave)}.png", dpi=300)
-    plt.close()
-
-    return df
-
-
