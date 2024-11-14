@@ -85,7 +85,7 @@ def psf_check_cubes(parent_path=None, write_file='Moffat_Circular_Cubes_gband.cs
         #     prRed(f"**** {blue_path} has failed fitting due to a problem....**** \n")
         #     continue
 
-        para_all = para_all.append(df)
+        para_all = pd.concat([para_all, df])
         prGreen(f"{blue_path} is done.")
 
     para_all.to_csv(write_file)
@@ -146,7 +146,7 @@ def psf_check_rss(parent_path=None, write_file='Moffat_Circular_RSS_gband.csv'):
         df = fit_integrated_moffat_func_and_get_parameters_from_rss(path_list=[blue_path, red_path], probenum=probenum,
                                                                  n_chunk=4, band=[4700-200, 4700+200])
 
-        para_all = para_all.append(df)
+        para_all = pd.concat([para_all, df])
         prGreen(f"{blue_path} is done.")
 
     para_all.to_csv(write_file)
