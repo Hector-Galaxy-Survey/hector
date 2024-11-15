@@ -1,3 +1,7 @@
+"""
+    The CvD model implemented by Madusha Gunawardhana (madusha.gunawardhana@sydney.edu.au)
+"""
+
 from __future__ import absolute_import, division, print_function, unicode_literals
 
 import sys
@@ -42,6 +46,7 @@ import matplotlib.gridspec as gridspec
 
 from ..utils.term_colours import *
 from ..utils.ifu import IFU
+from ..utils import constants # # From Hector package Sam V. developed
 from ..utils.mc_adr import parallactic_angle, adr_r
 from ..utils.other import saturated_partial_pressure_water
 from ..config import millibar_to_mmHg
@@ -63,14 +68,12 @@ except ImportError:
 # import of ppxf for fitting of secondary stds:
 from ppxf.ppxf import ppxf
 from ppxf.ppxf_util import log_rebin
-# from ppxf import ppxf
-# from ppxf_util import log_rebin
 
 import hector
+hector_path = str(hector.__path__[0]) + '/'
 
 # Get the astropy version as a tuple of integers
 ASTROPY_VERSION = tuple(int(x) for x in ASTROPY_VERSION.split('.'))
-hector_path = str(hector.__path__[0]) + '/'
 STANDARD_CATALOGUES = (hector_path + 'standards/ESO/ESOstandards.dat',
                        hector_path + 'standards/Bessell/Bessellstandards.dat')
 SSO_EXTINCTION_TABLE = hector_path + 'standards/extinsso.tab'
@@ -88,7 +91,10 @@ TELLURIC_BANDS = np.array([[6850, 6960],
 ARCSEC_IN_MICRONS = 105.0/1.6  # 105 microns = 1.6 arcseconds
 
 def generate_subgrid(fibre_radius, n_inner=6, n_rings=10, wt_profile=False):
-    """Generate a subgrid of points within a fibre."""
+    """
+    Generate a subgrid of points within a fibre.
+        Copied from the fluxcal2.py
+    """
     radii = np.arange(0., n_rings) + 0.5
     rot_angle = 0.0
     radius = []
@@ -106,7 +112,7 @@ def generate_subgrid(fibre_radius, n_inner=6, n_rings=10, wt_profile=False):
     # generate a weight for the points based on the radial profile.  In this case
     # we use an error function that goes to 0.5 at 0.8 of the radius of the fibre.
     # this is just experimental, no evidence it makes much improvement:
-    if (wt_profile):
+    if wt_profile:
         wsub = 0.5*erfc((radius-fibre_radius*0.8)*4.0)
         wnorm = float(np.size(radius))/np.sum(wsub)
         wsub = wsub * wnorm
@@ -115,27 +121,94 @@ def generate_subgrid(fibre_radius, n_inner=6, n_rings=10, wt_profile=False):
         wsub = np.ones(np.size(xsub))
     return xsub, ysub, wsub
 
+
 XSUB, YSUB, WSUB= generate_subgrid(FIBRE_RADIUS)
 N_SUB = len(XSUB)
 
-MICRONS_TO_ARCSEC = 1.5/103
+MICRONS_TO_ARCSEC = 1.6 / 105.0
 
-def get_cvd_parameters(path_list, probenum, max_sep_arcsec=60.0,
-                             catalogues=STANDARD_CATALOGUES,
-                             model_name='ref_centre_alpha_dist_circ_hdratm',   # NEED to change the name here
-                             n_trim=0, smooth='spline', molecfit_available=False,
-                             molecfit_dir='', speed='', tell_corr_primary=False):
+# Robot center positions [in microns]
+robot_centre_in_mic = [constants.robot_center_x * 1.0E3,
+                       constants.robot_center_y * 1.0E3]
+plate_radius_in_mic = constants.HECTOR_plate_radius  * 1.0E3
+robotCentreX_in_mic, robotCentreY_in_mic = robot_centre_in_mic[1], robot_centre_in_mic[0]  # switch, since y is x, and x is y
 
-    def func(meanX, meanY):
-        # Robot center positions
-        robot_centre_in_microns = [324470.0, 297834.0] # [constants.robot_center_x * 1.0E3, constants.robot_center_y * 1.0E3]
-        plate_radius = 226.0 * 1.0E3 # constants.HECTOR_plate_radius (from Sam Vaughan's HOP package)
-        robotCentreX, robotCentreY = robot_centre_in_microns[1], robot_centre_in_microns[0]  # switch, since y is x, and x is y
+# Robot center positions [in arcseconds]
+plate_radius_in_arcsec = constants.HECTOR_plate_radius  * 1.0E3 * MICRONS_TO_ARCSEC
+robot_centre_in_arcsec = [constants.robot_center_x * 1.0E3 * MICRONS_TO_ARCSEC,
+                          constants.robot_center_y * 1.0E3 * MICRONS_TO_ARCSEC]
+robotCentreX_in_arcsec, robotCentreY_in_arcsec = robot_centre_in_arcsec[1], robot_centre_in_arcsec[0]  # switch, since y is x, and x is y
 
+
+def assert_sky_coord_sign_check(ifu):
+    """
+    From IFU class within the manager:
+        [xpos_rel, ypos_rel] in arcseconds relative to the field centre
+        [x_micron, y_micron] in microns relative to the robot centre.
+
+        Below is how the signs change given the location on the plate
+            # X/Y-VALUES: top-left  (x,y) = (+ve, -ve) in arcseconds / (+ve, +ve) in microns
+            #             top-right (x,y) = (-ve, -ve) in arcseconds / (-ve, +ve) in microns
+            #             bot-left  (x,y) = (+ve, +ve) in arcseconds / (+ve, -ve) in microns
+            #             bot-right (x,y) = (-ve, +ve) in arcseconds / (-ve, -ve) in microns
+    """
+    plateCentre_microns = [robotCentreX_in_mic, robotCentreY_in_mic]
+
+    mean_xfibrePos = np.nanmean( ifu.xpos_rel * np.cos(np.deg2rad(np.mean(ifu.ypos))) ) # In arcsec
+    mean_yfibrePos = np.nanmean( ifu.ypos_rel )
+
+    mean_xfibreMic = np.nanmean( ifu.x_microns ) # In microns
+    mean_yfibreMic = np.nanmean( ifu.y_microns ) # In microns
+
+    if (ifu.mean_y <= plateCentre_microns[1]) & (ifu.mean_x <= plateCentre_microns[0]): # Top-left of the plate
+        assert (mean_xfibrePos > 0) & (mean_yfibrePos < 0) & \
+               (mean_xfibreMic > 0) & (mean_yfibreMic > 0), prRed(f"--> arcsecond/micron coordinate mismatch: Hexabundle {ifu.hexabundle_name[10]} is on the top-left of the plate. \n"
+                                                                  f"Corrdinates should be (+ve, -ve) in arcsec, (+ve, +ve) in microns")
+    elif (ifu.mean_y <= plateCentre_microns[1]) & (ifu.mean_x > plateCentre_microns[0]):  # Top-right of the plate
+        assert (mean_xfibrePos < 0) & (mean_yfibrePos < 0) & \
+               (mean_xfibreMic < 0) & (mean_yfibreMic > 0), prRed(f"--> arcsecond/micron coordinate mismatch: Hexabundle {ifu.hexabundle_name[10]} is on the top-right of the plate. \n"
+                                                                  f"Corrdinates should be (-ve, -ve) in arcsec, (-ve, +ve) in microns")
+    elif (ifu.mean_y > plateCentre_microns[1]) & (ifu.mean_x <= plateCentre_microns[0]):  # bottom-left of the plate
+        assert (mean_xfibrePos > 0) & (mean_yfibrePos > 0) & \
+               (mean_xfibreMic > 0) & (mean_yfibreMic < 0), prRed(f"--> arcsecond/micron coordinate mismatch: Hexabundle {ifu.hexabundle_name[10]} is on the bottom-left of the plate. \n"
+                                                                  f"Corrdinates should be (+ve, +ve) in arcsec, (+ve, -ve) in microns")
+    elif (ifu.mean_y > plateCentre_microns[1]) & (ifu.mean_x > plateCentre_microns[0]):  # bottom-right of the plate
+        assert (mean_xfibrePos < 0) & (mean_yfibrePos > 0) & \
+               (mean_xfibreMic < 0) & (mean_yfibreMic < 0), prRed(f"--> arcsecond/micron coordinate mismatch: Hexabundle {ifu.hexabundle_name[10]} is on the bottom-right of the plate. \n"
+                                                                  f"Corrdinates should be (-ve, +ve) in arcsec, (-ve, -ve) in microns")
+    return
+
+
+def get_cvd_parameters(path_list, probenum, check_against_cvd_model=False, moffat_params=None, psf_parameters_array=None, wavelength=None):
+    """
+    The main function to get the CvD corrections
+    """
+
+    if isinstance(path_list, str):
+        path_list = [path_list]
+    for i_file, path in enumerate(path_list):
+        ifu = IFU(path, probenum, flag_name=False)
+
+    dest_path = path[0:path.find('/reduced')] + '/Optical_Model'
+    if not os.path.isdir(dest_path):
+        os.makedirs(dest_path)
+
+
+    def optical_model_function(meanX, meanY, _ifu=ifu, _check_against_cvd_model=False, _moffat_params=None, _psf_parameters_array=None, _wavelength=None):
+        """
+        Call the Hector Optical Model, which currently assumes that the optical_centre = physical_plate_centre
+        """
         # Best-fitting plate centre from CVD modelling (originally, robotCentreX, robotCentreY assumed as the plate centre coordinates)
         # plateCentre_microns = [325508.93894568, 316861.50305806] # bestfit_plateCentre_microns
-        plateCentre_microns = [robotCentreX, robotCentreY]  #
+        # Coefficients relative to lambda=6000Ang.
+        # distortModel_coeffs = [ -5.36299973e-44,  1.74032192e-39, -9.28129572e-36, -1.04070566e-32,
+        #                         8.05548970e-29, -3.70053127e-26,  1.33691248e-21, -1.86385976e-17,
+        #                         6.14872408e-14, -5.95792839e-11,  8.96376563e-07, -3.20239518e-03 ]
 
+        # Check for coordinate mis-matches to ensure the cvd correction is applied correctly
+        assert_sky_coord_sign_check(_ifu)
+
+        plateCentre_microns = [robotCentreX_in_mic, robotCentreY_in_mic]
         # Coefficients relative to lambda=6000Ang.
         distortModel_coeffs = [ 1.92596410e-42, -2.57109951e-38,  8.41650182e-35, -1.24150088e-31,
                                 1.66263366e-27, -5.46127489e-24,  3.17913580e-21, -4.46188558e-17,
@@ -153,12 +226,24 @@ def get_cvd_parameters(path_list, probenum, max_sep_arcsec=60.0,
         # alphar - radius from the plate Centre, which is a vector, with the top of the plate (in robot orientation) being -ve,
         xval, yval = meanX - plateCentre_microns[0], meanY - plateCentre_microns[1]
         r_plateCentre_probeCentre = np.sqrt( xval ** 2.0 + yval ** 2.0 )
-        if meanY < plateCentre_microns[1]: alphar = r_plateCentre_probeCentre * -1.0
-        else: alphar = r_plateCentre_probeCentre
+
+        prCyan(f"\n ----> Probe (MeanX, MeanY) = ({meanX, meanY}) \n PlateCentr (X, Y) = ({plateCentre_microns})")
+        if meanY < plateCentre_microns[1]:
+            alphar = r_plateCentre_probeCentre * -1.0
+            prLightPurple(f"--> Hexa {ifu.hexabundle_name[5]} placed on the top half of the plate (i.e. MeanY < plateCentreY) in robot coor \n")
+        else:
+            alphar = r_plateCentre_probeCentre
+            prLightPurple(f"--> Hexa {ifu.hexabundle_name[5]} placed on the bottom half of the plate (i.e. MeanY > plateCentreY) in robot coor \n")
 
         Angle = np.rad2deg(np.arctan2(yval, xval)) # Angle is anti-clockwise from the plate Centre
+        if meanY < plateCentre_microns[1]:
+            prLightGray(f"Angle anti-clockwise from +ve x-axis about the plateCentre (i.e. -ve angle) = {Angle} \n")
+        else:
+            prLightGray(f"Angle clockwise from +ve x-axis about the plateCentre (i.e. +ve angle) = {Angle} \n")
+
         Angle = 180.0 - np.abs(Angle) # But we need the angle about the hexabundle (so, subtract from 180)
-        # if Angle < 0: Angle = 360.0 + Angle
+        prLightGray(f"Angle about the hexabundleCentre = {Angle} \n")
+
 
         A = (A7 * alphar ** 7.0) + (A5 * alphar ** 5.0) + (A3 * alphar ** 3.0) + (A1 * alphar)
         fractional_r = A / r_plateCentre_probeCentre
@@ -167,57 +252,444 @@ def get_cvd_parameters(path_list, probenum, max_sep_arcsec=60.0,
         mask = A < 0
         if alphar > 0: # Bottom-half of the plate (meanY > plateCentre) in robot coordinates
             Angle = Angle * -1.0
-            deltaX[mask] = np.abs(A[mask]) * MICRONS_TO_ARCSEC * np.cos(np.deg2rad(Angle))
-            deltaX[~mask] = np.abs(A[~mask]) * MICRONS_TO_ARCSEC * np.cos(np.deg2rad(180.0 - np.abs(Angle)))
+            deltaX[mask] = np.abs(A[mask]) * np.cos(np.deg2rad(Angle))
+            deltaX[~mask] = np.abs(A[~mask]) * np.cos(np.deg2rad(180.0 - np.abs(Angle)))
 
-            deltaY[mask] = np.abs(A[mask]) * MICRONS_TO_ARCSEC * np.sin(np.deg2rad(Angle))
-            deltaY[~mask] = np.abs(A[~mask]) * MICRONS_TO_ARCSEC * np.sin(np.deg2rad(180.0 - np.abs(Angle)))
+            deltaY[mask] = np.abs(A[mask]) * np.sin(np.deg2rad(Angle))
+            deltaY[~mask] = np.abs(A[~mask]) * np.sin(np.deg2rad(180.0 - np.abs(Angle)))
         else:
-            deltaX[mask] = np.abs(A[mask]) * MICRONS_TO_ARCSEC * np.cos(np.deg2rad(np.abs(Angle) - 180.0))
-            deltaX[~mask] = np.abs(A[~mask]) * MICRONS_TO_ARCSEC * np.cos(np.deg2rad(Angle))
+            deltaX[mask] = np.abs(A[mask]) * np.cos(np.deg2rad(np.abs(Angle) - 180.0))
+            deltaX[~mask] = np.abs(A[~mask]) * np.cos(np.deg2rad(Angle))
 
-            deltaY[mask] = np.abs(A[mask]) * MICRONS_TO_ARCSEC * np.sin(np.deg2rad(np.abs(Angle) - 180.0))
-            deltaY[~mask] = np.abs(A[~mask]) * MICRONS_TO_ARCSEC * np.sin(np.deg2rad(Angle))
-
-
-        # # Debug plot
-        # zx = np.polyfit(np.array(wave), np.array(deltaX), 2)
-        # zy = np.polyfit(np.array(wave), np.array(deltaY), 2)
-        # fig = py.figure()
-        # ax = fig.add_subplot(111)
-        # ax.plot(wave, deltaX, 'xr', alpha=0.5, label="X-corr, applied to y-coor")
-        # ax.plot(wave, deltaY, 'xb', alpha=0.5, label="Y-corr, applied to x-coor")
-        # ax.plot(wave, np.polyval(zx, np.array(wave)), 'r', alpha=0.5, label=" ")
-        # ax.plot(wave, np.polyval(zy, np.array(wave)), 'b', alpha=0.5, label=" ")
-        # ax.set(xlabel='Wavelength (Ang.)', ylabel='Relative flux', title=f"{os.path.basename(path)} ppxf fits")
-        # ax.legend(loc='best')
-        # py.show()
-        # del zx, zy
+            deltaY[mask] = np.abs(A[mask]) * np.sin(np.deg2rad(np.abs(Angle) - 180.0))
+            deltaY[~mask] = np.abs(A[~mask]) * np.sin(np.deg2rad(Angle))
 
 
-        # prPurple(f"A={A}, fractional_r={fractional_r}, Angle= {Angle}, polarradius = {r_plateCentre_probeCentre}, {alphar}")
-        # prCyan(f"deltaX = {deltaX}")
-        # prCyan(f"deltaY = {deltaY}")
-        # prCyan(f"wave={wave}")
-        # prPurple(f"meanX, meanY = {meanX}, {meanY}")
-        # prPurple(f"RobotX,Y = {plateCentre_microns}")
-        # prPurple(f"{plateCentre_microns[0] - meanX, plateCentre_microns[1] - meanY}")
+        # ---> ************************** DEBUG PLOTS ************************** <---- #
+        # DEBUG plot - plateview in microns
+        if _check_against_cvd_model:
+            wave = np.arange(3000.0, 8000.0, 100.0)  # Create a lambda array
+
+            xfibre0 = ifu.xpos_rel * np.cos(np.deg2rad(np.mean(ifu.ypos)))  # In arcsec
+            yfibre0 = ifu.ypos_rel
+            xfibre, yfibre = yfibre0, xfibre0 # Switch x- and y-. This then matches with the rotated micron coordinates
+
+            # Interpolate the cvd corrections [in microns]
+            zx_mic = np.polyfit(np.array(wave), np.array(deltaX), 2)
+            zy_mic = np.polyfit(np.array(wave), np.array(deltaY), 2)
+
+            fig = py.figure(figsize=(10, 9.8))
+            cmap = mpl.cm.get_cmap('rainbow')
+
+            supltitle = f""
+            ax = fig.add_subplot(1, 1, 1)
+            ax.set_aspect('equal')
+
+            ax.add_patch( Circle(xy=(robot_centre_in_mic[1], robot_centre_in_mic[0]),
+                                 radius=plate_radius_in_mic, facecolor="#cccccc", edgecolor='#000000', zorder=-1))
+            ax.plot(robot_centre_in_mic[1], robot_centre_in_mic[0], 'rx', markersize=12)
+
+            # Draw vertical/horizontal lines across the plate
+            ax.plot([robot_centre_in_mic[1]-plate_radius_in_mic, robot_centre_in_mic[1]+plate_radius_in_mic],
+                    [robot_centre_in_mic[0], robot_centre_in_mic[0]], '-', color=[.5, .5, .5])
+            ax.plot([robot_centre_in_mic[1], robot_centre_in_mic[1]],
+                    [robot_centre_in_mic[0] - plate_radius_in_mic, robot_centre_in_mic[0] + plate_radius_in_mic], '-', color=[.5, .5, .5])
+
+            ax.plot(meanX, meanY, 'ko', markersize=12, label='RobotCoor in mic')
+
+            icmap = np.linspace(0, 1, len(_moffat_params['wavelength']))
+
+            wave = _moffat_params['wavelength'].to_numpy()
+            for ilambda in range(len(wave)):
+                ax.plot(meanX + np.polyval(zx_mic, np.array(wave[ilambda])) * 1000.0,
+                        meanY + np.polyval(zy_mic, np.array(wave[ilambda])) * 1000.0,
+                        'x', color=cmap(icmap[ilambda]), markersize=12, lw=1,
+                        label='CvD model correction applied to meanX/Y of bundle' if ilambda==5 else None)
+
+            fig, (ax1, ax2) = py.subplots(2, 1, figsize=(9, 9))
+            ax1.set(xlabel='x-rotated [micron]', ylabel='y-rotated [micron]',
+                    title=f"{os.path.basename(path)}, Hexabundle {_ifu.hexabundle_name[5]}")
+            ax2.set(xlabel='yfibre_pos [arcsec]=DEC', ylabel='xfibre_pos [arcsec]=RA')
+            ax1.xaxis.get_label().set_fontsize(6); ax1.yaxis.get_label().set_fontsize(6)
+            ax1.tick_params(axis='both', labelsize=6)
+            ax2.xaxis.get_label().set_fontsize(6); ax2.yaxis.get_label().set_fontsize(6)
+            ax2.tick_params(axis='both', labelsize=6)
+
+            xCen_mic, yCen_mic = [], []
+            for i in range(len(_moffat_params['wavelength'])):
+                # Converts from arcseconds to microns (xref, yref) are switched since the moffat fitting is done without switching them
+                tmpx, tmpy = coord_convert( _moffat_params['y0'].iloc[i],
+                                            _moffat_params['x0'].iloc[i],
+                                            xfibre, yfibre,  # Already switched, see L@263
+                                            ifu.x_rotated, ifu.y_rotated,
+                                            ifu.hexabundle_name)
+
+                ax1.plot(ifu.x_rotated, ifu.y_rotated, 'kx', ms=8)
+                ax1.plot(tmpx, tmpy, 'o', ms=8, color=cmap(icmap[i]),
+                         label="Direct calculation of \n centroid converted \n from arcsec to micron" if i == 5 else None)
+
+                ax2.plot(xfibre, yfibre, 'kx', ms=8)
+                ax2.plot(_moffat_params['y0'].iloc[i], _moffat_params['x0'].iloc[i], 'o', ms=8, color=cmap(icmap[i]),
+                         label="Direct calculation of \n centroid converted \n [arcsec]" if i == 5 else None)
+
+                xCen_mic.append(tmpx)
+                yCen_mic.append(tmpy)
+                del tmpx, tmpy
+
+            ax1.legend(loc='best', prop={'size': 6}); ax2.legend(loc='best', prop={'size': 6})
+            fig.tight_layout()
+            figfile = f"{dest_path}/DEBUG_hexabundle_{_ifu.hexabundle_name[5]}_inmicron_{_ifu.primary_header['PLATEID']}_{os.path.basename(path)[:10]}.png"
+            fig.savefig(figfile, bbox_inches='tight', pad_inches=0.3, dpi=150)
+            py.close()
+
+
+            xCen_mic, yCen_mic = np.array(xCen_mic).squeeze(), np.array(yCen_mic).squeeze()
+            xref, yref = xCen_mic[48], yCen_mic[48]
+            for i in range(len(_moffat_params['wavelength'])):
+                ax.plot(meanX + (xCen_mic[i] - xref) * 1000, meanY + (yCen_mic[i] - yref) * 1000,
+                        'o', color=cmap(icmap[i]), markersize=4)
+
+
+            # Add annuli information to the plate-view plot
+            magenta_radius = 226. * 1000.
+            yellow_radius = 196.05124 * 1000.
+            green_radius = 147.91658 * 1000.
+            blue_radius = 92.71721 * 1000.
+
+            ax.add_patch(Circle((robot_centre_in_mic[1], robot_centre_in_mic[0]), blue_radius, color='lightblue', alpha=0.3))
+            ax.add_patch(
+                Wedge((robot_centre_in_mic[1], robot_centre_in_mic[0]), magenta_radius, 0, 360., width=30, color='indianred',
+                      alpha=0.7))
+            ax.add_patch(
+                Wedge((robot_centre_in_mic[1], robot_centre_in_mic[0]), yellow_radius, 0, 360., width=30, color='gold',
+                      alpha=0.7))
+            ax.add_patch(
+                Wedge((robot_centre_in_mic[1], robot_centre_in_mic[0]), green_radius, 0, 360., width=30, color='lightgreen',
+                      alpha=0.7))
+
+            fig.suptitle(f"Hector Optical Model: {supltitle} [micron]", fontsize=15)
+
+            ax.invert_yaxis()
+            # ax.invert_xaxis()
+            ax.set_ylabel("Robot $x$ coordinate")
+            ax.set_xlabel("Robot $y$ coordinate")
+
+            py.tight_layout()
+            figfile = f"{dest_path}/plateview_hexa{_ifu.hexabundle_name[5]}_inmicron_{_ifu.primary_header['PLATEID']}_compareWth_CvDmodel.png"  # save_files / f"plateViewAll_{config['file_prefix']}_Run{obs_number:04}"
+            py.savefig(figfile, bbox_inches='tight', pad_inches=0.3, dpi=150)
+            py.close()
+            # py.show()
+
+
+        # DEBUG plot - plateview in arcseconds
+        if _check_against_cvd_model:
+            wave = np.arange(3000.0, 8000.0, 100.0)  # Create a lambda array
+
+            # Converts the unit of the CvD corrections to arcseconds
+            zx = np.polyfit(np.array(wave), np.array(deltaX) * MICRONS_TO_ARCSEC, 2)
+            zy = np.polyfit(np.array(wave), np.array(deltaY) * MICRONS_TO_ARCSEC, 2)
+
+            xfibre0 = _ifu.xpos_rel * np.cos(np.deg2rad(np.mean(_ifu.ypos)))  # In arcsec
+            yfibre0 = _ifu.ypos_rel
+            # Switch x- and y- [in arcseconds]. This then matches with the rotated micron coordinates
+            xfibre, yfibre = yfibre0, xfibre0
+
+            fig = py.figure(figsize=(10, 9.8))
+            cmap = mpl.cm.get_cmap('rainbow')
+
+            supltitle = f""
+            ax = fig.add_subplot(1, 1, 1)
+            ax.set_aspect('equal')
+
+            plateCentre = [0, 0]
+            ax.add_patch(Circle(xy=(plateCentre[0], plateCentre[1]), radius=plate_radius_in_arcsec, facecolor="#cccccc", edgecolor='#000000', zorder=-1))
+            ax.plot(plateCentre[0], plateCentre[1], 'rx', markersize=12)
+
+            # Draw vertical/horizontal lines across the plate
+            ax.plot([plateCentre[1] - plate_radius_in_arcsec, plateCentre[1] + plate_radius_in_arcsec],
+                    [plateCentre[0], plateCentre[0]], '-', color=[.5, .5, .5])
+            ax.plot([plateCentre[1], plateCentre[1]],
+                    [plateCentre[0] - plate_radius_in_arcsec, plateCentre[0] + plate_radius_in_arcsec],
+                    '-', color=[.5, .5, .5])
+
+            # This is the definition of meanX- and meanY-micron from the ifu class
+            meanX_arcsec = -1.0 * (meanX - robot_centre_in_mic[1]) * MICRONS_TO_ARCSEC
+            meanY_arcsec = (robot_centre_in_mic[0] - meanY) * MICRONS_TO_ARCSEC
+
+            # for ilambda in range(len(wave)):
+                # X/Y-VALUES: top-left  (x,y) = (+ve, -ve) in arcseconds / (+ve, +ve) in microns
+                #            top-right (x,y) = (-ve, -ve) in arcseconds / (-ve, +ve) in microns
+                #            bot-left  (x,y) = (+ve, +ve) in arcseconds / (+ve, -ve) in microns
+                #            bot-right (x,y) = (-ve, +ve) in arcseconds / (-ve, -ve) in microns
+
+                # NOTE: x- and y- axes are swapped in the optical model (constructed in micron),
+                #       i.e. the y-CvD correction needs to be applied to the xfibre positions,
+                #       and x-CvD correction to the yfibre positions
+                # ax.plot(np.nanmean(_xfibre) + np.polyval(zy, np.array(wave[ilambda])) * 1000.0,
+                #         np.nanmean(_yfibre) + np.polyval(zx, np.array(wave[ilambda])) * 1000.0,
+                #         's', color=cmap(icmap[ilambda]), markersize=8, alpha=.1, lw=1,
+                #         label="Directly applying CvD model corrections (different waveArry)" if ilambda == 5 else None)
+            ax.plot(meanX_arcsec, -1.0 * meanY_arcsec, 'ko', markersize=12, label='RobotCoor [converted to arcsec]')
+
+
+            if _psf_parameters_array is not None:
+                xcen0, ycen0 = list(_psf_parameters_array['xcen']), list(_psf_parameters_array['ycen'])
+                # xcen0, ycen0 = np.array(xcen0), np.array(ycen0)
+                icmap = np.linspace(0, 1, len(xcen0))
+                for j in range(len(xcen0)):
+                    ax.plot(np.nanmean(xcen0) + (xcen0[j] - np.nanmean(xcen0)) * 1000,
+                            np.nanmean(ycen0) + (ycen0[j] - np.nanmean(ycen0)) * 1000,
+                            'p', color=cmap(icmap[j]), markersize=8, alpha=.4, lw=1)
+
+                    # prRed(f"model_based: {np.polyval(zy, wavelength[j])}, "
+                    #       f"{np.polyval(zx, wavelength[j])}")
+                    # prCyan(f"from manager: {xcen0[j] - np.nanmean(xcen0)}, {ycen0[j] - np.nanmean(ycen0)}")
+
+            fig, (ax1, ax2) = py.subplots(2, 1, figsize=(9, 9))
+            ax1.set(xlabel='x-rotated [micron]', ylabel='y-rotated [micron]',
+                    title=f"{os.path.basename(path)}, Hexabundle {_ifu.hexabundle_name[5]}")
+            ax2.set(xlabel='yfibre_pos [arcsec]=DEC', ylabel='xfibre_pos [arcsec]=RA')
+            ax1.xaxis.get_label().set_fontsize(6); ax1.yaxis.get_label().set_fontsize(6); ax1.title.set_size(8)
+            ax1.tick_params(axis='both', labelsize=6)
+            ax2.xaxis.get_label().set_fontsize(6); ax2.yaxis.get_label().set_fontsize(6)
+            ax2.tick_params(axis='both', labelsize=6)
+
+            fig1, (ax3, ax4) = py.subplots(2, 1)
+            ax3.set(xlabel='Lambda [Ang]', ylabel='DeltaX (Model - Measured)')
+            ax3.tick_params(axis='both', labelsize=6)
+            ax3.xaxis.get_label().set_fontsize(6); ax3.yaxis.get_label().set_fontsize(6)
+            Y = np.array([[-1.0, -1.0], [1.0, 1.0], [0.0, 0.0]])
+            ax3.plot( [_moffat_params['wavelength'].iloc[0], _moffat_params['wavelength'].iloc[-1] ],
+                      Y.T, 'k--', lw=1)
+
+            ax4.set(xlabel='Lambda [Ang]', ylabel='DeltaY (Model - Measured)')
+            ax4.tick_params(axis='both', labelsize=6)
+            ax4.xaxis.get_label().set_fontsize(6); ax4.yaxis.get_label().set_fontsize(6)
+            ax4.plot([_moffat_params['wavelength'].iloc[0], _moffat_params['wavelength'].iloc[-1]],
+                     Y.T, 'k--', lw=1)
+
+            fig2, (ax5) = py.subplots(1, 1)
+            ax5.set(xlabel='Lambda [Ang]', ylabel='Offset [arcsec]', title=f"{os.path.basename(path)}, Hexabundle {_ifu.hexabundle_name[5]}")
+            ax5.tick_params(axis='both', labelsize=6)
+            ax5.xaxis.get_label().set_fontsize(6); ax5.yaxis.get_label().set_fontsize(6); ax5.title.set_size(8)
+
+
+            icmap = np.linspace(0, 1, len(_moffat_params['wavelength']))
+            diffX_pcent, diffY_pcent, diff_offset = [], [], []
+            for i in range(len(_moffat_params['wavelength'])):
+                moffat_wave = _moffat_params['wavelength'].iloc[i]
+
+                # NOTE: x- and y- axes are swapped in the optical model (constructed in micron),
+                #       i.e. the y-CvD correction needs to be applied to the xfibre positions,
+                #       and x-CvD correction to the yfibre positions
+                ax.plot(np.nanmean(_xfibre) + np.polyval(zy, moffat_wave) * 1000.0,
+                        np.nanmean(_yfibre) + np.polyval(zx, moffat_wave) * 1000.0,
+                        's', color=cmap(icmap[i]), markersize=8, alpha=.4, lw=1,
+                        label="Directly applying CvD model corrections" if i == 5 else None)
+
+                # Converts from arcseconds to microns (xref, yref) are switched since the moffat fitting is done without switching them
+                # STEP1: For ( mean_x [arcsec] and mean_y [arcsec] ) positions, get the respective micron positions.
+                #        The input x-, y- mean arcsec needs to be switched
+                xCen_mic, yCen_mic = coord_convert(np.nanmean(xfibre),
+                                           np.nanmean(yfibre),
+                                           xfibre, yfibre,  # Already switched (xfibre holds original yfibre postions), see L@373
+                                           ifu.x_rotated, ifu.y_rotated,
+                                           ifu.hexabundle_name)
+                prCyan(f"xCen_mic, yCen_mic = {xCen_mic}, {yCen_mic}")
+
+                # STEP2: Add the CvD model vector magnitudes to the position in microns
+                xCen_mic = xCen_mic + np.polyval(zx, np.array(moffat_wave)) * ARCSEC_IN_MICRONS
+                yCen_mic = yCen_mic + np.polyval(zy, np.array(moffat_wave)) * ARCSEC_IN_MICRONS
+                prPurple(f"xCen_mic, yCen_mic [cvd added] =  {xCen_mic}, {yCen_mic}")
+
+                ax1.plot(ifu.x_rotated, ifu.y_rotated, 'kx', ms=8)
+                ax1.plot(xCen_mic, yCen_mic, 'o', ms=8, color=cmap(icmap[i]),
+                         label='CvD modelCrr [mic] added \n to hexaCentre \n [converted to mic from arcsec]' if i == 5 else None)
+
+                # STEP3: Make the new positions the reference positions, and get the respective positions in arcseconds
+                tmpx, tmpy = coord_convert(xCen_mic, yCen_mic,
+                                           ifu.x_rotated, ifu.y_rotated,
+                                           xfibre, yfibre,  # Already switched, see L@373
+                                           ifu.hexabundle_name)
+
+                ax2.plot(xfibre, yfibre, 'kx', ms=8)
+                ax2.plot(tmpx, tmpy, 'o', ms=10, color=cmap(icmap[i], alpha=.1),
+                         label='CvD modelCrr [mic] added \n to hexaCentre (above fig) \n converted back to arcsec' if i == 5 else None)
+
+                prYellow(f"x_cvdCrr, y_cvdCrr [arcseconds] = {tmpx}, {tmpy}, \n "
+                         f"x_pos, y_pos [arcseconds] (swapped) = {np.nanmean(xfibre)}, {np.nanmean(yfibre)} (i.e. x_pos = y_pos from fits header)")
+
+                # In plotting to plateView in arcseconds, we use the x-, y- fibre positions from the header as it is.
+                # Here yfibre holds xpositions from the header (see L@373) and vice versa for xfibre
+                ax.plot((tmpy - np.nanmean(yfibre)) * 1000.0 + np.nanmean(yfibre), # y indicated here, since it contains x values, See L@373
+                        (tmpx - np.nanmean(xfibre)) * 1000.0 + np.nanmean(xfibre),
+                        'x', color=cmap(icmap[i]), markersize=10, alpha=.5, lw=1,
+                        label="CvD corrected using coord conversions" if i == 5 else None)
+                del tmpx, tmpy
+                del xCen_mic, yCen_mic
+
+                # Overplot the centroids from direct calculations
+                xref, yref, lref = _moffat_params['x0'].iloc[48],  _moffat_params['y0'].iloc[48], \
+                                   _moffat_params['wavelength'].iloc[48]
+                ax.plot( _moffat_params['x0'].iloc[i] + (_moffat_params['x0'].iloc[i] - xref) * 1000.0,
+                         _moffat_params['y0'].iloc[i] + (_moffat_params['y0'].iloc[i] - yref) * 1000.0,
+                        'o', color=cmap(icmap[i]), markersize=8, lw=1, alpha=.5,
+                        label="Direct calculation of centroid" if i == 5 else None)
+                ax.plot(xref, yref, 's', color='k', markersize=8, lw=1, alpha=.5)
+
+                # below is plotted on the hexabundle that matches with the robot orientation, so x-, and y- swapped
+                ax2.plot(_moffat_params['y0'].iloc[i], _moffat_params['x0'].iloc[i],
+                          's', ms=8, alpha=.5, color=cmap(icmap[i]), label='Directly calculated centroid' if i == 5 else None)
+
+                ax2.plot(np.nanmean(_yfibre) + np.polyval(zx, moffat_wave),
+                         np.nanmean(_xfibre) + np.polyval(zy, moffat_wave),
+                         '^', color='k', markerfacecolor=cmap(icmap[i]), markersize=4, alpha=.5, lw=2,
+                         label='Directly applied CvD model' if i == 5 else None)
+
+                # Find the magnitude difference between the model versus measured CvD corrections
+                diffY_ref = ( np.nanmean(_yfibre) + np.polyval(zx, moffat_wave) ) - ( np.nanmean(_yfibre) + np.polyval(zx, lref) )
+                diffX_ref = ( np.nanmean(_xfibre) + np.polyval(zy, moffat_wave) ) - ( np.nanmean(_xfibre) + np.polyval(zy, lref) )
+                diffY_pcent.append( (diffY_ref - (_moffat_params['y0'].iloc[i] - yref)) / diffY_ref )
+                diffX_pcent.append( (diffX_ref - (_moffat_params['x0'].iloc[i] - xref)) / diffX_ref )
+
+                diff_offset = ( np.sqrt( (diffY_ref - (_moffat_params['y0'].iloc[i] - yref))**2.0 +
+                                       (diffX_ref - (_moffat_params['x0'].iloc[i] - xref))**2.0 ) )
+
+                ax3.plot( moffat_wave, ( diffX_ref - (_moffat_params['x0'].iloc[i] - xref) ) / diffX_ref,
+                         '^', color='k', markerfacecolor=cmap(icmap[i]), markersize=8, alpha=.5, lw=2,
+                          label=f"x-diff" if i==5 else None)
+                ax4.plot( moffat_wave, ( diffY_ref - (_moffat_params['y0'].iloc[i] - yref) ) / diffY_ref,
+                         's', color='k', markerfacecolor=cmap(icmap[i]), markersize=8, alpha=.5, lw=2,
+                          label=f"y-diff" if i == 5 else None)
+                ax5.plot(moffat_wave, diff_offset,
+                         's', color='k', markerfacecolor=cmap(icmap[i]), markersize=8, alpha=.5, lw=2)
+
+            ax1.legend(loc='best', prop={'size': 6}); ax2.legend(loc='best', prop={'size': 6})
+            fig.tight_layout()
+            figfile = f"{dest_path}/DEBUG_hexabundle_{_ifu.hexabundle_name[5]}_inarcsec_{_ifu.primary_header['PLATEID']}_{os.path.basename(path)[:10]}.png"
+            fig.savefig(figfile, bbox_inches='tight', pad_inches=0.3, dpi=150)
+            py.close()
+
+            diff_pcent = np.array(np.hstack([diffX_pcent, diffY_pcent])).squeeze()
+            diff_len =len(diff_pcent)
+            mask_50, mask_75, mask_100 = ((diff_pcent < 0.5) & (diff_pcent > -0.5)), \
+                                         ((diff_pcent < 0.75) & (diff_pcent > -0.75)), \
+                                         ((diff_pcent < 1.0) & (diff_pcent > -1.0))
+
+            diffX_pcent, diffX_len = np.array(diffX_pcent), len(diffX_pcent)
+            maskx_50, maskx_75, maskx_100 = ((diffX_pcent < 0.5) & (diffX_pcent > -0.5)), \
+                                         ((diffX_pcent < 0.75) & (diffX_pcent > -0.75)), \
+                                         ((diffX_pcent < 1.0) & (diffX_pcent > -1.0))
+
+            diffY_pcent, diffY_len = np.array(diffY_pcent), len(diffY_pcent)
+            masky_50, masky_75, masky_100 = ((diffY_pcent < 0.5) & (diffY_pcent > -0.5)), \
+                                         ((diffY_pcent < 0.75) & (diffY_pcent > -0.75)), \
+                                         ((diffY_pcent < 1.0) & (diffY_pcent > -1.0))
+
+            ax3.set(title=f"{os.path.basename(path)}, Hexabundle {_ifu.hexabundle_name[5]} "
+                          f"(<50%={np.round(len(diff_pcent[mask_50]) / diff_len, 2)}, "
+                          f"<75%={np.round(len(diff_pcent[mask_75]) / diff_len, 2)}, "
+                          f"<100%={np.round(len(diff_pcent[mask_100]) / diff_len, 2)}) \n"
+                          f"--> x%: (<50%={np.round(len(diffX_pcent[maskx_50]) / diffX_len, 2)}, "
+                          f"<75%={np.round(len(diffX_pcent[maskx_75]) / diffX_len, 2)}, "
+                          f"<100%={np.round(len(diffX_pcent[maskx_100]) / diffX_len, 2)}) \n"
+                          f"--> y%: (<50%={np.round(len(diffY_pcent[masky_50]) / diffY_len, 2)}, "
+                          f"<75%={np.round(len(diffY_pcent[masky_75]) / diffY_len, 2)}, "
+                          f"<100%={np.round(len(diffY_pcent[masky_100]) / diffY_len, 2)})")
+
+            ax3.title.set_size(8)
+            ax3.legend(loc='best', prop={'size': 6}); ax4.legend(loc='best', prop={'size': 6})
+            fig1.tight_layout()
+            figfile1 = f"{dest_path}/DEBUG_hexabundle_{_ifu.hexabundle_name[5]}_inarcsec_{_ifu.primary_header['PLATEID']}_centroid_variation_{os.path.basename(path)[:10]}.png"
+            fig1.savefig(figfile1, bbox_inches='tight', pad_inches=0.3, dpi=150)
+            py.close()
+
+            ax5.legend(loc='best', prop={'size': 6});
+            fig2.tight_layout()
+            figfile2 = f"{dest_path}/DEBUG_hexabundle_{_ifu.hexabundle_name[5]}_inarcsec_{_ifu.primary_header['PLATEID']}_OFFSET_variation_{os.path.basename(path)[:10]}.png"
+            fig2.savefig(figfile2, bbox_inches='tight', pad_inches=0.3, dpi=150)
+            py.close()
+
+            ax.plot(np.nanmean(_xfibre), np.nanmean(_yfibre), 'o', color='g', markersize=12, label='mean x/y [arcsec]')
+
+            # Add annuli information to the plate-view plot
+            magenta_radius = 226. * 1000. * MICRONS_TO_ARCSEC
+            yellow_radius = 196.05124 * 1000. * MICRONS_TO_ARCSEC
+            green_radius = 147.91658 * 1000. * MICRONS_TO_ARCSEC
+            blue_radius = 92.71721 * 1000. * MICRONS_TO_ARCSEC
+
+            ax.add_patch(Circle((0, 0), blue_radius, color='lightblue', alpha=0.3))
+            ax.add_patch(
+                Wedge((0, 0), magenta_radius, 0, 360., width=30, color='indianred',
+                      alpha=0.7))
+            ax.add_patch(
+                Wedge((0, 0), yellow_radius, 0, 360., width=30, color='gold',
+                      alpha=0.7))
+            ax.add_patch(
+                Wedge((0, 0), green_radius, 0, 360., width=30, color='lightgreen',
+                      alpha=0.7))
+
+            fig.suptitle(f"Hector Optical Model: {supltitle}", fontsize=15)
+            py.legend(loc='best')
+
+            ax.invert_yaxis()
+            ax.invert_xaxis()
+            ax.set_ylabel("yPos [arcsec]")
+            ax.set_xlabel("xPos [arcsec]")
+
+            py.tight_layout()
+            figfile = f"{dest_path}/plateview_hexa{_ifu.hexabundle_name[5]}_inarcsec_{_ifu.primary_header['PLATEID']}_compareWth_CvDmodel.png"  # save_files / f"plateViewAll_{config['file_prefix']}_Run{obs_number:04}"
+            py.savefig(figfile, bbox_inches='tight', pad_inches=0.3, dpi=150)
+            py.close()
+            # py.show()
+
+            # If <60% of directly calculated x/y CvD correction don't fall within 75% direct-to-model based / model-based, then raise exception
+            if np.round(len(diff_pcent[mask_75]) / diff_len, 2) < 0.6:
+                raise ValueError(prRed(f"Large mismatch with the CvD model"))
+            # sys.exit('---> Exit in the debugging routine @L530')
+
+
+        # DEBUG plot - 1D illustration of "wave" versus X/Y CvD corrections
+        """
+        zx = np.polyfit(np.array(wave), np.array(deltaX), 2)
+        zy = np.polyfit(np.array(wave), np.array(deltaY), 2)
+        fig = py.figure()
+        ax = fig.add_subplot(111)
+        ax.plot(wave, deltaX, 'xr', alpha=0.5, label="X-corr, applied to y-coor")
+        ax.plot(wave, deltaY, 'xb', alpha=0.5, label="Y-corr, applied to x-coor")
+        ax.plot(wave, np.polyval(zx, np.array(wave)), 'r', alpha=0.5, label=" ")
+        ax.plot(wave, np.polyval(zy, np.array(wave)), 'b', alpha=0.5, label=" ")
+        ax.set(xlabel='Wavelength (Ang.)', ylabel='Relative flux', title=f"{os.path.basename(path)} ppxf fits")
+        ax.legend(loc='best')
+        py.show()
+        fig.savefig(f"CvD_model_hexaC.png", bbox_inches='tight')
+        py.close(fig)
+        sys.exit()
+        del zx, zy
+        """
 
         return A, fractional_r, wave, deltaX, deltaY
 
 
-    if isinstance(path_list, str):
-        path_list = [path_list]
-    for i_file, path in enumerate(path_list):
-        ifu = IFU(path, probenum, flag_name=False)
+    _xfibre = ifu.xpos_rel * np.cos(np.deg2rad(np.mean(ifu.ypos)))  # In arcsec
+    _yfibre = ifu.ypos_rel
 
-    # print("probename=", ifu.hexabundle_name)
-    offset, frac_offset, lam, delta_X, delta_Y = func(ifu.mean_x, ifu.mean_y)
-    zf = np.polyfit(np.array(lam), np.array(frac_offset), 2)
-    zx = np.polyfit(np.array(lam), np.array(delta_X), 2)
-    zy = np.polyfit(np.array(lam), np.array(delta_Y), 2)
+    prGreen(f"probename={ifu.hexabundle_name[5]}, (x,y) = ({np.nanmean(_xfibre)}, {np.nanmean(_yfibre)}) in arcsec from centre")
+    prYellow(f"probename={ifu.hexabundle_name[5]}, (x,y) = ({-1.0 * (ifu.mean_x-robot_centre_in_mic[1]) * MICRONS_TO_ARCSEC}, "
+             f"{(robot_centre_in_mic[0] - ifu.mean_y) * MICRONS_TO_ARCSEC}) in microns from centre")
 
-    # Debug plot
+
+    offset, frac_offset, lam, delta_X, delta_Y = optical_model_function(ifu.mean_x, ifu.mean_y,
+                                                                        _ifu=ifu,
+                                                                        _check_against_cvd_model=check_against_cvd_model,
+                                                                        _moffat_params=moffat_params,
+                                                                        _psf_parameters_array=psf_parameters_array,
+                                                                        _wavelength=wavelength)
+    cvdFrac = np.polyfit(np.array(lam), np.array(frac_offset), 2)
+    cvdX    = np.polyfit(np.array(lam), np.array(delta_X) * MICRONS_TO_ARCSEC, 2)
+    cvdY    = np.polyfit(np.array(lam), np.array(delta_Y) * MICRONS_TO_ARCSEC, 2)
+
+    # DEBUG plot -
     # fig = py.figure()
     # ax = fig.add_subplot(111)
     # ax.plot(lam, frac_offset, 'xk', alpha=0.5, label="best-fit")
@@ -226,7 +698,7 @@ def get_cvd_parameters(path_list, probenum, max_sep_arcsec=60.0,
     # ax.legend(loc='best')
     # py.show()
 
-    return zf, zx, zy
+    return cvdFrac, cvdX, cvdY
 
 
 
@@ -825,4 +1297,87 @@ def parameters_dict_to_array(parameters_dict, wavelength, model_name):
 def alpha(wavelength, alpha_ref):
     """Return alpha at the specified wavelength(s)."""
     return alpha_ref * ((wavelength / REFERENCE_WAVELENGTH)**(-0.2))
+
+
+def coord_convert (xref, yref, xfib_from, yfib_from, xfib_to, yfib_to, probename):
+        dist = np.sqrt((xref - xfib_from) ** 2.0 + (yref - yfib_from) ** 2.0)
+        idx_sorted_dist = np.argsort(dist)
+        idx = np.argmin(dist)
+
+        # Now we need to find the indcies of points that enclose (xref_cen_av, yref_cen_av)
+        for j in range(1, 25):  # Should not need to go beyond 4 in range
+            if (((xfib_from[idx_sorted_dist[0]] <= xref <= xfib_from[idx_sorted_dist[j]]) |
+                 (xfib_from[idx_sorted_dist[0]] >= xref >= xfib_from[idx_sorted_dist[j]])) &
+                    ((yfib_from[idx_sorted_dist[0]] <= yref <= yfib_from[idx_sorted_dist[j]]) |
+                     (yfib_from[idx_sorted_dist[0]] >= yref  >= yfib_from[idx_sorted_dist[j]]))):
+
+                encl_idx1, encl_idx2, encl_idx3 = idx_sorted_dist[0], idx_sorted_dist[j], idx_sorted_dist[j+1]
+                break
+
+
+        if 'encl_idx1' not in locals():
+            fig, _ = py.subplots()  # In RA/DEC
+            py.plot(xfib_from, yfib_from, 'kx', ms=8)
+            py.plot(xfib_from[idx], yfib_from[idx], 'rx', ms=8)
+            py.plot(xfib_from[idx_sorted_dist[0:3]], yfib_from[idx_sorted_dist[0:3]], 'g.', ms=10)
+            py.plot(xref, yref, 'bo', ms=8)
+            py.show()
+            py.tight_layout()
+            figfile = 'DEBUG_arcsec_conversion.png'  # save_files / f"plateViewAll_{config['file_prefix']}_Run{obs_number:04}"
+            py.savefig(figfile, bbox_inches='tight', pad_inches=0.3, dpi=150)
+            py.close()
+
+            fig, _ = py.subplots()  # In microns
+            py.plot(xfib_to, yfib_to, 'kx', ms=8)
+            py.plot(xfib_to[idx], yfib_to[idx], 'rx', ms=8)
+            py.plot(xfib_to[idx_sorted_dist[0:3]], yfib_to[idx_sorted_dist[0:3]], 'g.', ms=10)
+            py.show()
+
+            py.tight_layout()
+            figfile = 'DEBUG_micron_conversion.png'  # save_files / f"plateViewAll_{config['file_prefix']}_Run{obs_number:04}"
+            py.savefig(figfile, bbox_inches='tight', pad_inches=0.3, dpi=150)
+            py.close()
+
+            sys.exit(f"The indcies of the enclosed points of probe {probename} (i.e. points on either side of the centroid position) not found!")
+        assert 'encl_idx1' in locals(), \
+            f"The indcies of the enclosed points of probe {probename} (i.e. points on either side of the centroid position) not found!"
+
+        # Now we need to find the ratio: the distance from centroid position to the closest point / distance between the
+        # two enclosing the closest points
+        x_ratio = np.diff([xfib_from[encl_idx1], xref]) / np.diff([xfib_from[encl_idx1], xfib_from[encl_idx2]])
+        y_ratio = np.diff([yfib_from[encl_idx1], yref]) / np.diff([yfib_from[encl_idx1], yfib_from[encl_idx2]])
+
+        # Now take the micron grid,
+        xref_to = xfib_to[encl_idx1] + np.diff([xfib_to[encl_idx1], xfib_to[encl_idx2]]) * x_ratio
+        yref_to = yfib_to[encl_idx1] + np.diff([yfib_to[encl_idx1], yfib_to[encl_idx2]]) * y_ratio
+
+        # Debug-figures
+        # fig, ax = py.subplots()  # In RA/DEC
+        # # ax.set(xlabel='X arcsec', ylabel='Y arcsec', title=probename)
+        # py.plot(xfib_from, yfib_from, 'kx', ms=8)
+        # py.plot(xfib_from[idx], yfib_from[idx], 'rx', ms=10)
+        # py.plot(xref, yref, 'bo', ms=8)
+        # py.plot(xfib_from[encl_idx1], yfib_from[encl_idx1], 'go', xfib_from[encl_idx2], yfib_from[encl_idx2], 'go', ms=6)
+        # py.plot(xfib_from[idx_sorted_dist[0:3]], yfib_from[idx_sorted_dist[0:3]], 'r.', ms=8)
+        # py.tight_layout()
+        # figfile = 'DEBUG_hexaU_arcsec_conversion4.png'  # save_files / f"plateViewAll_{config['file_prefix']}_Run{obs_number:04}"
+        # py.savefig(figfile, bbox_inches='tight', pad_inches=0.3, dpi=150)
+        # py.close()
+        # # #
+        # fig, ax = py.subplots()  # In microns
+        # # ax.set(xlabel='X microns', ylabel='Y microns', title=probename)
+        # py.plot(xfib_to, yfib_to, 'kx', ms=8)
+        # py.plot(xfib_to[idx], yfib_to[idx], 'rx', ms=10)
+        # py.plot(xref_to, yref_to, 'bo', ms=8)
+        # py.plot(xfib_to[encl_idx1], yfib_to[encl_idx1], 'go', xfib_to[encl_idx2], yfib_to[encl_idx2], 'go', ms=8)
+        # py.plot(xfib_to[idx_sorted_dist[0:3]], yfib_to[idx_sorted_dist[0:3]], 'r.', ms=8)
+        # # ax.invert_yaxis()
+        # py.tight_layout()
+        # figfile = 'DEBUG_hexaU_micron_conversion4.png'  # save_files / f"plateViewAll_{config['file_prefix']}_Run{obs_number:04}"
+        # # figfile = 'DEBUG_hexaU_micron_conversion4_inverted_yaxis.png'  # save_files / f"plateViewAll_{config['file_prefix']}_Run{obs_number:04}"
+        # py.savefig(figfile, bbox_inches='tight', pad_inches=0.3, dpi=150)
+        # py.close()
+        # sys.exit()
+
+        return xref_to, yref_to
 

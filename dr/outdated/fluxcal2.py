@@ -83,7 +83,6 @@ matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import matplotlib as mpl
 from multiprocessing import Process
-import pandas as pd
 
 from ..utils.ifu import IFU
 from ..utils.mc_adr import parallactic_angle, adr_r
@@ -94,7 +93,6 @@ from ..utils.fluxcal2_io import read_model_parameters, save_extracted_flux
 from .telluric2 import TelluricCorrectPrimary as telluric_correct_primary
 from . import dust
 from .cvd_model import get_cvd_parameters
-from ..qc.psf_cubes_and_rss import check_centroids, interp_cvd_for_rss, fit_integrated_moffat_func_and_get_parameters_for_primary
 #from ..manager import read_stellar_mags
 #from ..qc.fluxcal import measure_band
 
@@ -109,7 +107,6 @@ from ppxf.ppxf import ppxf
 from ppxf.ppxf_util import log_rebin
 #from ppxf import ppxf
 #from ppxf_util import log_rebin
-
 
 import hector
 
@@ -254,7 +251,7 @@ def chunk_data(ifu, n_drop=None, n_chunk=None, sigma_clip=None):
     variance = (np.nansum(variance, axis=2) / 
                 np.sum(np.isfinite(variance), axis=2)**2)
     # Replace any remaining NaNs with 0.0; not ideal but should be very rare
-    bad_data = ~np.isfinite(data) & ~np.isfinite(variance) & (variance < 0.0)
+    bad_data = ~np.isfinite(data)
     data[bad_data] = 0.0
     variance[bad_data] = np.inf
     wavelength = np.median(wavelength, axis=1)
@@ -747,19 +744,18 @@ def derive_transfer_function(path_list, max_sep_arcsec=60.0,
                              model_name='ref_centre_alpha_circ_hdr_cvd',
                              n_trim=0, smooth='spline',molecfit_available=False,
                              molecfit_dir='',speed='',tell_corr_primary=False,debug=True):
-    """ Derive transfer function and save it in each FITS file.
-    NOTE: cvd_parameters keyword added to various function call withint this routine
-    (e.g. fit_model_flux, extract_flux)
-    """
+    """Derive transfer function and save it in each FITS file."""
     # First work out which star we're looking at, and which hexabundle it's in
+    # MLPG (change back): changed model_name = ref_centre_alpha_circ_hdr_cvd (original = ref_centre_alpha_dist_circ_hdratm)
+    # cvd_model added
+    # cvd_parameters keyword added to various function call withint this routine (e.g. fit_model_flux, extract_flux)
     star_match = match_standard_star(
         path_list[0], max_sep_arcsec=max_sep_arcsec, catalogues=catalogues)
     if star_match is None:
         raise ValueError('No standard star found in the data.')
     print('Deriving TF for '+path_list[0]+' on Hexa '+star_match['probename']+' ('+star_match['name']+')')
-
-    # if debug: print('Draw debugging plots')
-
+    #if debug:
+    #    print('Draw debugging plots')
     standard_data = read_standard_data(star_match)
 
     # Apply telluric correction to primary standards and write to new file, returning
@@ -793,11 +789,6 @@ def derive_transfer_function(path_list, max_sep_arcsec=60.0,
 
     psf_parameters = insert_fixed_parameters(psf_parameters, fixed_parameters)
     good_psf = check_psf_parameters(psf_parameters, chunked_data)
-
-    if debug:
-        check_against_cvd_model=True # If debugging is True, turn-on the cvd debugging as well
-        debug_cvd(path_list, star_match, model_name, psf_parameters, cvd_parameters=cvd_parameters,
-                  check_against_cvd_model=check_against_cvd_model)
 
     for path,path2 in zip(path_list_tel,path_list):
         ifu = IFU(path, star_match['probenum'], flag_name=False)
@@ -938,63 +929,6 @@ def match_standard_star(filename, max_sep_arcsec=60.0,
     # Uh-oh, should have found a star by now. Return None and let the outer
     # code deal with it.
     return
-
-def debug_cvd(path_list, star_match, model_name, psf_parameters, cvd_parameters=None):
-    for i_file, path in enumerate(path_list):
-        ifu = IFU(path, star_match['probenum'], flag_name=False)
-        remove_atmosphere(ifu)
-        psf_parameters_array = parameters_dict_to_array(
-            psf_parameters, ifu.lambda_range, model_name, cvd_parameters=cvd_parameters)
-
-        if i_file == 0:
-            data = ifu.data
-            variance = ifu.var
-            wavelength = ifu.lambda_range
-            psf_param_arry = psf_parameters_array
-        else:
-            data = np.hstack((data, ifu.data))
-            variance = np.hstack((variance, ifu.var))
-            wavelength = np.hstack((wavelength, ifu.lambda_range))
-            psf_param_arry = np.hstack((psf_param_arry, psf_parameters_array))
-
-        xfibre_all0 = ifu.xpos_rel * np.cos(np.deg2rad(np.mean(ifu.ypos)))  # In arcsec
-        yfibre_all0 = ifu.ypos_rel
-
-    prYellow(f"HexaName: {star_match['probename']}")
-    prLightPurple(f"(xref_arcsec, yref_arcsec) = ({np.nanmean(xfibre_all0)}, {np.nanmean(yfibre_all0)})")
-    prLightPurple(f"(xref_mic, yref_mic) = ({np.nanmean(ifu.x_microns)}, {np.nanmean(ifu.y_microns)})")
-
-    n_lambda, nx_pix, ny_pix = len(wavelength), len(xfibre_all0), len(yfibre_all0)
-    xfibre_all, yfibre_all = np.zeros((nx_pix, n_lambda)), np.zeros((ny_pix, n_lambda))
-    for ilambda in range(n_lambda):
-        # xfibre_all[:, ilambda] = interp_cvd_for_rss(_xfibre_all1,
-        #                                     cvd_parameters[2], wavelength[ilambda], plateCentre=0.0)
-        # yfibre_all[:, ilambda] = interp_cvd_for_rss(_yfibre_all1,
-        #                                     cvd_parameters[1], wavelength[ilambda], plateCentre=0.0)
-        xfibre_all[:, ilambda] = xfibre_all0
-        yfibre_all[:, ilambda] = yfibre_all0
-
-    _data, _var, _lambda, _xfibre_all, _yfibre_all = \
-        check_centroids(data, variance, wavelength, xfibre_all, yfibre_all, wavebin=50)
-
-    para_all = pd.DataFrame()
-    for j in range(1, np.shape(_data)[1]):
-        try:
-            df = fit_integrated_moffat_func_and_get_parameters_for_primary(path_list[0], _data[:, j], _var[:, j],
-                                                                           _lambda[j],
-                                                                           _xfibre_all[:, j], _yfibre_all[:, j],
-                                                                           xref=xfibre_all0, yref=yfibre_all0)
-        except:
-            prRed(f"---> Lambda slice {j}, centered on lambda = {_lambda[j]} cannot be fitted")
-            continue
-        para_all = para_all.append(df)
-
-    _,_,_ = get_cvd_parameters(path_list[0], star_match['probenum'],
-                               check_against_cvd_model=True, moffat_params=para_all,
-                               psf_parameters_array=psf_param_arry, wavelength=wavelength)
-
-    return
-
 
 def match_star_coordinates(ra, dec, max_sep_arcsec=60.0, 
                            catalogues=STANDARD_CATALOGUES):
