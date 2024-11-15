@@ -795,9 +795,8 @@ def derive_transfer_function(path_list, max_sep_arcsec=60.0,
     good_psf = check_psf_parameters(psf_parameters, chunked_data)
 
     if debug:
-        check_against_cvd_model=True # If debugging is True, turn-on the cvd debugging as well
-        debug_cvd(path_list, star_match, model_name, psf_parameters, cvd_parameters=cvd_parameters,
-                  check_against_cvd_model=check_against_cvd_model)
+        # check_against_cvd_model=True # If debugging is True, turn-on the cvd debugging as well
+        debug_cvd(path_list, star_match, model_name, psf_parameters, cvd_parameters=cvd_parameters)
 
     for path,path2 in zip(path_list_tel,path_list):
         ifu = IFU(path, star_match['probenum'], flag_name=False)
