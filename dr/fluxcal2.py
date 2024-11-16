@@ -986,11 +986,25 @@ def debug_cvd(path_list, star_match, model_name, psf_parameters, cvd_parameters=
         except:
             prRed(f"---> Lambda slice {j}, centered on lambda = {_lambda[j]} cannot be fitted")
             continue
-        para_all = para_all.append(df)
+        # para_all = para_all.append(df)
+        para_all = pd.concat([para_all, df])
 
-    _,_,_ = get_cvd_parameters(path_list[0], star_match['probenum'],
-                               check_against_cvd_model=True, moffat_params=para_all,
-                               psf_parameters_array=psf_param_arry, wavelength=wavelength)
+    if para_all.empty:
+        dest_path = path[0:path.find('/reduced')] + '/Optical_Model'
+        if not os.path.isdir(dest_path):
+            os.makedirs(dest_path)
+
+        fname = open(f"{dest_path}/debug_primary_standards.txt", "a")  # safer than w mode
+        fname.write(f"{path_list}\n")
+        # Close opened file
+        fname.close()
+
+        raise ValueError(prRed(f"---> NO star in the frame!!! (*** debug_cvd ***)"))
+
+    if not para_all.empty:
+        _,_,_ = get_cvd_parameters(path_list[0], star_match['probenum'],
+                                   check_against_cvd_model=True, moffat_params=para_all,
+                                   psf_parameters_array=psf_param_arry, wavelength=wavelength)
 
     return
 

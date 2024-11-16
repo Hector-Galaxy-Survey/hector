@@ -322,7 +322,7 @@ def get_cvd_parameters(path_list, probenum, check_against_cvd_model=False, moffa
                                             _moffat_params['x0'].iloc[i],
                                             xfibre, yfibre,  # Already switched, see L@263
                                             ifu.x_rotated, ifu.y_rotated,
-                                            ifu.hexabundle_name)
+                                            ifu.hexabundle_name, path_to_save=dest_path)
 
                 ax1.plot(ifu.x_rotated, ifu.y_rotated, 'kx', ms=8)
                 ax1.plot(tmpx, tmpy, 'o', ms=8, color=cmap(icmap[i]),
@@ -494,7 +494,7 @@ def get_cvd_parameters(path_list, probenum, check_against_cvd_model=False, moffa
                                            np.nanmean(yfibre),
                                            xfibre, yfibre,  # Already switched (xfibre holds original yfibre postions), see L@373
                                            ifu.x_rotated, ifu.y_rotated,
-                                           ifu.hexabundle_name)
+                                           ifu.hexabundle_name, path_to_save=dest_path)
                 prCyan(f"xCen_mic, yCen_mic = {xCen_mic}, {yCen_mic}")
 
                 # STEP2: Add the CvD model vector magnitudes to the position in microns
@@ -510,7 +510,7 @@ def get_cvd_parameters(path_list, probenum, check_against_cvd_model=False, moffa
                 tmpx, tmpy = coord_convert(xCen_mic, yCen_mic,
                                            ifu.x_rotated, ifu.y_rotated,
                                            xfibre, yfibre,  # Already switched, see L@373
-                                           ifu.hexabundle_name)
+                                           ifu.hexabundle_name, path_to_save=dest_path)
 
                 ax2.plot(xfibre, yfibre, 'kx', ms=8)
                 ax2.plot(tmpx, tmpy, 'o', ms=10, color=cmap(icmap[i], alpha=.1),
@@ -1299,7 +1299,7 @@ def alpha(wavelength, alpha_ref):
     return alpha_ref * ((wavelength / REFERENCE_WAVELENGTH)**(-0.2))
 
 
-def coord_convert (xref, yref, xfib_from, yfib_from, xfib_to, yfib_to, probename):
+def coord_convert (xref, yref, xfib_from, yfib_from, xfib_to, yfib_to, probename, path_to_save=None):
         dist = np.sqrt((xref - xfib_from) ** 2.0 + (yref - yfib_from) ** 2.0)
         idx_sorted_dist = np.argsort(dist)
         idx = np.argmin(dist)
@@ -1321,10 +1321,11 @@ def coord_convert (xref, yref, xfib_from, yfib_from, xfib_to, yfib_to, probename
             py.plot(xfib_from[idx], yfib_from[idx], 'rx', ms=8)
             py.plot(xfib_from[idx_sorted_dist[0:3]], yfib_from[idx_sorted_dist[0:3]], 'g.', ms=10)
             py.plot(xref, yref, 'bo', ms=8)
-            py.show()
+            # py.show()
             py.tight_layout()
-            figfile = 'DEBUG_arcsec_conversion.png'  # save_files / f"plateViewAll_{config['file_prefix']}_Run{obs_number:04}"
-            py.savefig(figfile, bbox_inches='tight', pad_inches=0.3, dpi=150)
+            if path_to_save is not None:
+                figfile = f"{path_to_save}/DEBUG_arcsec_conversion.png"  # save_files / f"plateViewAll_{config['file_prefix']}_Run{obs_number:04}"
+                py.savefig(figfile, bbox_inches='tight', pad_inches=0.3, dpi=150)
             py.close()
 
             fig, _ = py.subplots()  # In microns
@@ -1334,11 +1335,12 @@ def coord_convert (xref, yref, xfib_from, yfib_from, xfib_to, yfib_to, probename
             py.show()
 
             py.tight_layout()
-            figfile = 'DEBUG_micron_conversion.png'  # save_files / f"plateViewAll_{config['file_prefix']}_Run{obs_number:04}"
-            py.savefig(figfile, bbox_inches='tight', pad_inches=0.3, dpi=150)
+            if path_to_save is not None:
+                figfile = f"{path_to_save}/DEBUG_micron_conversion.png"  # save_files / f"plateViewAll_{config['file_prefix']}_Run{obs_number:04}"
+                py.savefig(figfile, bbox_inches='tight', pad_inches=0.3, dpi=150)
             py.close()
 
-            sys.exit(f"The indcies of the enclosed points of probe {probename} (i.e. points on either side of the centroid position) not found!")
+            # sys.exit(f"The indcies of the enclosed points of probe {probename} (i.e. points on either side of the centroid position) not found!")
         assert 'encl_idx1' in locals(), \
             f"The indcies of the enclosed points of probe {probename} (i.e. points on either side of the centroid position) not found!"
 

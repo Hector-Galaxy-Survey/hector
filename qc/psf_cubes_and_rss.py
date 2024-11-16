@@ -2,6 +2,8 @@
                     ****** Quality control for checking CvD corrections *******
 This function can be run independently of the hector module, the only dependence is the term colours
 
+Each "fit_integrated*" function can produce diagnostic plots, however the keyword "debug_plots" must be turned on manually
+
 Authors: Madusha Gunawardhana (primary author, 2024+) -- converted to use the moffat integrated for the CvD fitting
          Yifan Mai (2024) -- MLPG included the original functions from Yifan in this script, however, they do not do
                              integration across the pixels, so need to be careful in using them
@@ -20,6 +22,8 @@ To Run: > import hector
 
         TODO: In ingrating_moffat profile check X_SUB, Y_SUB, against the definition of the grids of the same in fluxcal2.py
               to ensure the integration is performed correctly
+
+
 
 """
 
@@ -512,16 +516,18 @@ def fit_integrate_moffat_func_and_get_parameters_from_cubes(path_list, n_chunk,b
                            'fwhm_semi_minor': 'N/A',
                            'wavelength': np.nanmedian(band)})
 
-    # --> plotting
-    fig, ax = plt.subplots(1, 1)
-    x, y = np.array(coords[0]).astype(float), np.array(coords[1]).astype(float)
-    ax.imshow(flux_image.reshape(flux_image.shape[0], flux_image.shape[1]), cmap=plt.cm.jet, origin='lower',
-              extent=(x.min(), x.max(), y.min(), y.max()))
-    ax.contour(x, y, moffat.reshape(flux_image.shape[0], flux_image.shape[1]), 8, colors='w')
+    # Plotting......
+    debug_plots = False
+    if debug_plots:
+        fig, ax = plt.subplots(1, 1)
+        x, y = np.array(coords[0]).astype(float), np.array(coords[1]).astype(float)
+        ax.imshow(flux_image.reshape(flux_image.shape[0], flux_image.shape[1]), cmap=plt.cm.jet, origin='lower',
+                  extent=(x.min(), x.max(), y.min(), y.max()))
+        ax.contour(x, y, moffat.reshape(flux_image.shape[0], flux_image.shape[1]), 8, colors='w')
 
-    plt.tight_layout()
-    plt.savefig(f"Cube_Moffat_elliptical_{elliptical}_integrated_{file_name}.png", dpi=300)
-    plt.close()
+        plt.tight_layout()
+        plt.savefig(f"Cube_Moffat_elliptical_{elliptical}_integrated_{file_name}.png", dpi=300)
+        plt.close()
 
     return df
 
@@ -698,46 +704,48 @@ def fit_integrated_moffat_func_and_get_parameters_from_rss(path_list, probenum, 
 
 
     # Plotting......
-    fig, ax = plt.subplots(1, 3, figsize=(9, 3))
-    max_v = np.max(flux_image)
-    min_v = np.min(flux_image)
+    debug_plots = False
+    if debug_plots:
+        fig, ax = plt.subplots(1, 3, figsize=(9, 3))
+        max_v = np.max(flux_image)
+        min_v = np.min(flux_image)
 
-    ax[0].set(xlabel='Xfibre [arcsec]', ylabel='Yfibre [arcsec]', title='Data')
-    im0 = ax[0].scatter(_x, _y, c=flux_image, vmin=min_v, vmax=max_v, cmap='Oranges')
-    ax[0].contour(x_mesh, y_mesh, fit_flux, 4, colors='k')
-    cb0 = plt.colorbar(im0, ax=ax[0], fraction=0.047)
-    cb0.ax.locator_params(nbins=5)
-    cb0.set_label('Flux')
+        ax[0].set(xlabel='Xfibre [arcsec]', ylabel='Yfibre [arcsec]', title='Data')
+        im0 = ax[0].scatter(_x, _y, c=flux_image, vmin=min_v, vmax=max_v, cmap='Oranges')
+        ax[0].contour(x_mesh, y_mesh, fit_flux, 4, colors='k')
+        cb0 = plt.colorbar(im0, ax=ax[0], fraction=0.047)
+        cb0.ax.locator_params(nbins=5)
+        cb0.set_label('Flux')
 
-    del fit_flux
-    if elliptical:
-        fit_flux = moffat_elliptical(_x, _y, *params)
-    else:
-        fit_flux = moffat_circular(_x, _y, *params)
+        del fit_flux
+        if elliptical:
+            fit_flux = moffat_elliptical(_x, _y, *params)
+        else:
+            fit_flux = moffat_circular(_x, _y, *params)
 
-    ax[1].set(xlabel='Xfibre [arcsec]', ylabel='Yfibre [arcsec]', title='Fitted Data')
-    im1 = ax[1].scatter(_x.ravel(), _y.ravel(), c=fit_flux, vmin=min_v, vmax=max_v, cmap='Oranges')
-    cb1 = plt.colorbar(im1, ax=ax[1], fraction=0.047)
-    cb1.ax.locator_params(nbins=5)
-    cb1.set_label('Flux')
+        ax[1].set(xlabel='Xfibre [arcsec]', ylabel='Yfibre [arcsec]', title='Fitted Data')
+        im1 = ax[1].scatter(_x.ravel(), _y.ravel(), c=fit_flux, vmin=min_v, vmax=max_v, cmap='Oranges')
+        cb1 = plt.colorbar(im1, ax=ax[1], fraction=0.047)
+        cb1.ax.locator_params(nbins=5)
+        cb1.set_label('Flux')
 
-    max_res = np.max((flux_image - fit_flux) / flux_image)
+        max_res = np.max((flux_image - fit_flux) / flux_image)
 
-    ax[2].set(xlabel='Xfibre [arcsec]', ylabel='Yfibre [arcsec]', title='Residual')
-    im2 = ax[2].scatter(_x.ravel(), _y.ravel(), c=(flux_image - fit_flux) / flux_image, cmap='RdYlBu_r', vmin=-0.3, vmax=0.3)
-    cb2 = plt.colorbar(im2, ax=ax[2], fraction=0.047)
-    cb2.ax.locator_params(nbins=5)
-    cb2.set_label('(Data - Fit_Data)/Data')
-    plt.subplots_adjust(left=0.1,
-                        bottom=0.1,
-                        right=0.9,
-                        top=0.9,
-                        wspace=0.8,
-                        hspace=0.4)
+        ax[2].set(xlabel='Xfibre [arcsec]', ylabel='Yfibre [arcsec]', title='Residual')
+        im2 = ax[2].scatter(_x.ravel(), _y.ravel(), c=(flux_image - fit_flux) / flux_image, cmap='RdYlBu_r', vmin=-0.3, vmax=0.3)
+        cb2 = plt.colorbar(im2, ax=ax[2], fraction=0.047)
+        cb2.ax.locator_params(nbins=5)
+        cb2.set_label('(Data - Fit_Data)/Data')
+        plt.subplots_adjust(left=0.1,
+                            bottom=0.1,
+                            right=0.9,
+                            top=0.9,
+                            wspace=0.8,
+                            hspace=0.4)
 
-    plt.tight_layout()
-    plt.savefig(f"RSS_Moffat_elliptical_{elliptical}_integrated_{file_name}.png", dpi=300)
-    plt.close()
+        plt.tight_layout()
+        plt.savefig(f"RSS_Moffat_elliptical_{elliptical}_integrated_{file_name}.png", dpi=300)
+        plt.close()
 
     return df
 
@@ -1145,59 +1153,61 @@ def fit_integrated_moffat_func_and_get_parameters_for_primary(path_list, flux_im
 
 
     # Plotting......
-    fig, ax = plt.subplots(1, 3, figsize=(9, 3), constrained_layout = True)
+    debug_plots = False
+    if debug_plots:
+        fig, ax = plt.subplots(1, 3, figsize=(9, 3), constrained_layout = True)
 
-    max_v = np.max(flux_image)
-    min_v = np.min(flux_image)
+        max_v = np.max(flux_image)
+        min_v = np.min(flux_image)
 
-    ax[0].set(xlabel='Xfibre [arcsec]', ylabel='Yfibre [arcsec]', title=f"Data {params[3]}")
-    im0 = ax[0].scatter(xref, yref, c=flux_image, vmin=min_v, vmax=max_v, cmap='Oranges')
-    ax[0].contour(x_mesh, y_mesh, fit_flux, 4, colors='k')
-    cb0 = plt.colorbar(im0, ax=ax[0], fraction=0.047)
-    cb0.ax.locator_params(nbins=5)
-    cb0.set_label('Flux', fontsize=8)
-    cb0.ax.tick_params(labelsize=8)
-    ax[0].tick_params(axis = 'both', labelsize = 8)
-    ax[0].xaxis.get_label().set_fontsize(8)
-    ax[0].yaxis.get_label().set_fontsize(8)
+        ax[0].set(xlabel='Xfibre [arcsec]', ylabel='Yfibre [arcsec]', title=f"Data {params[3]}")
+        im0 = ax[0].scatter(xref, yref, c=flux_image, vmin=min_v, vmax=max_v, cmap='Oranges')
+        ax[0].contour(x_mesh, y_mesh, fit_flux, 4, colors='k')
+        cb0 = plt.colorbar(im0, ax=ax[0], fraction=0.047)
+        cb0.ax.locator_params(nbins=5)
+        cb0.set_label('Flux', fontsize=8)
+        cb0.ax.tick_params(labelsize=8)
+        ax[0].tick_params(axis = 'both', labelsize = 8)
+        ax[0].xaxis.get_label().set_fontsize(8)
+        ax[0].yaxis.get_label().set_fontsize(8)
 
-    del fit_flux
-    if elliptical:
-        fit_flux = moffat_elliptical(xref, yref, *params)
-    else:
-        fit_flux = moffat_circular(xref, yref, *params)
+        del fit_flux
+        if elliptical:
+            fit_flux = moffat_elliptical(xref, yref, *params)
+        else:
+            fit_flux = moffat_circular(xref, yref, *params)
 
-    ax[1].set(xlabel='Xfibre [arcsec]', ylabel='Yfibre [arcsec]', title='Fitted Data')
-    im1 = ax[1].scatter(xref.ravel(), yref.ravel(), c=fit_flux, vmin=min_v, vmax=max_v, cmap='Oranges')
-    cb1 = plt.colorbar(im1, ax=ax[1], fraction=0.047)
-    cb1.ax.locator_params(nbins=5)
-    cb1.set_label('Flux', fontsize=8)
-    cb1.ax.tick_params(labelsize=8)
-    ax[1].tick_params(axis='both', labelsize=8)
-    ax[1].xaxis.get_label().set_fontsize(8)
-    ax[1].yaxis.get_label().set_fontsize(8)
-    max_res = np.max((flux_image - fit_flux) / flux_image)
+        ax[1].set(xlabel='Xfibre [arcsec]', ylabel='Yfibre [arcsec]', title='Fitted Data')
+        im1 = ax[1].scatter(xref.ravel(), yref.ravel(), c=fit_flux, vmin=min_v, vmax=max_v, cmap='Oranges')
+        cb1 = plt.colorbar(im1, ax=ax[1], fraction=0.047)
+        cb1.ax.locator_params(nbins=5)
+        cb1.set_label('Flux', fontsize=8)
+        cb1.ax.tick_params(labelsize=8)
+        ax[1].tick_params(axis='both', labelsize=8)
+        ax[1].xaxis.get_label().set_fontsize(8)
+        ax[1].yaxis.get_label().set_fontsize(8)
+        max_res = np.max((flux_image - fit_flux) / flux_image)
 
-    ax[2].set(xlabel='Xfibre [arcsec]', ylabel='Yfibre [arcsec]', title='Residual')
-    im2 = ax[2].scatter(xref.ravel(), yref.ravel(), c=(flux_image - fit_flux) / flux_image, cmap='RdYlBu_r', vmin=-0.3, vmax=0.3)
-    cb2 = plt.colorbar(im2, ax=ax[2], fraction=0.047)
-    cb2.ax.locator_params(nbins=5)
-    cb2.set_label('(Data - Fit_Data)/Data', fontsize=8)
-    cb2.ax.tick_params(labelsize=8)
-    ax[2].tick_params(axis='both', labelsize=8)
-    ax[2].xaxis.get_label().set_fontsize(8)
-    ax[2].yaxis.get_label().set_fontsize(8)
+        ax[2].set(xlabel='Xfibre [arcsec]', ylabel='Yfibre [arcsec]', title='Residual')
+        im2 = ax[2].scatter(xref.ravel(), yref.ravel(), c=(flux_image - fit_flux) / flux_image, cmap='RdYlBu_r', vmin=-0.3, vmax=0.3)
+        cb2 = plt.colorbar(im2, ax=ax[2], fraction=0.047)
+        cb2.ax.locator_params(nbins=5)
+        cb2.set_label('(Data - Fit_Data)/Data', fontsize=8)
+        cb2.ax.tick_params(labelsize=8)
+        ax[2].tick_params(axis='both', labelsize=8)
+        ax[2].xaxis.get_label().set_fontsize(8)
+        ax[2].yaxis.get_label().set_fontsize(8)
 
-    plt.subplots_adjust(left=0.1,
-                        bottom=0.1,
-                        right=0.9,
-                        top=0.9,
-                        wspace=0.8,
-                        hspace=0.4)
+        plt.subplots_adjust(left=0.1,
+                            bottom=0.1,
+                            right=0.9,
+                            top=0.9,
+                            wspace=0.8,
+                            hspace=0.4)
 
-    # plt.tight_layout()
-    plt.savefig(f"Primary_Moffat_elliptical_integrated_{file_name}_{np.round(wave)}.png", dpi=300)
-    plt.close()
+        # plt.tight_layout()
+        plt.savefig(f"Primary_Moffat_elliptical_integrated_{file_name}_{np.round(wave)}.png", dpi=300)
+        plt.close()
 
     return df
 
