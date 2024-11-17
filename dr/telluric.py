@@ -314,7 +314,7 @@ def extract_secondary_standard(path_list,model_name='ref_centre_alpha_dist_circ_
         save_extracted_flux(path, observed_flux, observed_background,
                             sigma_flux, sigma_background,
                             star_match, psf_parameters, model_name,
-                            good_psf, hdu_name=hdu_name)
+                            good_psf, hdu_name=hdu_name, snr=der_snr(observed_flux))
     return
 
 def identify_secondary_standard(path, use_probe=None):

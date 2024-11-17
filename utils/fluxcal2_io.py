@@ -42,7 +42,7 @@ def header_translate_inverse(header_name):
 def save_extracted_flux(path, observed_flux, observed_background,
                         sigma_flux, sigma_background,
                         star_match, psf_parameters, model_name,
-                        good_psf, hdu_name='FLUX_CALIBRATION'):
+                        good_psf, hdu_name='FLUX_CALIBRATION', snr=None):
     """Add the extracted flux to the specified FITS file."""
     # Turn the data into a single array
     data = np.vstack((observed_flux, observed_background, 
@@ -74,6 +74,9 @@ def save_extracted_flux(path, observed_flux, observed_background,
         fwhm = alpha * 2.0 * np.sqrt(2.0**(1.0/beta) - 1)
         header_item_list.append(
             ('FWHM', fwhm, 'PSF FWHM (arcsec) at reference wavelength'))
+    if snr is not None:
+        header_item_list.append(
+            ('SNR', snr, 'Derived SNR from secondary standard star flux'))
     for key, value, comment in header_item_list:
         try:
             new_hdu.header[key] = (value, comment)

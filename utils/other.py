@@ -641,6 +641,63 @@ def clip_spectrum(flux, noise, wavelength, limit_noise=0.35, limit_flux=10.0,
                 (noise < (limit_noise_abs * median_noise)))
     return good
 
+def der_snr(flux):
+    """Estimate the derived signal-to-noise ratio from the flux
+
+    Author: MLPG ( Converting the IDL routine found at https://www.stecf.org/software/ASTROsoft/DER_SNR/der_snr.pro )
+
+    *NOTES:
+       The DER_SNR algorithm is an unbiased estimator describing the spectrum as a whole as long as
+       * the noise is uncorrelated in wavelength bins spaced two pixels apart
+       * the noise is Normal distributed
+       * for large wavelength regions, the signal over the scale of 5 or more pixels can
+         be approximated by a straight line
+
+       For most spectra, these conditions are met.
+
+    *PROCEDURE:
+       This function computes the signal to noise ratio DER_SNR following the
+       definition set forth by the Spectral Container Working Group of ST-ECF,
+       MAST and CADC.
+
+       signal = median(flux)
+       noise  = 1.482602 / sqrt(6) median(abs(2 flux_i - flux_i-2 - flux_i+2))
+   	snr           = signal / noise
+       values with padded zeros are skipped
+    *REFERENCES:
+        * ST-ECF Newsletter, Issue #42:
+         www.spacetelescope.org/about/further_information/newsletters/html/newsletter_42.html
+       * Software:
+         www.stecf.org/software/ASTROsoft/DER_SNR/
+    """
+    select = np.isfinite(flux) & (flux > 0.0)
+    selectflux = flux[select]
+    n = np.size(selectflux) - 1
+
+    if n > 4:
+        signal = medianvalue(selectflux)
+        noise  = 0.6052697 * medianvalue( np.abs(2.0 * selectflux[2:n-2] - selectflux[0:n-4] - selectflux[4:n]) )
+        return signal / noise
+    else:
+        return 0
+
+def medianvalue(vals):
+    """
+    Part of the DER_SNR IDL routine set
+
+    Like the IDL median but for pair numbers of values in the array
+    the average value of the closest values is returned. In the median
+    function of IDL, the higher of the two values is returned.
+    """
+    vals_sorted = vals[np.argsort(vals)]
+    n = np.size(vals)
+
+    if (n % 2) == 0:
+        max_val = np.nanmax( np.hstack((0.0, vals_sorted[int(n / 2) - 1])) )
+        return 0.5 * ( max_val + vals_sorted[int(n / 2)] )
+    else:
+        return vals_sorted[int((n - 1) / 2)]
+
 def file_to_date(inname):
     """conversion between filename (e.g. 23mayxxxxx) to date (0523) """
     month_name_to_number = {
