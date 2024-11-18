@@ -195,11 +195,11 @@ def get_cvd_parameters(path_list, probenum, check_against_cvd_model=False, moffa
 
     def record_bad_data():
         fname = open(f"{dest_path}/debug_primary_standards.txt", "a")  # safer than w mode
-        fname.write(f"{path_list}\n")
+        fname.write(f"{path_list}   (moffat faliure)\n")
         # Close opened file
         fname.close()
 
-        raise ValueError(prRed(f"---> NO star in the frame!!! (*** debug_cvd ***)"))
+        raise ValueError(prRed(f"---> Moffat-fitting Faliure!!! (*** debug_cvd ***)"))
 
 
     def optical_model_function(meanX, meanY, _ifu=ifu, _check_against_cvd_model=False, _moffat_params=None, _psf_parameters_array=None, _wavelength=None):
@@ -323,7 +323,7 @@ def get_cvd_parameters(path_list, probenum, check_against_cvd_model=False, moffa
             ax2.xaxis.get_label().set_fontsize(6); ax2.yaxis.get_label().set_fontsize(6)
             ax2.tick_params(axis='both', labelsize=6)
 
-            xCen_mic, yCen_mic = [], []
+            xCen_mic, yCen_mic, wave_revised, bad_data_count = [], [], [], 0
             for i in range(len(_moffat_params['wavelength'])):
                 # Converts from arcseconds to microns (xref, yref) are switched since the moffat fitting is done without switching them
                 tmpx, tmpy = coord_convert( _moffat_params['y0'].iloc[i],
@@ -331,7 +331,8 @@ def get_cvd_parameters(path_list, probenum, check_against_cvd_model=False, moffa
                                             xfibre, yfibre,  # Already switched, see L@263
                                             ifu.x_rotated, ifu.y_rotated,
                                             ifu.hexabundle_name, path_to_save=dest_path)
-                if tmpx is None: record_bad_data()
+                # if tmpx is None: record_bad_data()
+                if tmpx is None: bad_data_count += 1; continue
 
                 ax1.plot(ifu.x_rotated, ifu.y_rotated, 'kx', ms=8)
                 ax1.plot(tmpx, tmpy, 'o', ms=8, color=cmap(icmap[i]),
@@ -343,7 +344,11 @@ def get_cvd_parameters(path_list, probenum, check_against_cvd_model=False, moffa
 
                 xCen_mic.append(tmpx)
                 yCen_mic.append(tmpy)
+                wave_revised.append(_moffat_params['wavelength'].iloc[i])
                 del tmpx, tmpy
+
+            # If the fitting has failed for more than half of the wavelength slices considered in the moffat_params, then record the bad frame
+            if bad_data_count >= len(_moffat_params['wavelength']): record_bad_data()
 
             ax1.legend(loc='best', prop={'size': 6}); ax2.legend(loc='best', prop={'size': 6})
             fig.tight_layout()
@@ -352,9 +357,9 @@ def get_cvd_parameters(path_list, probenum, check_against_cvd_model=False, moffa
             py.close()
 
 
-            xCen_mic, yCen_mic = np.array(xCen_mic).squeeze(), np.array(yCen_mic).squeeze()
+            xCen_mic, yCen_mic, wave_revised = np.array(xCen_mic).squeeze(), np.array(yCen_mic).squeeze(), np.array(wave_revised).squeeze()
             xref, yref = xCen_mic[48], yCen_mic[48]
-            for i in range(len(_moffat_params['wavelength'])):
+            for i in range(len(wave_revised)):
                 ax.plot(meanX + (xCen_mic[i] - xref) * 1000, meanY + (yCen_mic[i] - yref) * 1000,
                         'o', color=cmap(icmap[i]), markersize=4)
 
@@ -484,7 +489,7 @@ def get_cvd_parameters(path_list, probenum, check_against_cvd_model=False, moffa
 
 
             icmap = np.linspace(0, 1, len(_moffat_params['wavelength']))
-            diffX_pcent, diffY_pcent, diff_offset = [], [], []
+            diffX_pcent, diffY_pcent, diff_offset, bad_data_count = [], [], [], 0
             for i in range(len(_moffat_params['wavelength'])):
                 moffat_wave = _moffat_params['wavelength'].iloc[i]
 
@@ -505,7 +510,7 @@ def get_cvd_parameters(path_list, probenum, check_against_cvd_model=False, moffa
                                            ifu.x_rotated, ifu.y_rotated,
                                            ifu.hexabundle_name, path_to_save=dest_path)
                 prCyan(f"xCen_mic, yCen_mic = {xCen_mic}, {yCen_mic}")
-                if xCen_mic is None: record_bad_data()
+                if xCen_mic is None: bad_data_count += 1; continue
 
                 # STEP2: Add the CvD model vector magnitudes to the position in microns
                 xCen_mic = xCen_mic + np.polyval(zx, np.array(moffat_wave)) * ARCSEC_IN_MICRONS
@@ -521,7 +526,7 @@ def get_cvd_parameters(path_list, probenum, check_against_cvd_model=False, moffa
                                            ifu.x_rotated, ifu.y_rotated,
                                            xfibre, yfibre,  # Already switched, see L@373
                                            ifu.hexabundle_name, path_to_save=dest_path)
-                if tmpx is None: record_bad_data()
+                # if tmpx is None: record_bad_data()
 
                 ax2.plot(xfibre, yfibre, 'kx', ms=8)
                 ax2.plot(tmpx, tmpy, 'o', ms=10, color=cmap(icmap[i], alpha=.1),
@@ -574,6 +579,9 @@ def get_cvd_parameters(path_list, probenum, check_against_cvd_model=False, moffa
                           label=f"y-diff" if i == 5 else None)
                 ax5.plot(moffat_wave, diff_offset,
                          's', color='k', markerfacecolor=cmap(icmap[i]), markersize=8, alpha=.5, lw=2)
+
+            # If the fitting has failed for more than half of the wavelength slices considered in the moffat_params, then record the bad frame
+            if bad_data_count >= len(_moffat_params['wavelength']): record_bad_data()
 
             ax1.legend(loc='best', prop={'size': 6}); ax2.legend(loc='best', prop={'size': 6})
             fig.tight_layout()
