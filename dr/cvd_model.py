@@ -193,6 +193,14 @@ def get_cvd_parameters(path_list, probenum, check_against_cvd_model=False, moffa
     if not os.path.isdir(dest_path):
         os.makedirs(dest_path)
 
+    def record_bad_data():
+        fname = open(f"{dest_path}/debug_primary_standards.txt", "a")  # safer than w mode
+        fname.write(f"{path_list}\n")
+        # Close opened file
+        fname.close()
+
+        raise ValueError(prRed(f"---> NO star in the frame!!! (*** debug_cvd ***)"))
+
 
     def optical_model_function(meanX, meanY, _ifu=ifu, _check_against_cvd_model=False, _moffat_params=None, _psf_parameters_array=None, _wavelength=None):
         """
@@ -323,6 +331,7 @@ def get_cvd_parameters(path_list, probenum, check_against_cvd_model=False, moffa
                                             xfibre, yfibre,  # Already switched, see L@263
                                             ifu.x_rotated, ifu.y_rotated,
                                             ifu.hexabundle_name, path_to_save=dest_path)
+                if tmpx is None: record_bad_data()
 
                 ax1.plot(ifu.x_rotated, ifu.y_rotated, 'kx', ms=8)
                 ax1.plot(tmpx, tmpy, 'o', ms=8, color=cmap(icmap[i]),
@@ -496,6 +505,7 @@ def get_cvd_parameters(path_list, probenum, check_against_cvd_model=False, moffa
                                            ifu.x_rotated, ifu.y_rotated,
                                            ifu.hexabundle_name, path_to_save=dest_path)
                 prCyan(f"xCen_mic, yCen_mic = {xCen_mic}, {yCen_mic}")
+                if xCen_mic is None: record_bad_data()
 
                 # STEP2: Add the CvD model vector magnitudes to the position in microns
                 xCen_mic = xCen_mic + np.polyval(zx, np.array(moffat_wave)) * ARCSEC_IN_MICRONS
@@ -511,6 +521,7 @@ def get_cvd_parameters(path_list, probenum, check_against_cvd_model=False, moffa
                                            ifu.x_rotated, ifu.y_rotated,
                                            xfibre, yfibre,  # Already switched, see L@373
                                            ifu.hexabundle_name, path_to_save=dest_path)
+                if tmpx is None: record_bad_data()
 
                 ax2.plot(xfibre, yfibre, 'kx', ms=8)
                 ax2.plot(tmpx, tmpy, 'o', ms=10, color=cmap(icmap[i], alpha=.1),
@@ -1340,9 +1351,11 @@ def coord_convert (xref, yref, xfib_from, yfib_from, xfib_to, yfib_to, probename
                 py.savefig(figfile, bbox_inches='tight', pad_inches=0.3, dpi=150)
             py.close()
 
+            return None, None
+
             # sys.exit(f"The indcies of the enclosed points of probe {probename} (i.e. points on either side of the centroid position) not found!")
-        assert 'encl_idx1' in locals(), \
-            f"The indcies of the enclosed points of probe {probename} (i.e. points on either side of the centroid position) not found!"
+        # assert 'encl_idx1' in locals(), \
+        #     f"The indcies of the enclosed points of probe {probename} (i.e. points on either side of the centroid position) not found!"
 
         # Now we need to find the ratio: the distance from centroid position to the closest point / distance between the
         # two enclosing the closest points
