@@ -3038,6 +3038,7 @@ def calculate_mean_transfer(path_in, path_root):
 
     print('Calculate median TF for ccd'+ccd)
     print('  Given path for the current TF: ',path_in)
+    print('  Given path root: ',path_root)
     print('  Calculate mean TF using the TF from the following runs:')
 
     #find the run lists to consider for the tansfer function within a 1 year window
@@ -3049,7 +3050,6 @@ def calculate_mean_transfer(path_in, path_root):
             run_list.append(x)
     run_list = sorted(run_list, key=lambda x: int(x[:6]))
 
-
     #find TRANSFERcombined.fits from each run
     transfer_name = 'TRANSFERcombined.fits'
     transfer_found = []; valid_run_list=[]; use_median = False
@@ -3059,6 +3059,7 @@ def calculate_mean_transfer(path_in, path_root):
             if(('/ccd_'+str(ccd) in root) and ('main' not in root) and ('outdir' not in root)):
                 for file in files:
                     if file == transfer_name:
+                        print('   Checking '+root+file)
                         with pf.open(os.path.join(root, file)) as hdul:
                             if 'MEDTF' not in hdul[0].header:
                                 transfer_found.append(os.path.join(root, file))
@@ -3072,6 +3073,8 @@ def calculate_mean_transfer(path_in, path_root):
         continue
     run_list = valid_run_list
     print('    ',run_list)
+    if len(run_list) < 1:
+        print('\n Make sure run derive_transfer_function() for all observing runs first to derive median TF')
    
     #read transfer function from each run
     n_file = len(transfer_found); n_pixel = pf.getval(transfer_found[0], 'NAXIS1')

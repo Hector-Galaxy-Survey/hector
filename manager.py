@@ -2558,8 +2558,8 @@ class Manager:
             path_list = [fits.reduced_path for fits in fits_list]
             path_out = os.path.join(os.path.dirname(path_list[0]),
                                     'TRANSFERcombined.fits')
-            if overwrite:
-                os.remove(path_out)
+            #if overwrite:
+            #    os.remove(path_out)
             if overwrite or not os.path.exists(path_out):
                 print('\nCombining files to create', path_out)
                 fluxcal2.combine_transfer_functions(path_list, path_out)
@@ -2574,7 +2574,7 @@ class Manager:
             #If current TF/median TF > 1.1, we use median TF instead of the current TF from the run
             #TODO: this is an additional task having issues on extracting standard star flux.
             #this step might be skipped, if we can confirm our flux extraction is accurate enough.
-            if (self.speed == 'slow'):
+            if (self.speed == 'slow') and use_median_TF:
                 median_tf, use_median = fluxcal2.calculate_mean_transfer(path_out,self.abs_root)
             else:
                 use_median = False
@@ -2583,9 +2583,10 @@ class Manager:
             if('230809_230814' in path_out): #thput is ridicularsly high in ccd4 blue end in Aug 2023 run
                 use_median = False
 
-            if (use_median or use_median_TF):
+            if (use_median and use_median_TF):
                 with pf.open(path_out, mode='update') as hdul:
                     #replace the TF with median TF
+                    print('Use median TF for ',path_out)
                     hdul[0].data = median_tf
                     hdul[0].header.set('MEDTF',True,'This is replaced by the median TF')
                     hdul.pop() #remove existing THROUGHPUT extension
