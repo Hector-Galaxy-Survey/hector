@@ -164,10 +164,10 @@ else:
 #                  '1500V': 'sami1500V.idx',
 #                  '1000R': 'sami1000R.idx',
 
-IDX_FILES_SLOW = {'580V': 'hector1_v3.idx',
-                  '1000R': 'hector2_v3.idx',
-                  'SPECTOR1':'hector3_v3.idx',
-                  'SPECTOR2':'hector4_v3.idx'}
+IDX_FILES_SLOW = {'580V': 'hector1_v4.idx',
+                  '1000R': 'hector2_v4.idx',
+                  'SPECTOR1':'hector3_v4.idx',
+                  'SPECTOR2':'hector4_v4.idx'}
 
 IDX_FILES_FAST = {'580V': 'hector1_v1.idx',
                   '1000R': 'hector2_v1.idx',
