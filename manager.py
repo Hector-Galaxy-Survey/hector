@@ -2574,10 +2574,11 @@ class Manager:
             #If current TF/median TF > 1.1, we use median TF instead of the current TF from the run
             #TODO: this is an additional task having issues on extracting standard star flux.
             #this step might be skipped, if we can confirm our flux extraction is accurate enough.
-            if (self.speed == 'slow') and use_median_TF:
+            if use_median_TF:
                 median_tf, use_median = fluxcal2.calculate_mean_transfer(path_out,self.abs_root)
             else:
                 use_median = False
+                
             if(('ccd_4' in path_out) and ('220914_220925' in path_out)): #the median TF is dominated by Aug 2023 where thput is ridicularsly high in ccd4 blue end
                 use_median = False
             if('230809_230814' in path_out): #thput is ridicularsly high in ccd4 blue end in Aug 2023 run
