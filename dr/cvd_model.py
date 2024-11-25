@@ -348,7 +348,7 @@ def get_cvd_parameters(path_list, probenum, check_against_cvd_model=False, moffa
                 del tmpx, tmpy
 
             # If the fitting has failed for more than half of the wavelength slices considered in the moffat_params, then record the bad frame
-            if bad_data_count >= len(_moffat_params['wavelength']): record_bad_data()
+            if bad_data_count >= len(_moffat_params['wavelength'])/2.0: record_bad_data()
 
             ax1.legend(loc='best', prop={'size': 6}); ax2.legend(loc='best', prop={'size': 6})
             fig.tight_layout()
@@ -581,7 +581,7 @@ def get_cvd_parameters(path_list, probenum, check_against_cvd_model=False, moffa
                          's', color='k', markerfacecolor=cmap(icmap[i]), markersize=8, alpha=.5, lw=2)
 
             # If the fitting has failed for more than half of the wavelength slices considered in the moffat_params, then record the bad frame
-            if bad_data_count >= len(_moffat_params['wavelength']): record_bad_data()
+            if bad_data_count >= len(_moffat_params['wavelength'])/2.0: record_bad_data()
 
             ax1.legend(loc='best', prop={'size': 6}); ax2.legend(loc='best', prop={'size': 6})
             fig.tight_layout()

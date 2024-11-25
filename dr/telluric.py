@@ -24,7 +24,7 @@ from .cvd_model import get_cvd_parameters
 
 from .. import utils
 from ..utils.ifu import IFU
-from ..utils.other import clip_spectrum
+from ..utils.other import clip_spectrum, der_snr
 
 import astropy.io.fits as pf
 import numpy as np
