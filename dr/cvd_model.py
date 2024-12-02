@@ -160,23 +160,29 @@ def assert_sky_coord_sign_check(ifu):
     mean_xfibreMic = np.nanmean( ifu.x_microns ) # In microns
     mean_yfibreMic = np.nanmean( ifu.y_microns ) # In microns
 
-    if (ifu.mean_y <= plateCentre_microns[1]) & (ifu.mean_x <= plateCentre_microns[0]): # Top-left of the plate
-        assert (mean_xfibrePos > 0) & (mean_yfibrePos < 0) & \
-               (mean_xfibreMic > 0) & (mean_yfibreMic > 0), prRed(f"--> arcsecond/micron coordinate mismatch: Hexabundle {ifu.hexabundle_name[10]} is on the top-left of the plate. \n"
-                                                                  f"Corrdinates should be (+ve, -ve) in arcsec, (+ve, +ve) in microns")
-    elif (ifu.mean_y <= plateCentre_microns[1]) & (ifu.mean_x > plateCentre_microns[0]):  # Top-right of the plate
-        assert (mean_xfibrePos < 0) & (mean_yfibrePos < 0) & \
-               (mean_xfibreMic < 0) & (mean_yfibreMic > 0), prRed(f"--> arcsecond/micron coordinate mismatch: Hexabundle {ifu.hexabundle_name[10]} is on the top-right of the plate. \n"
-                                                                  f"Corrdinates should be (-ve, -ve) in arcsec, (-ve, +ve) in microns")
-    elif (ifu.mean_y > plateCentre_microns[1]) & (ifu.mean_x <= plateCentre_microns[0]):  # bottom-left of the plate
-        assert (mean_xfibrePos > 0) & (mean_yfibrePos > 0) & \
-               (mean_xfibreMic > 0) & (mean_yfibreMic < 0), prRed(f"--> arcsecond/micron coordinate mismatch: Hexabundle {ifu.hexabundle_name[10]} is on the bottom-left of the plate. \n"
-                                                                  f"Corrdinates should be (+ve, +ve) in arcsec, (+ve, -ve) in microns")
-    elif (ifu.mean_y > plateCentre_microns[1]) & (ifu.mean_x > plateCentre_microns[0]):  # bottom-right of the plate
-        assert (mean_xfibrePos < 0) & (mean_yfibrePos > 0) & \
-               (mean_xfibreMic < 0) & (mean_yfibreMic < 0), prRed(f"--> arcsecond/micron coordinate mismatch: Hexabundle {ifu.hexabundle_name[10]} is on the bottom-right of the plate. \n"
-                                                                  f"Corrdinates should be (-ve, +ve) in arcsec, (-ve, -ve) in microns")
-    return
+    prRed(f"IFU meanX, meanY = {ifu.mean_x}, {ifu.mean_y} \n plateX, plateY = {plateCentre_microns[0]}, {plateCentre_microns[1]}")
+
+    try:
+        if (ifu.mean_y <= plateCentre_microns[1]) & (ifu.mean_x <= plateCentre_microns[0]): # Top-left of the plate
+            assert (mean_xfibrePos > 0) & (mean_yfibrePos < 0) & \
+                   (mean_xfibreMic > 0) & (mean_yfibreMic > 0), prRed(f"--> arcsecond/micron coordinate mismatch: Hexabundle {ifu.hexabundle_name[10]} is on the top-left of the plate. \n"
+                                                                      f"Corrdinates should be (+ve, -ve) in arcsec, (+ve, +ve) in microns")
+        elif (ifu.mean_y <= plateCentre_microns[1]) & (ifu.mean_x > plateCentre_microns[0]):  # Top-right of the plate
+            assert (mean_xfibrePos < 0) & (mean_yfibrePos < 0) & \
+                   (mean_xfibreMic < 0) & (mean_yfibreMic > 0), prRed(f"--> arcsecond/micron coordinate mismatch: Hexabundle {ifu.hexabundle_name[10]} is on the top-right of the plate. \n"
+                                                                      f"Corrdinates should be (-ve, -ve) in arcsec, (-ve, +ve) in microns")
+        elif (ifu.mean_y > plateCentre_microns[1]) & (ifu.mean_x <= plateCentre_microns[0]):  # bottom-left of the plate
+            assert (mean_xfibrePos > 0) & (mean_yfibrePos > 0) & \
+                   (mean_xfibreMic > 0) & (mean_yfibreMic < 0), prRed(f"--> arcsecond/micron coordinate mismatch: Hexabundle {ifu.hexabundle_name[10]} is on the bottom-left of the plate. \n"
+                                                                      f"Corrdinates should be (+ve, +ve) in arcsec, (+ve, -ve) in microns")
+        elif (ifu.mean_y > plateCentre_microns[1]) & (ifu.mean_x > plateCentre_microns[0]):  # bottom-right of the plate
+            assert (mean_xfibrePos < 0) & (mean_yfibrePos > 0) & \
+                   (mean_xfibreMic < 0) & (mean_yfibreMic < 0), prRed(f"--> arcsecond/micron coordinate mismatch: Hexabundle {ifu.hexabundle_name[10]} is on the bottom-right of the plate. \n"
+                                                                      f"Corrdinates should be (-ve, +ve) in arcsec, (-ve, -ve) in microns")
+    except AssertionError:
+        return False
+
+    return True
 
 
 def get_cvd_parameters(path_list, probenum, check_against_cvd_model=False, moffat_params=None, psf_parameters_array=None, wavelength=None):
@@ -213,8 +219,12 @@ def get_cvd_parameters(path_list, probenum, check_against_cvd_model=False, moffa
         #                         8.05548970e-29, -3.70053127e-26,  1.33691248e-21, -1.86385976e-17,
         #                         6.14872408e-14, -5.95792839e-11,  8.96376563e-07, -3.20239518e-03 ]
 
-        # Check for coordinate mis-matches to ensure the cvd correction is applied correctly
-        assert_sky_coord_sign_check(_ifu)
+        # Check for coordinate mis-matches to ensure the cvd correction is applied correctly. And record if it is INCORRECT
+        if not assert_sky_coord_sign_check(_ifu):
+            fname = open(f"{dest_path}/check_coord_faliures.txt", "a")  # safer than w mode
+            fname.write(f"Hexabundle: {_ifu.hexabundle_name[5]}, PLATEID: {_ifu.primary_header['PLATEID']}, Path: {path_list}\n")
+            # Close opened file
+            fname.close()
 
         plateCentre_microns = [robotCentreX_in_mic, robotCentreY_in_mic]
         # Coefficients relative to lambda=6000Ang.
