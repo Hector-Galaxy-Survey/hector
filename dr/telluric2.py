@@ -249,21 +249,24 @@ def TelluricCorrect(fcal_fname, star_flux, star_flux_err, wave, mf_bin_dir = '',
     # Need to delete all the intermediary files (i.e all the Molecfit specific input and output).
     # They are all found in the directory called obs_name. The sci.fits file is saved above this 
     # directory, so the whole directory can be removed  
-    
-    transfer_table = fits.open(f"{mf_output_dir}{obs_name_root}_tac.fits")
-    transfer_data = transfer_table[1].data
-    model_flux = transfer_data['cflux']
-    transfer_function = 1./transfer_data['mtrans']
-    sigma_transfer = star_flux_err/star_flux*transfer_function  #np.zeros(len(transfer_function))
-    sigma_transfer[transfer_function == 1.] = 0.0
-    sigma_transfer[np.isfinite(sigma_transfer) == False] = 0.0
 
-    # Possibly not multi-processing safe. NEED TO CHECK THIS - ignore_errors=True is a possibly dangerous fudge
+    if not os.path.exists(f"{mf_output_dir}{obs_name_root}_tac.fits"): #molecfit failure
+        return None
+    else:
+        transfer_table = fits.open(f"{mf_output_dir}{obs_name_root}_tac.fits")
+        transfer_data = transfer_table[1].data
+        model_flux = transfer_data['cflux']
+        transfer_function = 1./transfer_data['mtrans']
+        sigma_transfer = star_flux_err/star_flux*transfer_function  #np.zeros(len(transfer_function))
+        sigma_transfer[transfer_function == 1.] = 0.0
+        sigma_transfer[np.isfinite(sigma_transfer) == False] = 0.0
+
+        # Possibly not multi-processing safe. NEED TO CHECK THIS - ignore_errors=True is a possibly dangerous fudge
     
-    if delete_files:
-        shutil.rmtree(obs_name,ignore_errors=True)
+        if delete_files:
+            shutil.rmtree(obs_name,ignore_errors=True)
     
-    return transfer_function, sigma_transfer, model_flux
+        return transfer_function, sigma_transfer, model_flux
 
 
 

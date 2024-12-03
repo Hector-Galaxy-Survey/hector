@@ -164,10 +164,10 @@ else:
 #                  '1500V': 'sami1500V.idx',
 #                  '1000R': 'sami1000R.idx',
 
-IDX_FILES_SLOW = {'580V': 'hector1_v3.idx',
-                  '1000R': 'hector2_v3.idx',
-                  'SPECTOR1':'hector3_v3.idx',
-                  'SPECTOR2':'hector4_v3.idx'}
+IDX_FILES_SLOW = {'580V': 'hector1_v4.idx',
+                  '1000R': 'hector2_v4.idx',
+                  'SPECTOR1':'hector3_v4.idx',
+                  'SPECTOR2':'hector4_v4.idx'}
 
 IDX_FILES_FAST = {'580V': 'hector1_v1.idx',
                   '1000R': 'hector2_v1.idx',
@@ -2558,8 +2558,8 @@ class Manager:
             path_list = [fits.reduced_path for fits in fits_list]
             path_out = os.path.join(os.path.dirname(path_list[0]),
                                     'TRANSFERcombined.fits')
-            if overwrite:
-                os.remove(path_out)
+            #if overwrite:
+            #    os.remove(path_out)
             if overwrite or not os.path.exists(path_out):
                 print('\nCombining files to create', path_out)
                 fluxcal2.combine_transfer_functions(path_list, path_out)
@@ -2574,18 +2574,20 @@ class Manager:
             #If current TF/median TF > 1.1, we use median TF instead of the current TF from the run
             #TODO: this is an additional task having issues on extracting standard star flux.
             #this step might be skipped, if we can confirm our flux extraction is accurate enough.
-            if (self.speed == 'slow'):
+            if use_median_TF:
                 median_tf, use_median = fluxcal2.calculate_mean_transfer(path_out,self.abs_root)
             else:
                 use_median = False
+                
             if(('ccd_4' in path_out) and ('220914_220925' in path_out)): #the median TF is dominated by Aug 2023 where thput is ridicularsly high in ccd4 blue end
                 use_median = False
             if('230809_230814' in path_out): #thput is ridicularsly high in ccd4 blue end in Aug 2023 run
                 use_median = False
 
-            if (use_median or use_median_TF):
+            if (use_median and use_median_TF):
                 with pf.open(path_out, mode='update') as hdul:
                     #replace the TF with median TF
+                    print('Use median TF for ',path_out)
                     hdul[0].data = median_tf
                     hdul[0].header.set('MEDTF',True,'This is replaced by the median TF')
                     hdul.pop() #remove existing THROUGHPUT extension

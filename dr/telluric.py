@@ -110,11 +110,21 @@ def derive_transfer_function(frame_list, PS_spec_file=None, use_PS=False,
         
         # create transfer function for secondary standard
         if molecfit_available & (speed == 'slow'):
-            SS_transfer_function, SS_sigma_transfer, corrected_flux = molecfit_telluric(frame_list[1],SS_flux_data,
+            result = molecfit_telluric(frame_list[1],SS_flux_data,
                 SS_sigma_flux,SS_wave_axis,mf_bin_dir=molecfit_dir)
+            if result is not None:
+                SS_transfer_function, SS_sigma_transfer, corrected_flux = result
+                #SS_transfer_function, SS_sigma_transfer, corrected_flux = molecfit_telluric(frame_list[1],SS_flux_data,
+                #    SS_sigma_flux,SS_wave_axis,mf_bin_dir=molecfit_dir)
+                molecfit_applied = True; molecfit_comment= 'MOLECFIT applied'
+            else:
+                SS_transfer_function, SS_sigma_transfer, corrected_flux = create_transfer_function(SS_flux_data,
+                    SS_sigma_flux,SS_wave_axis,naxis1)
+                molecfit_applied = False; molecfit_comment= 'MOLECFIT failed. Rough telluric corr applied'
         else:
             SS_transfer_function, SS_sigma_transfer, corrected_flux = create_transfer_function(SS_flux_data,
                 SS_sigma_flux,SS_wave_axis,naxis1)
+            molecfit_applied = False; molecfit_comment= 'MOLECFIT not applied'
     
         transfer_function = SS_transfer_function
         sigma_transfer = SS_sigma_transfer
@@ -136,6 +146,8 @@ def derive_transfer_function(frame_list, PS_spec_file=None, use_PS=False,
         data = np.vstack((hdu.data[:4, :], data_new))
         # Save the data back into the FITS file
         hdu.data = data
+        hdu.header['MOLEFIT'] = (molecfit_applied,molecfit_comment)
+        hdulist.flush()
         hdulist.close()
     return
 
