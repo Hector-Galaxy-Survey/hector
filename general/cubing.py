@@ -542,7 +542,11 @@ def dithered_cube_from_rss_wrapper(files, name, size_of_grid=50,
                                    offsets='file', covar_mode='optimal',
                                    do_dar_correct=False, do_cvd_correct=True, clip_throughput=True,
                                    update_tol=0.02, plateCentre=None):
-    """Cubes and saves a single object."""
+    """ Cubes and saves a single object.
+            MLPG 03/12/2024: Hector rotated x/y coordinates requires a flip in x direction (axis=0) to orient correctily
+                             so that North is up, East to the left (see L@647)
+
+    """
     # MLPG: added "files" to "dithered_cube_from_rss" function call. I've set "do_dar_correct=False"
     n_files = len(files)
 
@@ -640,6 +644,11 @@ def dithered_cube_from_rss_wrapper(files, name, size_of_grid=50,
         
         list_of_hdus = []
 
+        # Hector rotated x/y coordinates requires a flip in x direction (axis=0) - MLPG
+        flux_cube       = np.flip(flux_cube, 0)
+        var_cube        = np.flip(var_cube, 0)
+        weight_cube     = np.flip(weight_cube, 0)
+        covariance_cube = np.flip(covariance_cube, 0)
         # @NOTE: PyFITS writes axes to FITS files in the reverse of the sense
         # of the axes in Numpy/Python. So a numpy array with dimensions
         # (5,10,20) will produce a FITS cube with x-dimension 20,
