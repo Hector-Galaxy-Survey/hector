@@ -144,6 +144,7 @@ def call_2dfdr_reduce(dirname, root=None, options=None, dummy=False):
             with directory_lock(dirname):
                 # add some debug printing:
                # print('2dfdr call options:')
+                command_aaorun = ' '.join(command_line)
                 print(' '.join(command_line))
                 tdfdr_stdout = subprocess_call(command_line, cwd=dirname, env=environment)
                # print(tdfdr_stdout)

@@ -193,7 +193,7 @@ def primary_standard_transfer_function(PS_spec_file):
     
     # get transfer function for primary standard
     PS_transfer_function, PS_sigma_factor, linear_fit = create_transfer_function(PS_spec_median,PS_spec_noise,PS_wave_axis,naxis1)
-    
+    create_transfer_function
     return PS_transfer_function, PS_sigma_factor, linear_fit, PS_wave_axis
 
 def create_transfer_function(standard_spectrum,sigma,wave_axis,naxis1):
@@ -217,6 +217,10 @@ def create_transfer_function(standard_spectrum,sigma,wave_axis,naxis1):
     standard_spectrum_cut = standard_spectrum_cut[good]
     sigma_cut = sigma_cut[good]
     wave_axis_cut = wave_axis_cut[good]
+
+    all_nan = np.all(np.isnan(wave_axis_cut))
+    if all_nan:
+        print('This file is all NaN. Remove red, fcal, sci and re reduce from reduce_object()')
                 
     # Fit linear slope to wavelength cut data
     p = np.polyfit(wave_axis_cut, standard_spectrum_cut, 1)
