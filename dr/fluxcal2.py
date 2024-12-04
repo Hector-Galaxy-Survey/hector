@@ -796,7 +796,7 @@ def derive_transfer_function(path_list, max_sep_arcsec=60.0,
 
     if debug:
         # check_against_cvd_model=True # If debugging is True, turn-on the cvd debugging as well
-        debug_cvd(path_list, star_match, model_name, psf_parameters, cvd_parameters=cvd_parameters)
+        debug_cvd(path_list, star_match, model_name, psf_parameters, cvd_parameters=cvd_parameters, primary=True)
 
     for path,path2 in zip(path_list_tel,path_list):
         ifu = IFU(path, star_match['probenum'], flag_name=False)
@@ -938,7 +938,7 @@ def match_standard_star(filename, max_sep_arcsec=60.0,
     # code deal with it.
     return
 
-def debug_cvd(path_list, star_match, model_name, psf_parameters, cvd_parameters=None):
+def debug_cvd(path_list, star_match, model_name, psf_parameters, cvd_parameters=None, primary=True):
     for i_file, path in enumerate(path_list):
         ifu = IFU(path, star_match['probenum'], flag_name=False)
         remove_atmosphere(ifu)
@@ -994,8 +994,10 @@ def debug_cvd(path_list, star_match, model_name, psf_parameters, cvd_parameters=
         if not os.path.isdir(dest_path):
             os.makedirs(dest_path)
 
-        fname = open(f"{dest_path}/debug_primary_standards.txt", "a")  # safer than w mode
-        fname.write(f"{path_list}\n")
+        if primary: standard_type = 'primary'
+        else: standard_type = 'secondary'
+        fname = open(f"{dest_path}/debug_{standard_type}_standards.txt", "a")  # safer than w mode
+        fname.write(f"{path_list}  ({standard_type} standard not extracted)\n")
         # Close opened file
         fname.close()
 
@@ -1004,7 +1006,8 @@ def debug_cvd(path_list, star_match, model_name, psf_parameters, cvd_parameters=
     if not para_all.empty:
         _,_,_ = get_cvd_parameters(path_list[0], star_match['probenum'],
                                    check_against_cvd_model=True, moffat_params=para_all,
-                                   psf_parameters_array=psf_param_arry, wavelength=wavelength)
+                                   psf_parameters_array=psf_param_arry, wavelength=wavelength,
+                                   primary=primary)
 
     return
 

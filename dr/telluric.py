@@ -19,6 +19,7 @@ import warnings
 from .fluxcal2 import read_chunked_data, set_fixed_parameters, fit_model_flux
 from .fluxcal2 import insert_fixed_parameters, check_psf_parameters
 from .fluxcal2 import extract_total_flux, save_extracted_flux, trim_chunked_data
+from .fluxcal2 import debug_cvd
 from .telluric2 import TelluricCorrect as molecfit_telluric
 from .cvd_model import get_cvd_parameters
 
@@ -35,7 +36,13 @@ import re
 
 # required for test plotting:
 import pylab as py
+import matplotlib.pyplot as plt
 
+try:
+    from bottleneck import nansum, nanmean
+except ImportError:
+    from numpy import nansum, nanmean
+    warnings.warn("Not Using bottleneck: Speed will be improved if you install bottleneck")
 
 # KEY:      SS = Secondary Standard, PS = Primary Standard
 
@@ -43,7 +50,7 @@ def derive_transfer_function(frame_list, PS_spec_file=None, use_PS=False,
                              scale_PS_by_airmass=False, 
                              model_name='ref_centre_alpha_dist_circ_hdr_cvd',
                              n_trim=0, use_probe=None, hdu_name='FLUX_CALIBRATION',
-                             molecfit_available = False, molecfit_dir ='',speed=''):
+                             molecfit_available = False, molecfit_dir ='',speed='',debug=True):
     """
     Finds the telluric correction factor to multiply object data by. The factor 
     as a function of wavelength is saved into the red frame under the extension 
@@ -63,7 +70,7 @@ def derive_transfer_function(frame_list, PS_spec_file=None, use_PS=False,
     # actually need to extract it, but we do still need to create the
     # extension and copy atmospheric parameters across
 
-    extract_secondary_standard(frame_list, model_name=model_name, n_trim=n_trim, use_probe=use_probe, hdu_name=hdu_name)
+    extract_secondary_standard(frame_list, model_name=model_name, n_trim=n_trim, use_probe=use_probe, hdu_name=hdu_name, debug=debug)
 
     # if user defines, use a scaled primary standard telluric correction
     if use_PS:
@@ -261,7 +268,7 @@ def create_transfer_function(standard_spectrum,sigma,wave_axis,naxis1):
     
     return transfer_function, sigma_factor, fit
 
-def extract_secondary_standard(path_list,model_name='ref_centre_alpha_dist_circ_hdr_cvd',n_trim=0,use_probe=None,hdu_name='FLUX_CALIBRATION'):
+def extract_secondary_standard(path_list,model_name='ref_centre_alpha_dist_circ_hdr_cvd',n_trim=0,use_probe=None,hdu_name='FLUX_CALIBRATION',debug=False):
     """Identify and extract the secondary standard in a reduced RSS file."""
     # MLPG: new model_name added
     # "identify_secondary_standard" function updated
@@ -292,35 +299,53 @@ def extract_secondary_standard(path_list,model_name='ref_centre_alpha_dist_circ_
 		secondary=True)
     psf_parameters = insert_fixed_parameters(psf_parameters, fixed_parameters)
     good_psf = check_psf_parameters(psf_parameters, chunked_data)
+
+    if debug:
+        # check_against_cvd_model=True # If debugging is True, turn-on the cvd debugging as well
+        debug_cvd(path_list, star_match, model_name, psf_parameters, cvd_parameters=cvd_parameters, primary=False)
+
     for path in path_list:
         ifu = IFU(path, star_match['probenum'], flag_name=False)
         observed_flux, observed_background, sigma_flux, sigma_background = \
             extract_total_flux(ifu, psf_parameters, model_name, clip=5.0, cvd_parameters=cvd_parameters)
 
         #######################
-        # MLPG: Diagnostic plot showing extracted flux versus summed flux, saved in
-        # the data reduction location
-        # TODO: make this plot only if the user invokes debug command
-        # fig = py.figure()
-        # ax1 = fig.add_subplot(211)
-        # ax2 = fig.add_subplot(212)
-        #
-        # data, wavelength = ifu.data, ifu.lambda_range
-        # good_fibre = (ifu.fib_type == 'P')
-        # data = data[good_fibre, :]
-        # data = np.nansum(data, axis=0)
-        #
-        # ax1.plot(wavelength, data, 'b', alpha=0.5, label='Summed')
-        # ax1.plot(ifu.lambda_range, observed_flux, 'r', alpha=0.5, label='Extracted')
-        #
-        # f = interp1d(wavelength, data)
-        # ax2.plot(ifu.lambda_range, observed_flux / f(ifu.lambda_range), 'g', alpha=0.5, label='Extracted/Summed')
-        # ax2.plot(ifu.lambda_range, np.repeat(1.0, len(ifu.lambda_range)), 'k--', alpha=0.5, label=' ')
-        # ax2.set_ylim(-0.8, 2.5)
-        #
-        # fig.legend(loc='best')
-        # ax1.set(xlabel='Wavelength (Ang.)', ylabel='flux', title=os.path.basename(path))
-        # py.savefig(f"{os.path.basename(path)}_derive_STF.png", bbox_inches='tight')
+        # MLPG: Diagnostic plot showing extracted flux versus summed flux, saved in the data reduction location
+        if debug:
+            fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(8, 14), sharex=True, gridspec_kw={'hspace': 0})
+            ax1.set(xlabel='Wavelength [Å]', ylabel='Counts',
+                    title=os.path.basename(path) + ' Hexabundle ' + star_match['probename'] + ' ' + star_match['name'])
+            data, wavelength = ifu.data, ifu.lambda_range
+            good_fibre = (ifu.fib_type == 'P')
+            data = data[good_fibre, :]; data = nansum(data, axis=0)
+            ax1.plot(wavelength, data, 'grey', alpha=0.7, label='Summed over bundle')
+            ax1.plot(ifu.lambda_range, observed_flux, 'blue', alpha=0.5, label='Extracted after CvD')
+            ax1.annotate('(a)', xy=(0, 1), xycoords='axes fraction',
+                         xytext=(+0.5, -0.5), textcoords='offset fontsize',
+                         fontsize=16, verticalalignment='top', fontfamily='serif',
+                         bbox=dict(facecolor='white', edgecolor='none', pad=3.0))
+            ax1.legend(loc='upper left', bbox_to_anchor=(0.01, 0.9))
+            ax1.tick_params(axis='x', direction='in', which='both')
+
+            ax2.set(xlabel='Wavelength [Å]', ylabel='Extracted/Summed')
+            f = interp1d(wavelength, data)
+            ax2.plot(ifu.lambda_range, median_filter(observed_flux / f(ifu.lambda_range), 15), 'grey', alpha=0.9, label='Extracted/Summed')
+            ax2.plot(ifu.lambda_range, np.repeat(1.0, len(ifu.lambda_range)), 'k--', alpha=0.5, label='')
+            ax2.set_ylim(0.1, 2.4)
+            ax2.annotate('(b)', xy=(0, 1), xycoords='axes fraction',
+                         xytext=(+0.5, -0.5), textcoords='offset fontsize',
+                         fontsize=16, verticalalignment='top', fontfamily='serif',
+                         bbox=dict(facecolor='white', edgecolor='none', pad=3.0))
+            ax2.tick_params(axis='x', direction='in', which='both')
+
+            dest_path = path[0:path.find('/reduced')] + '/extract_secondary'
+            if not os.path.isdir(dest_path):
+                os.makedirs(dest_path)
+
+            fig.savefig(dest_path + "/" + star_match['name'] + "_" + os.path.basename(path)[:10] + "_extracted_secondary.pdf", bbox_inches='tight')
+            plt.close(fig)  # Close the figure object
+            print('   Saving debugging plot ' + dest_path + "/" + star_match['name'] + "_" + os.path.basename(path)[
+                                                                                            :10] + "_extracted_secondary.pdf \n")
         #######################
 
         save_extracted_flux(path, observed_flux, observed_background,
@@ -341,10 +366,10 @@ def identify_secondary_standard(path, use_probe=None):
     probenum = fibre_table.field('PROBENUM')[mask][0]
     name = fibre_table.field('NAME')[mask][0]
 
-    star_match = {'name': name, 'probenum': probenum}
+    star_match = {'name': name, 'probename': name, 'probenum': probenum}
     return star_match
 
-    # MLPG: commenting out the original code for the function "identify_secondary_standard"
+    # MLPG: commenting out the original code (from SAMI days) for the function "identify_secondary_standard"
     # fibre_table = pf.getdata(path, 'FIBRES_IFU')
     # if use_probe is None:
     #     unique_names = np.unique(fibre_table['NAME'])

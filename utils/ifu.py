@@ -285,7 +285,6 @@ class IFU:
             return x_pos, y_pos, fiber_number, mean_magX, mean_magY, rotation_angle_magnet, x_rotated_pos, y_rotated_pos
 
         # MLPG: Take information from the Tile/Robot files
-        # TODO MLPG: automatically download the robot/tile files if they are not within the specified file path
         dash_locs = [m.start() for m in re.finditer('/', self.primary_header['CFG_FILE'])]
         #tile_file = self.primary_header['CFG_FILE'][dash_locs[-1] + 1::]
         tile_file = self.primary_header['PLATEID']
@@ -302,23 +301,11 @@ class IFU:
         self.x, self.y, self.fnum, self.mean_x, self.mean_y, self.rotation_angle, self.x_rotated, self.y_rotated = \
             get_fibbundle_Xc_Yc_and_robotPos(self.hexabundle_name[0], self.n, object_robottab)
 
-        self.x_microns = -1.0 * ( (self.mean_x + self.x_rotated) - PLATECENTRE_IN_ROBOT_COOR[1] ) # Robot y- is x-coordinate, and multipllied by -1.0 to put it in sky-coor
+        self.x_microns = -1.0 * ( (self.mean_x + self.x_rotated) - PLATECENTRE_IN_ROBOT_COOR[1] ) # Robot y- is x-coordinate (this is equivalent to y_micron definition)
         self.y_microns = PLATECENTRE_IN_ROBOT_COOR[0] - (self.mean_y + self.y_rotated)  # Robot x- is y-coordinate
         # self.x_microns = (self.mean_x + self.x) - PLATECENTRE_IN_ROBOT_COOR[1]  # Robot y- is x-coordinate
         # self.y_microns = (self.mean_y + self.y) - PLATECENTRE_IN_ROBOT_COOR[0]  # Robot x- is y-coordinate
 
-        # print("--->", self.hexabundle_name[0])
-        # print(self.mean_x, self.mean_y)
-        # print("robot coor= ", PLATECENTRE_IN_ROBOT_COOR[1], PLATECENTRE_IN_ROBOT_COOR[0])
-        # # print("self.x_microns=", self.x_microns)
-        # # print("self.x=", self.x)
-        # # print("self.x_rotated=", self.x_rotated)
-        # print("My_mean_microns= ", np.mean(self.x_microns), np.mean(self.y_microns))
-        # print("FIBPOS_mean_microns= ", np.mean(table_new.field('FIBPOS_X')), np.mean(table_new.field('FIBPOS_Y')))
-        # print("FIBPOS_mean_notrot= ", np.mean(self.x_microns), np.mean(self.y_microns))
-        # print(np.mean(table_new.field('XPOS')), np.mean(table_new.field('YPOS')))
-        # print("mean RA, DEC= ", self.ra, self.dec)
-        # print((table_new.field('XPOS')), (table_new.field('YPOS')))
 
         # print("")
         # del mask, table_new
