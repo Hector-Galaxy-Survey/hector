@@ -2010,7 +2010,11 @@ def fit_sec_template_ppxf(path,doplot=False,verbose=False,tempfile=hector_path+'
         if np.isfinite(flux_t[i]) & (lam_t[i] < lam2):
             iend = i
             break
-    print(path, nlam)
+    try:
+        istart
+    except NameError:
+        print('All NaN found. Remove red, fcal, sci and re-reduce from reduce_object():')
+        print(path)
 
     # check for other nans:
     nnan = 0

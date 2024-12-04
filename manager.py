@@ -555,7 +555,7 @@ class Manager:
     Once all calibration files have been reduced, object frames can be
     reduced in a similar manner:
 
-    >>> mngr.reduce_object()
+    >>> mngr.reduce_object())
 
     This function takes the same keywords as described above for fibre
     flats etc.
@@ -1082,7 +1082,7 @@ class Manager:
 
             #modify header or fibre table following modified_frames.txt
             if os.path.exists(str(self.abs_root)+'/modified_frames_'+str(self.abs_root)[-13:]+'.txt'): 
-                moditem = np.loadtxt(str(self.abs_root)+'/modified_frames_'+str(self.abs_root)[-13:]+'.txt',delimiter=',',dtype={'names': ('frame','type','key','fibre','value','comment','reason'), 'formats': ('U10','U10','U20','U20','U20','U100','U100')})
+                moditem = np.loadtxt(str(self.abs_root)+'/modified_frames_'+str(self.abs_root)[-13:]+'.txt',delimiter=',',dtype={'names': ('frame','type','key','fibre','value','comment','reason'), 'formats': ('U10','U10','U20','U20','U100','U100','U100')})
                 if moditem.ndim == 0:
                     moditem = np.array([moditem], dtype=moditem.dtype)
                 if (fits.filename[0:10] in moditem['frame']): #the name is on it
@@ -1090,6 +1090,8 @@ class Manager:
                     for ind in sub[0]:
                         mtype = moditem['type'][ind]; mkey = moditem['key'][ind]; mvalue = moditem['value'][ind]; mcomment = moditem['comment'][ind];mfibre= moditem['fibre'][ind]
                         if(mtype.strip() == 'header'): #change primary header
+                            if(mkey == 'PLATE_ID'):
+                                mkey = 'PLATEID'
                             fits.add_header_item(mkey,mvalue.strip(),mcomment)
                             print('  Change the header keyword '+mkey+' to '+mvalue)
                         if(mtype.strip() == 'ftable'): #change fibre table
@@ -1747,7 +1749,11 @@ class Manager:
             # placed in the list fits_twilight_list and then can be
             # processed as normal MFFFF files.
             ccdlist = ['ccd_1','ccd_3']
-            for fits in self.files(ndf_class='MFSKY', do_not_use=False, ccd=ccdlist, **kwargs_copy):
+            if this_only:
+                filelist = self.files(ndf_class='MFSKY', do_not_use=False, ccd=ccdlist, filename=[this_only], **kwargs_copy)
+            else:
+                filelist = self.files(ndf_class='MFSKY', do_not_use=False, ccd=ccdlist, **kwargs_copy)
+            for fits in filelist:
                 fits_twilight_list.append(self.copy_as(fits, 'MFFFF', overwrite=overwrite))
             # use the iterable file reducer to loop over the copied twilight list and
             # reduce them as MFFFF files to make TLMs.
@@ -1757,7 +1763,11 @@ class Manager:
         if self.use_twilight_tlm_all:
             print('Processing twilight frames for *all* ccds to get TLM')
             fits_twilight_list = []
-            for fits in self.files(ndf_class='MFSKY',do_not_use=False,**kwargs_copy): #marie
+            if this_only:
+                filelist = self.files(ndf_class='MFSKY', do_not_use=False, filename=[this_only], **kwargs_copy)
+            else:
+                filelist = self.files(ndf_class='MFSKY', do_not_use=False, **kwargs_copy)
+            for fits in filelist: #marie
                 fits_twilight_list.append(self.copy_as(fits, 'MFFFF', overwrite=overwrite))
             self.reduce_file_iterable(fits_twilight_list, overwrite=overwrite, tlm=True, leave_reduced=leave_reduced,
                                       check='TLM')
@@ -2266,16 +2276,25 @@ class Manager:
         reduced_files = self.reduce_file_iterable(
             file_iterable_long, overwrite=overwrite, check='OBJ')
 
-        # Sree: double check if there was any failure mostly due to memory shortage..
+        # Sree: double check if there was any failure mostly due to force quit, memory shortage etc.
         print( '\n Checking reduction failures')
         rereduce=[]
         if check_failure:
-            file_iterable_check = self.files(
+            file_iterable_check = list(self.files(
                 ndf_class='MFOBJECT', do_not_use=False,
-                min_exposure=self.min_exposure_for_throughput, reduced=True, **kwargs)
+                min_exposure=self.min_exposure_for_throughput, reduced=True, **kwargs))
         else:
             file_iterable_check = reduced_files
         rereduce = [fits for fits in file_iterable_check if fits.reduce_options() is None]
+        for fits in file_iterable_check:
+            hdu = pf.open(fits.reduced_path)
+            all_nan = np.all(np.isnan(hdu[0].data))
+            if all_nan:
+                rereduce.append(fits)
+                if os.path.exists(fits.fluxcal_path):
+                    os.remove(fits.fluxcal_path)
+                if os.path.exists(fits.telluric_path):
+                    os.remove(fits.telluric_path)
         if len(rereduce) >= 1:
             print( '\n Re-reduction for failures')
             self.reduce_file_iterable(
@@ -2377,6 +2396,8 @@ class Manager:
                     fits = reduction_tuple[0]
                     if fin:
                         update_checks(check, [fits], False)
+                        # Add time stamp to the header
+                        fits.add_header_item('REDTIME','{:%Y-%b-%d %H:%M:%S}'.format(datetime.datetime.now()), ' Time this file is reduced')
 
                 input_list = [item for i, item in enumerate(input_list)
                           if not finished[i]]
@@ -2645,10 +2666,10 @@ class Manager:
              for fits_2 in self.files(ndf_class='MFOBJECT', do_not_use=False,
                                       spectrophotometric=False, ccd=nccd,
                                       name=name, **kwargs):
-                 if os.path.exists(fits_2.telluric_path) and not overwrite:
+                 fits_1 = self.other_arm(fits_2)
+                 if os.path.exists(fits_2.telluric_path) and os.path.exists(fits_1.telluric_path) and not overwrite:
                      # Already been done; skip to the next file
                      continue
-                 fits_1 = self.other_arm(fits_2)
 
                  if (fits_2.epoch < 2013.0) or ((fits_2.epoch > 2021.0) and (fits_2.epoch < 2022.75)):
                      # SAMI v1 had awful throughput at blue end of blue, need to
@@ -3003,7 +3024,7 @@ class Manager:
              star_only=False, drop_factor=None, tag='', update_tol=0.02,
              size_of_grid=80, output_pix_size_arcsec=0.5, clip_throughput=False,
              min_transmission=0.333, max_seeing=4.0, min_frames=6,
-             fieldid=None, objid=None, **kwargs):
+             tileid=None, objid=None, **kwargs):
         """Make datacubes from the given RSS files."""
         groups = self.group_files_by(
             ['field_id', 'ccd'], ndf_class='MFOBJECT', do_not_use=False,
@@ -3029,6 +3050,8 @@ class Manager:
                         failed_fields.append(field_id)
                 elif star_only:
                     objects = [pf.getval(path_list[0], 'STDNAME', 'FLUX_CALIBRATION')]
+                elif (tileid is not None) and (field_id != tileid+'_F0'):
+                    objects = ''
                 else:
                     objects = get_object_names(path_list[0])
                     if field_id in failed_fields:
@@ -4162,13 +4185,13 @@ class Manager:
             best_fflat = 'fflat'
 
         # only do skyscrunch for longer exposures (both CCDs):
-        if fits.exposure >= self.min_exposure_for_sky_wave:
-                # Adjust wavelength calibration of red frames using sky lines
-            options.extend(['-SKYSCRUNCH', '1'])
-        else:
+        if fits.exposure < self.min_exposure_for_sky_wave:
             options.extend(['-SKYSCRUNCH', '0'])
+        #else:
+            # Adjust wavelength calibration of red frames using sky lines; This will be specified by idx files.
+        #    options.extend(['-SKYSCRUNCH', '1'])
 
-        # only do improved 5577 PCA for longer exposures (CCD_1):
+        # only do improved 5577 PCA for longer exposures (CCD_1 & CCD_3):
         if ((fits.ccd == 'ccd_1') or (fits.ccd == 'ccd_3')) and (fits.exposure <= self.min_exposure_for_5577pca):
             options.extend(['-PCASKY','0'])
                 
@@ -6447,6 +6470,7 @@ def fit_arc_model_wrapper(input_list):
     """fit 2d arc modelling"""
     arc_reduced, arcfit_name, tlm_name, Nx, Ny, global_fit = input_list
     param_filename = Path(arc_reduced).parent / (Path(arc_reduced).stem + "_2dfit_params.nc")
+    param_filename = None 
         # To overwrite the arc completely, uncomment this line
     print(' Performing a 2D wavelength fit of the arc frames.',arc_reduced)
     arc_model_2d(arc_reduced, arcfit_name, tlm_name, N_x=Nx, N_y=Ny, save_params=param_filename,global_fit=global_fit, verbose=False)
@@ -6650,6 +6674,7 @@ def read_hector_tiles(abs_root=None):
         os.makedirs(robot_path)
 
     # grab new Hector tiles from the raw folder
+    update = False
     if abs_root is not None:
         tile_dir = abs_root + f'/raw/'
         for root, dirs, files in os.walk(tile_dir):
@@ -6659,24 +6684,25 @@ def read_hector_tiles(abs_root=None):
                     dest_tile_path = os.path.join(tile_path, file)
                     dest_robot_path = os.path.join(robot_path, file.replace('Tile', 'Robot'))
                     if not os.path.exists(dest_tile_path):
+                        update = True
                         shutil.copy(src_path, dest_tile_path)
                         shutil.copy(src_path.replace('Tile', 'Robot'), dest_robot_path)
 
 
     # Check if the files holding the tile list and secondary standards exists. If not, create.
 #    if not os.path.exists(f"{base_path}/{file_names[0]}"):
-    with open(f"{base_path}/{file_names[0]}", 'w') as filelist:
-        filelist.write("Hector_Tile_List \n")  # create hector-tile-list file
+    if update:
+        with open(f"{base_path}/{file_names[0]}", 'w') as filelist:
+            filelist.write("Hector_Tile_List \n")  # create hector-tile-list file
 
-    with open(f"{base_path}/{file_names[1]}", 'w') as filelist:
-        dw = csv.DictWriter(filelist, delimiter=',', fieldnames=headerList)
-        dw.writeheader() # create hector standard star list file. This contains all information in the tile file
-        del dw
-
-    with open(f"{base_path}/{file_names[2]}", 'w') as filelist:
-        dw = csv.DictWriter(filelist, delimiter=',', fieldnames=headerNew)
-        dw.writeheader() # create hector standard star list file. This contains a subset of information in the tile file
-        del dw
+        with open(f"{base_path}/{file_names[1]}", 'w') as filelist:
+            dw = csv.DictWriter(filelist, delimiter=',', fieldnames=headerList)
+            dw.writeheader() # create hector standard star list file. This contains all information in the tile file
+            del dw
+        with open(f"{base_path}/{file_names[2]}", 'w') as filelist:
+            dw = csv.DictWriter(filelist, delimiter=',', fieldnames=headerNew)
+            dw.writeheader() # create hector standard star list file. This contains a subset of information in the tile file
+            del dw
 
     prRed(f"Please ensure that the relevant tile file is present in {tile_path} \n "
           f"If not, add the file run hector.manager.read_hector_tiles(), again")

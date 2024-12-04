@@ -222,6 +222,7 @@ def arc_model_2d(reduced_arc_filename, arcdata_filename, tlm_filename, plot_resi
 
         arc_hdu["WAVELA"].data = new_wavela
         arc_hdu["SHIFTS"].data = new_shifts_array
+        arc_hdu[0].header['ARCFIT'] = True
 
         #if verbose:
         arc_hdu.writeto(output_filename, overwrite=True)
