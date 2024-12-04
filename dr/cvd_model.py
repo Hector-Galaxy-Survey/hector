@@ -185,7 +185,7 @@ def assert_sky_coord_sign_check(ifu):
     return True
 
 
-def get_cvd_parameters(path_list, probenum, check_against_cvd_model=False, moffat_params=None, psf_parameters_array=None, wavelength=None):
+def get_cvd_parameters(path_list, probenum, check_against_cvd_model=False, moffat_params=None, psf_parameters_array=None, wavelength=None, primary=None):
     """
     The main function to get the CvD corrections
     """
@@ -200,12 +200,14 @@ def get_cvd_parameters(path_list, probenum, check_against_cvd_model=False, moffa
         os.makedirs(dest_path)
 
     def record_bad_data():
-        fname = open(f"{dest_path}/debug_primary_standards.txt", "a")  # safer than w mode
-        fname.write(f"{path_list}   (moffat faliure)\n")
+        if primary: standard_type = 'primary'
+        else: standard_type = 'secondary'
+        fname = open(f"{dest_path}/debug_{standard_type}_standards.txt", "a")  # safer than w mode
+        fname.write(f"{path_list}   (optical model faliure)\n")
         # Close opened file
         fname.close()
 
-        raise ValueError(prRed(f"---> Moffat-fitting Faliure!!! (*** debug_cvd ***)"))
+        if primary: raise ValueError(prRed(f"---> Moffat-fitting Faliure!!! (*** debug_cvd ***)"))
 
 
     def optical_model_function(meanX, meanY, _ifu=ifu, _check_against_cvd_model=False, _moffat_params=None, _psf_parameters_array=None, _wavelength=None):
@@ -666,15 +668,18 @@ def get_cvd_parameters(path_list, probenum, check_against_cvd_model=False, moffa
             ax.set_ylabel("yPos [arcsec]")
             ax.set_xlabel("xPos [arcsec]")
 
+            if np.round(len(diff_pcent[mask_75]) / diff_len, 2) < 0.6:
+                figfile = f"{dest_path}/plateview_hexa{_ifu.hexabundle_name[5]}_inarcsec_{_ifu.primary_header['PLATEID']}_compareWth_CvDmodel_LARGE_MISMATCH.png"
+            else:
+                figfile = f"{dest_path}/plateview_hexa{_ifu.hexabundle_name[5]}_inarcsec_{_ifu.primary_header['PLATEID']}_compareWth_CvDmodel.png"
             py.tight_layout()
-            figfile = f"{dest_path}/plateview_hexa{_ifu.hexabundle_name[5]}_inarcsec_{_ifu.primary_header['PLATEID']}_compareWth_CvDmodel.png"  # save_files / f"plateViewAll_{config['file_prefix']}_Run{obs_number:04}"
             py.savefig(figfile, bbox_inches='tight', pad_inches=0.3, dpi=150)
             py.close()
             # py.show()
 
             # If <60% of directly calculated x/y CvD correction don't fall within 75% direct-to-model based / model-based, then raise exception
             if np.round(len(diff_pcent[mask_75]) / diff_len, 2) < 0.6:
-                raise ValueError(prRed(f"Large mismatch with the CvD model"))
+                if primary: raise ValueError(prRed(f"Large mismatch with the CvD model"))
             # sys.exit('---> Exit in the debugging routine @L530')
 
 
