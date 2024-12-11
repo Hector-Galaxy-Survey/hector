@@ -117,7 +117,7 @@ else:
         # print("Note to MLPG: Remove my path to molecfit")
         MOLECFIT_AVAILABLE = True
 
-from .utils.other import find_fibre_table, gzip, ungzip
+from .utils.other import find_fibre_table, gzip, ungzip, der_snr
 from .utils import IFU
 from .utils.term_colours import *
 from .general.cubing import dithered_cubes_from_rss_list, get_object_names
@@ -3329,7 +3329,10 @@ class Manager:
         """Scale datacubes based on the stellar g magnitudes."""
 
         ccdlist = ['ccd_1','ccd_3']
-        #ccdlist = ['ccd_1'] 
+        secondary_standards_path = hector_path + 'standards/secondary/Hector_tiles/Hector_secondary_standards_shortened.csv'
+        secondary_standards = pd.read_csv(secondary_standards_path)
+        starname_set = set(secondary_standards['ID'])
+
         for nccd in ccdlist:
              groups = self.group_files_by(
                  'field_id', ccd=nccd, ndf_class='MFOBJECT', do_not_use=False,
@@ -3341,7 +3344,10 @@ class Manager:
                  objects = np.unique(objects).tolist()
                  objects = [obj.strip() for obj in objects]  # Stripping whitespace from object names
                  for objname in objects:
-                     if telluric.is_star(objname):
+                     print('Checking ',objname)
+                     if objname in starname_set: #Sree: this is new for Hector 
+                    #if telluric.is_star(objname): #Sree: this is for SAMI
+                         print('   '+objname+' is a star.')   
                          break
                  else:
                      print('No star found in field, skipping: ' + field_id)
@@ -3365,6 +3371,11 @@ class Manager:
                          pass
                      else:
                          continue
+                     # Skip scaling for SS failures, TODO: Sree: SECCOR should be presented to the cube header first
+                     #seccor_values = [pf.getval(path, 'SECCOR') for path in star_path_pair]
+                     #if any(seccor is False for seccor in seccor_values):
+                     #    print("Skipping scaling due to issue on secondary standard star", star_path_pair)
+                     #    continue
                  object_path_pair_list = [
                      [self.cubed_path(objname, arm, fits_list, field_id,
                                       exists=True, min_exposure=min_exposure,
@@ -3416,7 +3427,10 @@ class Manager:
                             hdulist_red  = pf.open(path_pair[1])
                             check_ext = 'BINNED_VARIANCE_SECTORS' #Sree:now it skips when the last extension is found
                             for hdu_blue, hdu_red in zip(hdulist_blue, hdulist_red): #Sree: check both cubes
-                                if hdu_blue.name.startswith(check_ext) and hdu_blue.name.startswith(check_ext):
+                                if verbose:
+                                    print(path_pair)
+                                    print(hdu_blue.name.startswith(check_ext),hdu_red.name.startswith(check_ext))
+                                if hdu_blue.name.startswith(check_ext) and hdu_red.name.startswith(check_ext):
                                     skip = True
                                     break
                         if not skip:
@@ -3544,7 +3558,7 @@ class Manager:
         self.next_step('record_dust',print_message=True)
         return
 
-    def data_release(self, version=None, date_start='220801', date_finish=None, move=False, moveback=False):
+    def data_release(self, version=None, date_start='221001', date_finish=None, move=False, moveback=False, check_data=True):
         """
         Sree:this generates release catalogue and move the generated cubes. It also change the name of cubes in a regular format.
         First import hector and manager with one of the any runs in the reduction directory for the current version.
@@ -3555,6 +3569,7 @@ class Manager:
         if moveback=True, it moves back the cubes to the working directory.
         The catalogue can be generated only when cubes are in working directories. Therefore, should moveback the cubes to working
         directories first, to generate the catalogue again.
+        if check_data=True, it skipped cubes with extremly low S/N
         mngr.data_release(version='0_01')
         """
 
@@ -3583,9 +3598,12 @@ class Manager:
 
         if not moveback:
             tempname = os.path.join(dir_version, f'release_v{version}_temp.csv') #list all available cubes
-            all_data = []
+            skipname = os.path.join(dir_release, f'release_skip_v{version}.csv') #list all skipped cubes
+            all_data = []; skip_data = []
             if os.path.exists(tempname):
                 os.remove(tempname)
+            if os.path.exists(skipname):
+                os.remove(skipname)
             for i in range(len(runid)):
                 print(' Identifying cubes from '+os.path.join(dir_version, runid[i], "cubed"))
                 os.system(f'find {os.path.join(dir_version, runid[i], "cubed")} -name "*.fits*" > list.txt')
@@ -3634,35 +3652,51 @@ class Manager:
                             data = {
                                 'name': name,'pname': pname,'ccd': ccd,'runid': runid[i],'infile': infile, 'version': version,
                                 'ra': ra,'dec': dec,'xcen': xcen,'ycen': ycen, 'texp': texp,'ndither': ndither,
-                                'inst': inst,'probe':probe,'tile':plate,'field':label,'source':source,'type':type,
+                                'inst': inst,'probe':probe,'tile':plate,'field':label,'type':type,
                                 'fwhm':fwhm,'trans':trans}
+                            if check_data:
+                                hdu = hdulist[0].data
+                                sn = der_snr(np.nanmedian(hdu, axis=(1, 2)))
+                                print(' S/N of ',listcube[j],' is ' ,sn)
+                                if sn < 0.1: #Sree: S/N < 0.1, this is potentially a broken bundle
+                                    print('  skip ',listcube[j])
+                                    skip_data.append(data)
+                                    continue
                             all_data.append(data)
             df = pd.DataFrame(all_data)
             df.to_csv(tempname, mode='w', header=True, index=False)
 
+            if check_data and len(skip_data)>0:
+                df_skip = pd.DataFrame(skip_data)
+                df_skip.to_csv(skipname, mode='w', header=True, index=False)
+
             cols = pd.read_csv(tempname)
-            cols['merge'] = cols.apply(lambda row: ''.join(row.drop(['ccd', 'infile', 'fwhm', 'trans']).astype(str)), axis=1)
+            #cols['merge'] = cols.apply(lambda row: '_'.join(row.drop(['ccd', 'infile', 'fwhm', 'trans']).astype(str)), axis=1)
+            cols['merge'] = cols.apply(lambda row: '_'.join(row.drop(['ccd', 'infile', 'trans']).astype(str)), axis=1)
+
             letters = list(string.ascii_uppercase); letter_counter = 0; cols['identifier'] = None
 
-            for name, group in cols.groupby('name'):
-                letter_counter = 0  # each name group starts with identifier of A
-                prev_merge =  group.iloc[0]['merge'] 
+            merge_identifiers = {}  
+            for gname, group in cols.groupby('pname'):
+                letter_counter = 0
                 for index, row in group.iterrows():
-                    if row['merge'] != prev_merge:
-                        letter_counter += 1  # update identifier
-                        prev_merge = row['merge']  # update merge
-                    identifier = letters[letter_counter % len(letters)]
-        
+                    merge_value = row['merge']
+                    if merge_value not in merge_identifiers:
+                        identifier = letters[letter_counter % len(letters)]
+                        merge_identifiers[merge_value] = identifier
+                        letter_counter += 1
+                    else:
+                        identifier = merge_identifiers[merge_value]
                     cols.loc[index, 'identifier'] = identifier
+
             print(cols[['name', 'ccd', 'infile', 'identifier']])
             cols['filename'] = cols['pname'].astype(str)+'_'+cols['ccd']+'_'+cols['identifier']+'_v'+cols['version']+'.fits'
-            print(cols['infile'], cols['infile'][0])
             if('.gz' in cols['infile'][0]):
                 cols['filename'] = cols['filename']+'.gz'
             data = pd.DataFrame({
                 'name': cols['pname'], 'filename': cols['filename'], 'ccd': cols['ccd'], 'identifier': cols['identifier'], 'version': cols['version'], 'infile': cols['infile'],
                 'runid': cols['runid'], 'ra': cols['ra'], 'dec': cols['dec'], 'xcen': cols['xcen'], 'ycen': cols['ycen'], 'texp': cols['texp'], 'ndither': cols['ndither'],
-                'inst': cols['inst'],'probe': cols['probe'],'tile': cols['tile'], 'field': cols['field'], 'source': cols['source'], 'type': cols['type'],
+                'inst': cols['inst'],'probe': cols['probe'],'tile': cols['tile'], 'field': cols['field'], 'type': cols['type'],
                 'fwhm': cols['fwhm'], 'trans': cols['trans']})
 
             outname = os.path.join(dir_release, f'release_catalogue_v{version}.csv')
@@ -3682,7 +3716,7 @@ class Manager:
                         sys.exit(0)
                 #if os.path.isfile(oldpath+'.gz'):
                 #    oldpath = oldpath+'.gz'; newpath = newpath+'.gz'
-                print(f"shutil.move('{oldpath}', '{newpath}')")
+                #print(f"shutil.move('{oldpath}', '{newpath}')")
                 if move:
                     shutil.move(oldpath, newpath)
             if move:
@@ -3693,7 +3727,8 @@ class Manager:
         else:  #return the cube to the reduction directory
             cols = pd.read_csv(os.path.join(dir_release, f'release_catalogue_v{version}.csv'))
             for index, row in cols.iterrows():
-                oldpath = os.path.join(dir_version, row['runid'], "cubed", str(row['name']), row['infile'])
+                cname = str(row['infile']); cubedir = cname.split('_')[0]
+                oldpath = os.path.join(dir_version, row['runid'], "cubed", cubedir, row['infile'])
                 newpath = os.path.join(dir_release, row['filename'])
                 if (os.path.exists(oldpath)) or (os.path.exists(oldpath+'.gz')):
                     print(oldpath+' is already exist. Exit')
@@ -4816,8 +4851,8 @@ class Manager:
                    exists=False, tag=None, **kwargs):
         """Return the path to the cubed file."""
         n_file = len(self.qc_for_cubing(fits_list, **kwargs))
-        if(n_file > 28):
-            n_file = 21
+        #if(n_file > 28):
+        #    n_file = 21
         path = os.path.join(
             self.abs_root, 'cubed', name,
             name + '_' + arm + '_' + str(n_file) + '_' + field_id)

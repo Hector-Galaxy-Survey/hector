@@ -307,7 +307,7 @@ def aperture_spectra_pair(path_blue, path_red, path_to_catalogs,overwrite=True):
 
             #centres_cat_file = '/import/opus1/nscott/SAMI_Survey/gama_catalogues/cube_centres_adjusted.dat'
             #centres_cat = Table.read(centres_cat_file,format='ascii')
-            #id = np.int(hdulist[0].header['NAME'])
+            #id = int(hdulist[0].header['NAME'])
             #if id in centres_cat['CATID']:
             #    ap_adjusted_flag = 'Y'
             #else:
@@ -711,8 +711,8 @@ def second_moments(image,ind):
     
     #Return the position of the peak intensity
     n = 20
-    xmed1 = np.int(np.round(xmed,decimals=0))
-    ymed1 = np.int(np.round(ymed,decimals=0))
+    xmed1 = int(np.round(xmed,decimals=0))
+    ymed1 = int(np.round(ymed,decimals=0))
     if (xmed1 - n > 0) & (xmed1+n < s[1]) & (ymed1 - n > 0) & (ymed1+n < s[0]):
         tmp = np.max(image[ymed1-n:ymed1+n+1,xmed1-n:xmed1+n+1])
         j = np.where(image == tmp)
@@ -735,7 +735,7 @@ def find_galaxy(image,nblob=1,fraction=0.1,quiet=True):
     s = np.shape(image)
     a = median_filter(image,size=5,mode='constant')
     j = a.ravel().argsort()
-    level = a.ravel()[j[np.int(np.size(a)*(1.0 - fraction))]]
+    level = a.ravel()[j[int(np.size(a)*(1.0 - fraction))]]
     j = np.where(a > level)
     
     a = np.zeros(s)
@@ -906,7 +906,7 @@ def aperture_bin_sami(hdu, aperture_radius=1, ellipticity=0, pa=0):
     #centres_cat_file = '/import/opus1/nscott/SAMI_Survey/gama_catalogues/cube_centres_adjusted.dat'
     #if os.path.exists(centres_cat_file):
     #    centres_cat = Table.read(centres_cat_file,format='ascii')
-    #    id = np.int(hdu[0].header['NAME'])
+    #    id = int(hdu[0].header['NAME'])
 
     #    if id in centres_cat['CATID']:
     #        ww = np.where(id == centres_cat['CATID'])[0]

@@ -488,6 +488,7 @@ def read_stellar_mags_frames(frame_pair_list_list, bands=('g', 'r'),
     
 def stellar_mags_cube_pair(file_pair, sum_cubes=False, save=False):
     """Return unscaled stellar mags for a single pair of datacubes."""
+    print(file_pair)
     if sum_cubes:
         flux, noise, wavelength = (
             extract_galaxy_spectrum(file_pair))
@@ -499,6 +500,19 @@ def stellar_mags_cube_pair(file_pair, sum_cubes=False, save=False):
         old_scale = pf.getval(file_pair[0], 'RESCALE')
     except KeyError:
         old_scale = 1
+    all_nan = np.all(np.isnan(flux))
+    print(all_nan)
+    if all_nan:
+        mags = {
+            'u': 0.,
+            'g': 0.,
+            'r': 0.,
+            'i': 0.,
+            'z': 0.
+        }
+        return mags
+
+
     flux /= old_scale
     noise /= old_scale
     mags = measure_mags(flux, noise, wavelength)
@@ -518,6 +532,9 @@ def stellar_mags_cube_pair(file_pair, sum_cubes=False, save=False):
                          * psf_params[0])
                     beta = psf_params[1]
                     fwhm = alpha * 2.0 * np.sqrt(2.0**(1.0/beta) - 1.0)
+                    if np.isnan(fwhm):
+                        fwhm=0.
+                    print('alpha,beta,fwhm=',alpha, beta, fwhm)
                     hdulist[0].header['PSFALPHA'] = (
                         alpha, 'PSF parameter: alpha')
                     hdulist[0].header['PSFBETA'] = (
@@ -976,6 +993,7 @@ def measure_band(band, flux, wavelength, sdss_dir=sdss_path):
 def measure_mags(flux, noise, wavelength):
     """Do clipping and interpolation, then return g and r band mags."""
     good = clip_spectrum(flux, noise, wavelength, limit_flux=20.0)
+    print('qc.fluxcal.measure_mags: ',len(flux),len(noise),len(wavelength),len(good),np.isnan(flux),np.isnan(noise),np.isnan(wavelength),np.isnan(good))
     flux, noise, wavelength = interpolate_arms(
         flux, noise, wavelength, good)
     mags = {}
@@ -996,7 +1014,7 @@ def interpolate_arms(flux, noise, wavelength, good=None, n_pix_fit=300):
     n_pix = len(wavelength)
     if good is None:
         good = np.arange(n_pix)
-    middle = np.int(n_pix // 2)
+    middle = int(n_pix // 2)
     good_blue = good & (np.arange(n_pix) < middle)
     good_red = good & (np.arange(n_pix) >= middle)
     delta_wave_blue = wavelength[1] - wavelength[0]
@@ -1015,7 +1033,7 @@ def interpolate_arms(flux, noise, wavelength, good=None, n_pix_fit=300):
     n_pix_insert_blue = int(np.round((wavelength_middle - wavelength_start) / delta_wave_blue))
     n_pix_insert_red = int(np.round((wavelength_end - wavelength_middle) / delta_wave_red))
     n_pix_insert = n_pix_insert_red + n_pix_insert_blue
-    print('qc/fluxcal.interpolate_arms',  min(wavelength),    max(wavelength), wavelength_start,wavelength_middle,wavelength_end, n_pix_insert_blue, n_pix_insert_red, n_pix,middle, middle-1,delta_wave_blue)
+    #print('qc/fluxcal.interpolate_arms',  min(wavelength),    max(wavelength), wavelength_start,wavelength_middle,wavelength_end, n_pix_insert_blue, n_pix_insert_red, n_pix,middle, middle-1,delta_wave_blue)
     wavelength_insert = np.hstack((
         np.linspace(wavelength_start, wavelength_middle, n_pix_insert_blue,
                     endpoint=False),

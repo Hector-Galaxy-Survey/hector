@@ -188,8 +188,8 @@ def find_dither(RSSname,reference,centroid=True,inter=False,plot=False,remove_fi
             except IndexError:
                 # This probably means it's a dead hexabundle, just skip it
                 continue
-            x=np.float(-1*ifu_data.x_microns[np.where(ifu_data.n==1)]) #x coordinate of central fiber (-1x is to have coordinates back on focal plane referenceO)
-            y=np.float(ifu_data.y_microns[np.where(ifu_data.n==1)])    #y coordinate of central fiber
+            x=float(-1*ifu_data.x_microns[np.where(ifu_data.n==1)]) #x coordinate of central fiber (-1x is to have coordinates back on focal plane referenceO)
+            y=float(ifu_data.y_microns[np.where(ifu_data.n==1)])    #y coordinate of central fiber
             s= str(x)+'  '+str(y)+'\n'
             f.write(s)
             central_data.append({'name': ifu_data.name,
@@ -366,8 +366,8 @@ def find_dither(RSSname,reference,centroid=True,inter=False,plot=False,remove_fi
                      RSScol.append(RSSmatch[i])
                      ifscol.append(n)
                      cols=line.split()
-                     x=-1*np.subtract(np.float(cols[0]),xcent[index]) #the -1 is to go back to on-sky positions
-                     y=np.subtract(np.float(cols[1]),ycent[index])
+                     x=-1*np.subtract(float(cols[0]),xcent[index]) #the -1 is to go back to on-sky positions
+                     y=np.subtract(float(cols[1]),ycent[index])
                      xshcol.append(x)
                      yshcol.append(y) 
                      xshift[index] = x

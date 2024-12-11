@@ -2422,6 +2422,8 @@ def derive_secondary_tf(path_list,path_list2,path_out,tempfile=hector_path+'stan
     hdutab = pf.BinTableHDU.from_columns(cols,name='TEMPLATE_OPT')
     header = hdutab.header
     for band in bands:
+        if (np.isnan(mag_temp2[band])):
+            mag_temp2[band] = 0.
         header['TEMPMAG'+band.upper()] = (mag_temp2[band],band+' mag of optimal template (scaled)')
     
     hdu.append(hdutab)
@@ -2501,6 +2503,10 @@ def derive_secondary_tf(path_list,path_list2,path_out,tempfile=hector_path+'stan
         # get ratio errors:
         ratio_sig_b = sigma_b/temp_flux_b
         ratio_sig_r = (sigma_r*tel_r)/temp_flux_r
+
+        # Sree: skip all NaN due to issue on STD
+        if np.all(~np.isfinite(ratio_b)):
+            continue
 
         # fit the ratios
         ratio_sp_b = fit_spline_secondary(lam_b,ratio_b,ratio_sig_b,verbose=verbose)
@@ -2699,65 +2705,78 @@ def apply_secondary_tf(path1,path2,path_out1,path_out2,use_av_tf_sec=False,verbo
     if exposed < minexp:
         return
 
-    tf_b = hdulist1['FLUX_CALIBRATION2'].data['transfer_fn']
-    tf_r = hdulist2['FLUX_CALIBRATION2'].data['transfer_fn']
+    # Sree: to skip secondary fluxcal when failed
+    if 'FLUX_CALIBRATION2' not in hdulist1 or hdulist1['FLUX_CALIBRATION2'].header.get('SNR', 0) < 2.:
+        # write FITS header keyword to say it's done.
+        hdulist1[0].header['SECCOR'] = (False,'Failed to apply secondary flux cal')
+        hdulist2[0].header['SECCOR'] = (False,'Failed to apply secondary flux cal')
+        hdulist1.flush()
+        hdulist2.flush()
+        hdulist1.close()
+        hdulist2.close()
+        print('Failed deriving secondary TF. Not correcting',path1)
+        print('Failed deriving secondary TF. Not correcting',path2)
+        return
+    else:
+        tf_b = hdulist1['FLUX_CALIBRATION2'].data['transfer_fn']
+        tf_r = hdulist2['FLUX_CALIBRATION2'].data['transfer_fn']
 
-    # if needed, read average TF from TRANSFER2combined.fits file.
-    if use_av_tf_sec:
-        hdulist_tf1 = pf.open(path_out1,mode='update')
-        tf_av_b = hdulist_tf1['TF_MEAN'].data['tf_average']
-        lam_av_b = hdulist_tf1['TF_MEAN'].data['wavelength']
+        # if needed, read average TF from TRANSFER2combined.fits file.
+        if use_av_tf_sec:
+            hdulist_tf1 = pf.open(path_out1,mode='update')
+            tf_av_b = hdulist_tf1['TF_MEAN'].data['tf_average']
+            lam_av_b = hdulist_tf1['TF_MEAN'].data['wavelength']
         
-        hdulist_tf2 = pf.open(path_out2,mode='update')
-        tf_av_r = hdulist_tf2['TF_MEAN'].data['tf_average']
-        lam_av_r = hdulist_tf2['TF_MEAN'].data['wavelength']
+            hdulist_tf2 = pf.open(path_out2,mode='update')
+            tf_av_r = hdulist_tf2['TF_MEAN'].data['tf_average']
+            lam_av_r = hdulist_tf2['TF_MEAN'].data['wavelength']
 
-        hdulist_tf1.close()
-        hdulist_tf2.close()
+            hdulist_tf1.close()
+            hdulist_tf2.close()
         
-        # Need to think about how to scale the average - do we assume that the
-        # global scaling is correct - we probably should, we assume that for the rescale_frames()
-        # part.  If we are using the mean TF, then scale this so it has the same normalization
-        # as the individual TFs.  That is, we are only using the average TF to define the shape
-        # of the TF, not the normalization.
-        ratio_b = tf_b/tf_av_b
-        ratio_r = tf_r/tf_av_r
+            # Need to think about how to scale the average - do we assume that the
+            # global scaling is correct - we probably should, we assume that for the rescale_frames()
+            # part.  If we are using the mean TF, then scale this so it has the same normalization
+            # as the individual TFs.  That is, we are only using the average TF to define the shape
+            # of the TF, not the normalization.
+            ratio_b = tf_b/tf_av_b
+            ratio_r = tf_r/tf_av_r
 
-        # average the ratios between reasonable wavelength ranges, not using the very ends
-        # that can move around a little more:
-        idx_b = np.where((lam_av_b>4500.0) & (lam_av_b<5500.0))  
-        idx_r = np.where((lam_av_r>6500.0) & (lam_av_r<7200.0))  
-        scale_b = nanmean(ratio_b[idx_b]) 
-        scale_r = nanmean(ratio_b[idx_r])
+            # average the ratios between reasonable wavelength ranges, not using the very ends
+            # that can move around a little more:
+            idx_b = np.where((lam_av_b>4500.0) & (lam_av_b<5500.0))  
+            idx_r = np.where((lam_av_r>6500.0) & (lam_av_r<7200.0))  
+            scale_b = nanmean(ratio_b[idx_b]) 
+            scale_r = nanmean(ratio_b[idx_r])
 
-        # have a single scaling for blue and red:
-        scale = (scale_b+scale_r)/2.0
+            # have a single scaling for blue and red:
+            scale = (scale_b+scale_r)/2.0
         
-        # generate
-        tf_av_b = tf_av_b * scale
-        tf_av_r = tf_av_r * scale
+            # generate
+            tf_av_b = tf_av_b * scale
+            tf_av_r = tf_av_r * scale
         
-        if verbose:
-            print('scale_b: ',scale_b)
-            print('scale_r: ',scale_r)
+            if verbose:
+                print('scale_b: ',scale_b)
+                print('scale_r: ',scale_r)
     
-    # apply the TF to data and variance:
-    hdulist1[0].data /= tf_b
-    hdulist1['VARIANCE'].data /= tf_b**2
+        # apply the TF to data and variance:
+        hdulist1[0].data /= tf_b
+        hdulist1['VARIANCE'].data /= tf_b**2
 
-    hdulist2[0].data /= tf_r
-    hdulist2['VARIANCE'].data /= tf_r**2
+        hdulist2[0].data /= tf_r
+        hdulist2['VARIANCE'].data /= tf_r**2
         
-    # write FITS header keyword to say it's done.
-    hdulist1[0].header['SECCOR'] = (True,'Flag to indicate correction by secondary flux cal')
-    hdulist2[0].header['SECCOR'] = (True,'Flag to indicate correction by secondary flux cal')
+        # write FITS header keyword to say it's done.
+        hdulist1[0].header['SECCOR'] = (True,'Flag to indicate correction by secondary flux cal')
+        hdulist2[0].header['SECCOR'] = (True,'Flag to indicate correction by secondary flux cal')
 
-    hdulist1.flush()
-    hdulist2.flush()
-    hdulist1.close()
-    hdulist2.close()
+        hdulist1.flush()
+        hdulist2.flush()
+        hdulist1.close()
+        hdulist2.close()
         
-    return
+        return
 
 
 def read_flux_calibration_extension(infile,gettel=False):
