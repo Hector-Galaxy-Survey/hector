@@ -3023,7 +3023,7 @@ class Manager:
     def cube(self, overwrite=False, min_exposure=1499.0, name='main',
              star_only=False, drop_factor=None, tag='', update_tol=0.02,
              size_of_grid=80, output_pix_size_arcsec=0.5, clip_throughput=False,
-             min_transmission=0.333, max_seeing=4.0, min_frames=6,
+             min_transmission=0.333, max_seeing=4.0, min_frames=6, ndither=None,
              tileid=None, objid=None, **kwargs):
         """Make datacubes from the given RSS files."""
         groups = self.group_files_by(
@@ -3075,12 +3075,12 @@ class Manager:
                             inputs_list.append(
                                 (field_id, ccd, path_list, objname, cubed_root, drop_factor,
                                 tag, update_tol, gridsize, output_pix_size_arcsec, clip_throughput,
-                                overwrite))
+                                ndither, overwrite))
                     else:
                         inputs_list.append(
                             (field_id, ccd, path_list, objname, cubed_root, drop_factor,
                             tag, update_tol, gridsize, output_pix_size_arcsec, clip_throughput,
-                            overwrite))
+                            ndither, overwrite))
 
                 #TODO: wavelength cropping here??? marie
 
@@ -6460,10 +6460,12 @@ def cube_group(group):
 def cube_object(inputs):
     """Cube a single object in a set of RSS files."""
     (field_id, ccd, path_list, name, cubed_root, drop_factor, tag,
-     update_tol, size_of_grid, output_pix_size_arcsec, clip_throughput, overwrite) = inputs
+     update_tol, size_of_grid, output_pix_size_arcsec, clip_throughput, ndither, overwrite) = inputs
     print('\nCubing {} in field ID: {}, CCD: {}'.format(name, field_id, ccd))
     #if(len(path_list)>28): #when generate cubes using a spericifed number of dithers
     #        path_list = path_list[:7]
+    if ndither:
+        path_list = path_list[:ndither]
     print('{} files available'.format(len(path_list)))
     suffix = '_' + field_id
     if tag:
