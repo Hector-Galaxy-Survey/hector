@@ -5718,6 +5718,8 @@ class FITSFile:
     def set_ndf_class(self):
         """Save the NDF_CLASS of an AAT fits file."""
         # Change DFLAT to LFLAT
+
+        prYellow(f"Next {self.filename}")
         if self.header['NDFCLASS'] == 'DFLAT':
             self.header['NDFCLASS'] = 'LFLAT'
 
