@@ -2511,7 +2511,7 @@ class Manager:
 
     def derive_transfer_function(self,
                                  overwrite=False, model_name='ref_centre_alpha_circ_hdr_cvd',
-                                 smooth='spline', **kwargs):
+                                 smooth='spline', this_only =None, **kwargs):
         """Derive flux calibration transfer functions and save them."""
         # modified model name to be the version that takes ZD from header values, not
         # fitted.  This is because the fitting is not always robust for ZD.
@@ -2544,9 +2544,14 @@ class Manager:
                 n_trim = 3 #TODO: how about Hector ccd3?
             else:
                 n_trim = 0
-            inputs_list.append({'path_pair': path_pair, 'n_trim': n_trim,
-                                'model_name': model_name, 'smooth': smooth,
-                                'speed':self.speed,'tellcorprim':self.telluric_correct_primary})
+            #inputs_list.append({'path_pair': path_pair, 'n_trim': n_trim,
+            #                    'model_name': model_name, 'smooth': smooth,
+            #                    'speed':self.speed,'tellcorprim':self.telluric_correct_primary})
+            if not this_only or fits.reduced_path[-18:-8] == this_only[:10]:
+                inputs_list.append({'path_pair': path_pair, 'n_trim': n_trim,
+                        'model_name': model_name, 'smooth': smooth,
+                        'speed':self.speed,'tellcorprim':self.telluric_correct_primary})
+
         self.map(derive_transfer_function_pair, inputs_list)
         self.next_step('derive_transfer_function', print_message=True)
         return
@@ -3260,7 +3265,7 @@ class Manager:
                         #Sree: make it nan when mean transmission < 0.05
                         #TODO: remove this if the truncation is made at earlier stage (e.g. 2dfdr idx options)
                         mean_transmission = pf.getdata(hector_path+'/standards/throughput/mean_throughput_'+pf.getheader(k0[i])['DETECTOR']+'.fits')
-                        mask = mean_transmission > 0.05
+                        mask = mean_transmission > 0.00#0.05
                         count_true = np.count_nonzero(mask)
                         if(count_true < pf.getval(k0[i],'NAXIS3')):
                             continuous_regions = np.where(np.diff(np.concatenate(([False], mask, [False]))) == 1)[0].reshape(-1, 2)
@@ -3324,7 +3329,7 @@ class Manager:
         return good_fits_list
 
     def scale_cubes(self, overwrite=False, min_exposure=599.0, name='main',
-                    min_transmission=0.333, max_seeing=4.0, tag=None,
+                    min_transmission=0.333, max_seeing=4.0, tag=None, ndither=None,
                     **kwargs):
         """Scale datacubes based on the stellar g magnitudes."""
 
@@ -3358,7 +3363,7 @@ class Manager:
                      self.cubed_path(star, arm, fits_list, field_id,
                                      exists=True, min_exposure=min_exposure,
                                      min_transmission=min_transmission,
-                                     max_seeing=max_seeing, tag=tag)
+                                     max_seeing=max_seeing, tag=tag, ndither=ndither)
                      for arm in ('blue', 'red')]
                  if ((star_path_pair[0] is None) or (star_path_pair[1] is None) or 
                      ('.gz' in star_path_pair[0]) or ('.gz' in star_path_pair[1])):
@@ -3391,7 +3396,7 @@ class Manager:
         return
 
     def bin_cubes(self, overwrite=False, min_exposure=599.0, name='main',
-                  min_transmission=0.333, max_seeing=4.0, tag=None, verbose=False, **kwargs):
+                  min_transmission=0.333, max_seeing=4.0, tag=None, ndither=None, verbose=False, **kwargs):
         """Apply default binning schemes to datacubes."""
         ccdlist = ['ccd_1','ccd_3']
         for nccd in ccdlist:
@@ -3408,12 +3413,12 @@ class Manager:
                 objects = [obj.strip() for obj in objects]  # Strip whitespace from object names
                 for objname in objects:
                     if verbose:
-                        print(objname)
+                        print(objname,ndither)
                     path_pair = [
                         self.cubed_path(objname, arm, fits_list, field_id,
                                         exists=True, min_exposure=min_exposure,
                                         min_transmission=min_transmission,
-                                        max_seeing=max_seeing, tag=tag,gzipped=False)
+                                        max_seeing=max_seeing, tag=tag, ndither=ndither,gzipped=False)
                         for arm in ('blue', 'red')]
                     if verbose:
                         print(path_pair)
@@ -4848,11 +4853,11 @@ class Manager:
 
 
     def cubed_path(self, name, arm, fits_list, field_id, gzipped=False,
-                   exists=False, tag=None, **kwargs):
+                   exists=False, tag=None, ndither=None, **kwargs):
         """Return the path to the cubed file."""
         n_file = len(self.qc_for_cubing(fits_list, **kwargs))
-        #if(n_file > 28):
-        #    n_file = 21
+        if ndither:
+            n_file = ndither
         path = os.path.join(
             self.abs_root, 'cubed', name,
             name + '_' + arm + '_' + str(n_file) + '_' + field_id)
@@ -4865,7 +4870,7 @@ class Manager:
             if not os.path.exists(path):
                 path = self.cubed_path(name, arm, fits_list, field_id,
                                        gzipped=(not gzipped), exists=False,
-                                       tag=tag, **kwargs)
+                                       tag=tag, ndither=ndither, **kwargs)
                 if not os.path.exists(path):
                     return None
         return path
