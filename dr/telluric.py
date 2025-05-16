@@ -317,7 +317,7 @@ def extract_secondary_standard(path_list,model_name='ref_centre_alpha_dist_circ_
         # MLPG: Diagnostic plot showing extracted flux versus summed flux, saved in the data reduction location
         if debug:
             fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(8, 14), sharex=True, gridspec_kw={'hspace': 0})
-            ax1.set(xlabel='Wavelength [Å]', ylabel='Counts',
+            ax1.set(xlabel='Wavelength [A]', ylabel='Counts',
                     title=os.path.basename(path) + ' Hexabundle ' + star_match['probename'] + ' ' + star_match['name'])
             data, wavelength = ifu.data, ifu.lambda_range
             good_fibre = (ifu.fib_type == 'P')
@@ -331,7 +331,7 @@ def extract_secondary_standard(path_list,model_name='ref_centre_alpha_dist_circ_
             ax1.legend(loc='upper left', bbox_to_anchor=(0.01, 0.9))
             ax1.tick_params(axis='x', direction='in', which='both')
 
-            ax2.set(xlabel='Wavelength [Å]', ylabel='Extracted/Summed')
+            ax2.set(xlabel='Wavelength [A]', ylabel='Extracted/Summed')
             f = interp1d(wavelength, data)
             ax2.plot(ifu.lambda_range, median_filter(observed_flux / f(ifu.lambda_range), 15), 'grey', alpha=0.9, label='Extracted/Summed')
             ax2.plot(ifu.lambda_range, np.repeat(1.0, len(ifu.lambda_range)), 'k--', alpha=0.5, label='')
