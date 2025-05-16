@@ -31,7 +31,6 @@ hector_path = str(hector.__path__[0])+'/'
 warnings.simplefilter('ignore',np.RankWarning)
 
 def wavecorr_frame(inputs):
-
     fits,overwrite = inputs
     reduced_path = fits.reduced_path
     with pf.open(reduced_path,mode='update') as twilight_hdulist:
@@ -82,10 +81,13 @@ def calculate_wavelength_offsets(twilight_hdu):
 
     offsets = []
     for i in range(twilight_frame.shape[0]):
-        fibre_spec, fibre_wav = prepare_fibre_spectrum(twilight_hdu[0].data[i,:],twi_wav,solar_wav)
-        good_fib = np.where((fibre_wav > good_range[0]) & (fibre_wav < good_range[1]))
-        offset = calculate_wavelength_offset_fibre(fibre_spec[good_fib],np.copy(solar_shifted)[good_sol])
-        offset = offset*(solar_wav[1]-solar_wav[0])
+        if np.all(np.isnan(twilight_hdu[0].data[i,:])):
+            offset = 0.
+        else:    
+            fibre_spec, fibre_wav = prepare_fibre_spectrum(twilight_hdu[0].data[i,:],twi_wav,solar_wav)
+            good_fib = np.where((fibre_wav > good_range[0]) & (fibre_wav < good_range[1]))
+            offset = calculate_wavelength_offset_fibre(fibre_spec[good_fib],np.copy(solar_shifted)[good_sol])
+            offset = offset*(solar_wav[1]-solar_wav[0])
         offsets.append(offset)
     return offsets
 	
