@@ -81,7 +81,16 @@ import pylab as py
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
+#below if needed for DR paper:
+#plt.rcParams.update({
+#    "text.usetex": False,  
+#    "font.family": "serif",
+#    "font.serif": ["Computer Modern Roman"],
+#    "font.size": 36  # Adjust as needed
+#})
+
 import matplotlib as mpl
+from mpl_toolkits.axes_grid1.inset_locator import inset_axes
 from multiprocessing import Process
 import pandas as pd
 
@@ -124,9 +133,14 @@ REFERENCE_WAVELENGTH = 5000.0
 
 FIBRE_RADIUS = 0.798
 
-TELLURIC_BANDS = np.array([[6850, 6960], 
-                           [7130, 7360], 
-                           [7560, 7770], 
+#TELLURIC_BANDS = np.array([[6850, 6960], 
+#                           [7130, 7360], 
+#                           [7560, 7770], 
+#                           [8100, 8360]])
+
+TELLURIC_BANDS = np.array([[6850, 6960],
+                           [7130, 7360],
+                           [7580, 7710],
                            [8100, 8360]])
 
 # Print colours in python terminal --> https://www.geeksforgeeks.org/print-colors-python-terminal/
@@ -739,14 +753,14 @@ def interp_cvd(cen_data, f_cvd, wavelength, plateCentre=None):
     return cvd_pos
 
 #for figures
-size=16
-@mpl.rc_context({'font.size':size, 'axes.titlesize':size, 'axes.labelsize':size, 'ytick.labelsize': size, 'xtick.labelsize': size, 'legend.fontsize':size-2,'figure.titlesize':size})
+size=20
+@mpl.rc_context({'font.size':size, 'axes.titlesize':size, 'axes.labelsize':size, 'ytick.labelsize': size, 'xtick.labelsize': size, 'legend.fontsize':size-3,'figure.titlesize':size})
 
 def derive_transfer_function(path_list, max_sep_arcsec=60.0,
                              catalogues=STANDARD_CATALOGUES,
                              model_name='ref_centre_alpha_circ_hdr_cvd',
                              n_trim=0, smooth='spline',molecfit_available=False,
-                             molecfit_dir='',speed='',tell_corr_primary=False,debug=True):
+                             molecfit_dir='',speed='',tell_corr_primary=False,debug=True,paper=False):
     """ Derive transfer function and save it in each FITS file.
     NOTE: cvd_parameters keyword added to various function call withint this routine
     (e.g. fit_model_flux, extract_flux)
@@ -825,48 +839,72 @@ def derive_transfer_function(path_list, max_sep_arcsec=60.0,
         ######################
         # MLPG & Sree: Diagnostic plot showing extracted flux versus summed flux, saved in
         # the data reduction location. Active when debug = True
+        # when paper=True, remove unnecessary info for Figure 6 of DR paper.
+
         if debug:
             fig, (ax1, ax2, ax3, ax4) = plt.subplots(4, 1, figsize=(8, 14), sharex=True, gridspec_kw={'hspace': 0})
-            ax1.set(xlabel='Wavelength [Å]', ylabel='Counts', title=os.path.basename(path)+' Hexabundle '+star_match['probename']+' '+star_match['name'])
+            tit = os.path.basename(path)+' Hexabundle '+star_match['probename']+' '+star_match['name']
+            if paper:
+                tit = ''
+            ax1.set(xlabel='Wavelength [\AA]', ylabel='Counts', title=tit)
             data, wavelength = ifu.data, ifu.lambda_range
             good_fibre = (ifu.fib_type == 'P')
             data = data[good_fibre, :]; data = nansum(data, axis=0)
-            ax1.plot(wavelength, data, 'grey', alpha=0.7, label='Summed over bundle')
-            ax1.plot(ifu.lambda_range, observed_flux, 'blue', alpha=0.5, label='Extracted after CvD')
+            ax1.plot(wavelength, data, 'grey', alpha=0.7, label='Summed')
+            ax1.plot(ifu.lambda_range, observed_flux, 'blue', alpha=0.5, label='Extracted')
+            ylim = np.nanmax(observed_flux)*1.2
+            ax1.set_ylim(0., ylim)
             ax1.annotate('(a)',xy=(0, 1), xycoords='axes fraction',
             xytext=(+0.5, -0.5), textcoords='offset fontsize',
-            fontsize=16, verticalalignment='top', fontfamily='serif',
+            verticalalignment='top', fontfamily='serif',
             bbox=dict(facecolor='white', edgecolor='none', pad=3.0))
-            ax1.legend(loc='upper left', bbox_to_anchor=(0.01, 0.9))
+            ax1.legend(loc='upper left', bbox_to_anchor=(0.07, 0.99))
             ax1.tick_params(axis='x', direction='in', which='both')
 
-            ax2.set(xlabel='Wavelength [Å]', ylabel='Extracted/Summed')
+            ax2.set(xlabel='Wavelength [\AA]', ylabel='Extracted/Summed')
             f = interp1d(wavelength, data)
             ax2.plot(ifu.lambda_range, median_filter(observed_flux/f(ifu.lambda_range),15), 'grey', alpha=0.9, label='Extracted/Summed')
             ax2.plot(ifu.lambda_range, np.repeat(1.0, len(ifu.lambda_range)), 'k--', alpha=0.5, label='Extracted/Summed')
-            ax2.set_ylim(0.1, 2.4)
+            ax2.set_ylim(0.6, 1.9)
             ax2.annotate('(b)',xy=(0, 1), xycoords='axes fraction',
             xytext=(+0.5, -0.5), textcoords='offset fontsize',
-            fontsize=16, verticalalignment='top', fontfamily='serif',
+            verticalalignment='top', fontfamily='serif',
             bbox=dict(facecolor='white', edgecolor='none', pad=3.0))
             ax2.tick_params(axis='x', direction='in', which='both')
 
-            ax3.set(xlabel='Wavelength [Å]', ylabel='Transfer Function')
+            ax3.set(xlabel='Wavelength [\AA]', ylabel='Transfer Function')
             f = interp1d(standard_data['wavelength'],standard_data['flux'])
             ax3.plot(ifu.lambda_range,f(wavelength)/observed_flux, 'grey', alpha=0.7, label='Reference/Observed')
             ax3.plot(ifu.lambda_range, transfer_function, 'r', alpha=0.5, label='Transfer function',linewidth=2,linestyle='--')
+            #to check TF without applying convolution
+            #transfer_function_no_convol = take_ratio(
+            #    standard_data['flux'],
+            #    standard_data['wavelength'],
+            #    observed_flux,
+            #    sigma_flux,
+            #    ifu.lambda_range,
+            #    smooth=smooth,
+            #    mf_av=molecfit_available,
+            #    tell_corr_primary=tell_corr_primary, convol=False)
+            #transfer_function_no_convol = median_filter(transfer_function_no_convol,5)
+            #ax3.plot(ifu.lambda_range, transfer_function_no_convol, 'r', alpha=0.5, label='Transfer function (no convolution)',linewidth=2,linestyle=':')
+            #print(np.median(transfer_function_no_convol[wavelength<4000.]/transfer_function[wavelength<4000.])) 
             ylim = np.max(transfer_function)*1.5
-            if ylim > 200:
-                ylim=200
+            if ylim > 100:
+                ylim=95
+            if paper:
+                ylim=50
             ax3.set_ylim(0,ylim)
+            if np.nanmax(ifu.lambda_range) > 7600.:
+                ax3.set_ylim(1,6) #to check in detail
             ax3.annotate('(c)',xy=(0, 1), xycoords='axes fraction',
             xytext=(+0.5, -0.5), textcoords='offset fontsize',
-            fontsize=16, verticalalignment='top', fontfamily='serif',
+            verticalalignment='top', fontfamily='serif',
             bbox=dict(facecolor='white', edgecolor='none', pad=3.0))
-            ax3.legend(loc='upper left', bbox_to_anchor=(0.01, 0.9))
+            ax3.legend(loc='upper left', bbox_to_anchor=(0.07, 0.99))
             ax3.tick_params(axis='x', direction='in', which='both')
 
-            ax4.set(xlabel='Wavelength [Å]', ylabel='Normalized Flux')            
+            ax4.set(xlabel='Wavelength [\AA]', ylabel='Normalized Flux')            
             observed_flux_fcal = observed_flux * transfer_function
             FWHM_obs = ifu.lambda_range[1]-ifu.lambda_range[0]
             FWHM_standard = standard_data['wavelength'][1]-standard_data['wavelength'][0]
@@ -879,24 +917,22 @@ def derive_transfer_function(path_list, max_sep_arcsec=60.0,
             except ValueError:
                 ax4.plot(ifu.lambda_range, observed_flux_fcal/norm_factor, 'g', alpha=0.5, label='Flux calibrated (without Gauss_filter1D)')
             ax4.plot(standard_data['wavelength'],standard_data['flux'] / norm_factor ,'black', alpha=0.7, label='Reference',linestyle=':')
-            ax4.set_ylim(0, 1.4)
+            ax4.set_ylim(-0.2, 1.4)
             ax4.set_xlim(min(ifu.lambda_range)-100,max(ifu.lambda_range)+100)
-            ax4.legend(loc='best')
+            ax4.legend(loc='lower center', bbox_to_anchor=(0.72, 0.))
             ax4.annotate('(d)',xy=(0, 1), xycoords='axes fraction',
             xytext=(+0.5, -0.5), textcoords='offset fontsize',
-            fontsize=16, verticalalignment='top', fontfamily='serif',
+            verticalalignment='top', fontfamily='serif',
             bbox=dict(facecolor='white', edgecolor='none', pad=3.0))
             ax4.tick_params(axis='x', direction='in', which='both')
-
-            #ax4.set(xlabel='Wavelength [Å]', ylabel='Transfer Function')
-            #f = interp1d(standard_data['wavelength'],standard_data['flux'])
-            #ax4.plot(ifu.lambda_range,f(wavelength)/observed_flux, 'grey', alpha=0.7, label='Reference/Observed')
-            #3ax4.plot(ifu.lambda_range, transfer_function, 'r', alpha=0.5, label='TF',linewidth=2,linestyle='--')
-            #ylim = np.max(transfer_function)*1.5
-            #if ylim > 200:
-            #    ylim=200
-            #ax4.set_ylim(0,ylim)
-            #ax4.legend(loc='best')
+            #residual inset plot for CCD4
+            if np.nanmax(ifu.lambda_range) > 7600.:
+                ax_inset = inset_axes(ax4, width="30%", height="30%", loc='upper right')  # You can change loc
+                f = interp1d(standard_data['wavelength'],standard_data['flux']/norm_factor)
+                ax_inset.plot(ifu.lambda_range,(gaussian_filter1d(observed_flux_fcal,sigma_diff)/norm_factor)/f(wavelength), 'grey', alpha=0.7, label='Flux calibrated / Reference')
+                ax_inset.set(xlabel=' ',ylabel='Fcal/Ref')
+                ax_inset.set_xlim(7500,7800)
+                ax_inset.set_ylim(0.9,1.1)
 
             dest_path = path[0:path.find('/reduced')]+'/derive_TF'
             if not os.path.isdir(dest_path):
@@ -1231,7 +1267,8 @@ def read_standard_data(star):
 
 def take_ratio(standard_flux, standard_wavelength, observed_flux, 
                sigma_flux, observed_wavelength, smooth='spline',
-               mf_av=False, tell_corr_primary=False):
+               mf_av=False, tell_corr_primary=False, convol=True):
+
     """Return the ratio of two spectra, after rebinning."""
     # Rebin the observed spectrum onto the (coarser) scale of the standard
     observed_flux_rebinned, sigma_flux_rebinned, count_rebinned = \
@@ -1242,15 +1279,18 @@ def take_ratio(standard_flux, standard_wavelength, observed_flux,
     #Sree:Convolve observed spectra 
     #Spectral resolution of standard star reference is often worse than that of Hector spectra
     #For blue ccds, convolve spectra below 4500A, where strong absorption lines are detected from some standard stars
-    FWHM_obs = observed_wavelength[1]-observed_wavelength[0]
-    FWHM_standard = standard_wavelength[1]-standard_wavelength[0]
-    FWHM_diff = np.sqrt(FWHM_standard**2 - FWHM_obs**2)
-    sigma_diff=FWHM_diff/2.355/(observed_wavelength[1]-observed_wavelength[0])
-    if(np.isfinite(sigma_diff)):
-        observed_flux_convolved=gaussian_filter1d(observed_flux_rebinned, sigma_diff)
-        observed_flux_convolved[standard_wavelength > 4500.]=observed_flux_rebinned[standard_wavelength > 4500.]
-        observed_flux_convolved[:20]=observed_flux_rebinned[:20] #to save the share in the very blue 
-        ratio1 = standard_flux / observed_flux_convolved
+    if convol:
+        FWHM_obs = observed_wavelength[1]-observed_wavelength[0]
+        FWHM_standard = standard_wavelength[1]-standard_wavelength[0]
+        FWHM_diff = np.sqrt(FWHM_standard**2 - FWHM_obs**2)
+        sigma_diff=FWHM_diff/2.355/(observed_wavelength[1]-observed_wavelength[0])
+        if(np.isfinite(sigma_diff)):
+            observed_flux_convolved=gaussian_filter1d(observed_flux_rebinned, sigma_diff)
+            observed_flux_convolved[standard_wavelength > 4500.]=observed_flux_rebinned[standard_wavelength > 4500.]
+            ratio = standard_flux / observed_flux_rebinned
+            good = np.where(np.isfinite(ratio) & (ratio > 0.))[0]
+            observed_flux_convolved[good[2]:good[2]+20]=observed_flux_rebinned[good[2]:good[2]+20] #to save the share in the very blue 
+            ratio1 = standard_flux / observed_flux_convolved
 
     if smooth == 'gauss':
         ratio2 = smooth_ratio(ratio1)
@@ -1324,20 +1364,29 @@ def fit_spline(wavelength, ratio, mf_av=False,tell_corr_primary=False):
         good = np.where(np.isfinite(ratio) & (ratio > 0.))[0]
     else:
         good = np.where(np.isfinite(ratio) & ~(in_telluric_band(wavelength)) & (ratio > 0.))[0]
-    if min(wavelength[good]) > 6000.: #exclude either edge of AAOmega red for the fit
+    if min(wavelength[good]) > 6000.: #ccd2: exclude either edge of AAOmega red for the fit; TODO: this should be removed once the extraction at either edge get stable
         good = good[(wavelength[good]>6300.) & (wavelength[good]<7400.)]
-    knots = np.linspace(wavelength[good][0], wavelength[good][-1],10) 
+    knots = np.linspace(wavelength[good][0], wavelength[good][-1],8)
 
     # Add extra knots where there's a sharp turn
     if max(wavelength[good]) < 5850.: #AAOmega blue wavelength range: 3730.8 5801.4; add an extra knot at each end
         knots = np.sort(list(set(np.concatenate((knots,np.linspace(knots[0],knots[1],3),np.linspace(knots[-2],knots[-1],3))))))
+    if (min(wavelength[good]) > 6000.): #AAOmega red
+        knots = np.linspace(wavelength[good][0], wavelength[good][-1],6)
     if (max(wavelength[good]) > 5850.) & (max(wavelength[good]) < 6000.): #Spector blue; wavelength range: 3747.6 5906.4, add 10 extra knots at the red end
-        w1 = min(knots[knots>5600.]) ; w2 = max(wavelength[good]) ; wn = 10
-        knots = np.sort(list(set(np.concatenate((knots, np.linspace(w1, w2, wn))))))
+        #v0_02: w1 ~ 5666, w2 = 5906.4
+        knots = np.sort(list(set(np.concatenate((knots,np.linspace(knots[0],knots[1],3),np.linspace(5700., knots[-1], 10))))))
     if (min(wavelength[good]) > 5600.) & (min(wavelength[good]) < 5800.): #Spector red; wavelength range: 5704.8 7821.6, add 10 extra knots at the blue end
-        w1 = min(wavelength[good]) ; w2 = max(knots[knots<6000.]) ; wn = 10
-        knots = np.sort(list(set(np.concatenate((knots, np.linspace(w1, w2, wn))))))
-    #print(min(wavelength[good]), max(wavelength[good]),knots)
+        #v0_02: w1 ~ 5704, w2=5939
+        knots = np.sort(list(set(np.concatenate((knots, np.linspace(knots[0], 5900., 10), np.linspace(knots[-2],knots[-1],8))))))
+        #knots = np.sort(list(set(np.concatenate((knots, np.linspace(knots[0], 5900., 10), np.linspace(knots[-2],7770.1,6))))))
+#        knots = np.sort(list(set(np.concatenate((knots, np.linspace(knots[0], 5900., 10), np.linspace(knots[-2],knots[-1],2))))))
+
+        #Sree: For Hector till v0.02, telluric correction is pretty bad and it is better not including telluric bands for both ccd2 and ccd4. 
+        #TODO: if telluric correction for PS becomes good enough, the below can be removed, and know for ccd4 can be lower in the red end.
+        good = np.where(np.isfinite(ratio) & ~(in_telluric_band(wavelength)) & (ratio > 0.))[0]
+        knots = knots[~in_telluric_band(knots)]
+    print('knots',min(wavelength[good]), max(wavelength[good]),knots)
 
     # Remove any knots sitting in a telluric band, but only if not using tell_corr_primary:
     if (not tell_corr_primary):
