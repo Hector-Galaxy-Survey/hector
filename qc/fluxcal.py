@@ -28,6 +28,8 @@ import numpy as np
 from scipy.ndimage.filters import median_filter
 from scipy.optimize import leastsq
 
+from datetime import datetime
+
 import hector
 sdss_path = str(hector.__path__[0])+'/sdss/'
 
@@ -46,6 +48,7 @@ def throughput(path, combined=True):
     h = 6.626E-27 #erg.s
     c = 3E18  #speed of light in A/s [1m/s=1E10A/s]
     area = 0.847*(np.pi*(389.3/2)**2)  #=100818cm^2 Telescope collecting area
+    probename = ''; stdname=''
     hdulist = pf.open(path)
     # data is the value of transfer function corrected for expected atm for
     # each pixel, i.e. accounting for airmass
@@ -53,7 +56,10 @@ def throughput(path, combined=True):
         data = hdulist[0].data
     else:
         data = hdulist['FLUX_CALIBRATION'].data[-1, :]
-    hdr = hdulist[0].header
+        fhdr = hdulist['FLUX_CALIBRATION'].header
+        probename = fhdr['PROBENAM']
+        stdname = fhdr['STDNAME']
+    hdr = hdulist[0].header        
     # Wavelength range
     wavelength = get_coords(hdr, 1)
     delta_wl = hdr['CDELT1']
@@ -61,9 +67,9 @@ def throughput(path, combined=True):
     # hc/lambda h=planck const c=speed of light in A/s ergs.s.A/A.s=ergs
     hcl = h * c / wavelength
     thput = (1/data) * (1E16) * gain * hcl / (area*delta_wl)
-    return thput
+    return thput, data, probename, stdname
 
-def save_mean_throughput(path_out, mean_thput, thput, filename_list, epoch_list,
+def save_mean_throughput(path_out, mean_thput, thput, tf, filename_list, epoch_list,probename_list, stdname_list,
                          good_list, detector, date_start=None,
                          date_finish=None):
     """
@@ -76,8 +82,11 @@ def save_mean_throughput(path_out, mean_thput, thput, filename_list, epoch_list,
     `path_out' - path to save to
     `mean_throughput' - 1d array
     `throughput' - n_spec X n_pix array of individual measurements
+    `tf' - n_spec X n_pix array of transfer function
     `filename_list' - n_spec list of filenames
     `epoch_list' - n_spec list of epoch 
+    `probename_list' - n_spec list of probe name
+    `stdname_list' - n_spec list of standard star name 
     `good_list' - n_spec boolean list of files included in the mean
     `detector' - name of the CCD, e.g. E2V2A
 
@@ -91,12 +100,16 @@ def save_mean_throughput(path_out, mean_thput, thput, filename_list, epoch_list,
     filename_length = np.max([len(filename) for filename in filename_list])
     hdulist = pf.HDUList(
         [pf.PrimaryHDU(mean_thput),
-         pf.ImageHDU(thput, name='INPUT_DATA'),
+         pf.ImageHDU(thput, name='INPUT_THPUTS'),
+         pf.ImageHDU(tf, name='TRANSFER_FUNCTIONS'),
          pf.BinTableHDU.from_columns(
              [pf.Column(name='filename', format='{}A'.format(filename_length),
                         array=filename_list),
               pf.Column(name='used', format='L', array=good_list), 
-              pf.Column(name='epoch', format='E', array=epoch_list)],
+              pf.Column(name='epoch', format='E', array=epoch_list),
+              pf.Column(name='stdname', format='A', array=stdname_list),
+              pf.Column(name='probename', format='A', array=probename_list)],
+
               name='INPUTS')])
     header = hdulist[0].header
     header['DETECTOR'] = (detector, 'Detector name')
@@ -142,8 +155,11 @@ def calculate_mean_throughput(path_out, mngr_list, detector, date_start=None,
     sami.qc.fluxcal.calculate_mean_throughput('mean_throughput_E2V3A.fits', mngr_list, 'E2V3A')
     """
     thput_list = []
+    tf_list = []
+    probename_list = []
     filename_list = []
     epoch_list = []
+    stdname_list = []
     for mngr in mngr_list:
         for fits in mngr.files(ndf_class='MFOBJECT', spectrophotometric=True,
                                do_not_use=False):
@@ -153,23 +169,27 @@ def calculate_mean_throughput(path_out, mngr_list, detector, date_start=None,
             if pf.getval(fits.reduced_path, 'DETECTOR') != detector:
                 continue
             try:
-                thput = throughput(fits.reduced_path, combined=False)
+                thput,tf,probename,stdname = throughput(fits.reduced_path, combined=False)
             except KeyError:
                 # Couldn't find the data for some reason
                 continue
             thput_list.append(thput)
+            tf_list.append(tf)
+            probename_list.append(probename)
+            stdname_list.append(stdname)
             filename_list.append(fits.filename)
             epoch_list.append(fits.epoch)
     print('standard star frames considered: ', filename_list)
 
     thput = np.array(thput_list)
+    tf = np.array(tf_list)
     deviation = 1.0 - np.median(thput / np.median(thput, axis=0), axis=1)
     good_deviation = np.abs(deviation) < reject
     good_thput = (thput > 0).all(axis=1) & (thput < 1).all(axis=1)
     good = good_deviation & good_thput
 
     mean_thput = np.nanmean(thput[good, :], axis=0)
-    save_mean_throughput(path_out, mean_thput, thput, filename_list, epoch_list, good,
+    save_mean_throughput(path_out, mean_thput, thput, tf, filename_list, epoch_list,probename_list,stdname_list, good,
                          detector, date_start=date_start,
                          date_finish=date_finish)
 
@@ -1273,7 +1293,69 @@ def moffat_circular(x, y, alpha, beta, x0, y0, intensity):
     return moffat
 
 
+def examine_fcal(path, tile, verbose=False):
+    """
+    Examine intermediate files to identify where fcal got an issue.
+    This routine typically works after the data release catalogue has been generated. 
+
+    Inputs:
+    `path' - reduction directory where you usually do reduction (e.g. ./v0_02/)
+    `tile' - tile to examine (e.g. 'H03_T090')
+
+    Outputs:
+    qc plot will be generated at path+'/qc_plots/fcal/'+tile+'_.pdf'
 
 
+    import hector.qc.fluxcal; hector.qc.fluxcal.examine_fcal('./v0_02/','H03_T090')
+    """
+    match = re.search(r'v(\d+_\d+)', path)
+    if match:
+        version = match.group(1)  
+        dir_release = f"{path.rstrip('/')}/release_v{version}/"
+        cols = pd.read_csv(os.path.join(dir_release, f'release_catalogue_v{version}.csv'))
+        for index, row in cols.iterrows():
+            files = str(row['filename'])
+            tiles = str(row['tile'])
+            fields = str(row['field'])
+            runs = str(row['runid'])
+            
+        sub = np.where(tiles == tile)
+        cube_path = os.path.join(dir_release,files[sub][0])
+        run = runs[sub][0]; field = fields[sub][0]
+        if field == '1':
+            field = '0'
+
+        with fits.open(cube_path) as hdul:
+            header = hdul[0].header
+        
+        rss_files = []
+        for key in header.keys():
+            if key.startswith('HIERARCH RSS_FILE'):
+                rss_files.append(header[key])
+
+        for file in rss_files:
+            date_str = datetime.strptime(file[0:5], "%d%b")
+            date_num = date_obj.strftime("%m%d")
+            date = run[0:2] + date_num
+            sci1_path = f"{path.rstrip('/')}/{run}/reduced/{date}/{tile}/{tile}_F{field}/main/ccd_1/{file}"
+            sci2_path = f"{path.rstrip('/')}/{run}/reduced/{date}/{tile}/{tile}_F{field}/main/ccd_2/{file}"
+            sci3_path = f"{path.rstrip('/')}/{run}/reduced/{date}/{tile}/{tile}_F{field}/main/ccd_3/{file}"
+            sci4_path = f"{path.rstrip('/')}/{run}/reduced/{date}/{tile}/{tile}_F{field}/main/ccd_4/{file}"
+
+
+
+
+            #231106_231119/reduced/231114/H01_T122/H01_T122_F0/main/ccd_1/
+
+
+
+            oldpath = os.path.join(dir_version, row['runid'], "cubed", cubedir, row['infile'])
+            newpath = os.path.join(dir_release, row['filename'])
+
+
+        list_dir = np.array(os.listdir(path))
+
+    else:
+        print("Error: Version information not found in the path!")
 
 

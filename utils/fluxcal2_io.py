@@ -53,6 +53,8 @@ def save_extracted_flux(path, observed_flux, observed_background,
     header_item_list = [
         ('PROBENUM', star_match['probenum'], 'Number of the probe containing '
                                              'the star'),
+        ('PROBENAM', star_match['probename'], 'Name of the probe containing '
+                                             'the star'),
         ('STDNAME', star_match['name'], 'Name of standard star'),
         ('MODEL', model_name, 'Name of model used in PSF fit'),
         ('GOODPSF', good_psf, 'Whether the PSF fit has good parameters')]
