@@ -1166,7 +1166,7 @@ class Manager:
         fits.set_check_data()
         self.set_reduced_path(fits)
 
-        if fits.adc == 'Idle':
+        if fits.ndf_class == 'MFOBJECT' and fits.adc == 'Idle':
                 prRed(f"  WARNING: ADC status for {filename} is idle !")
 
         #Sree: ccd_4 data from 26, 27 Apr 2023, where overscan region is different but header does not point the right pixels
@@ -2139,9 +2139,6 @@ class Manager:
                 #self.map(wavecorr_frame,input_list)
                 if len(file_list_tw) > 0:
                     input_list = list(zip(file_list_tw,[overwrite]*len(file_list_tw)))
-                    print(len(file_list_tw),len(input_list))
-                    print(file_list_tw)
-                    print(input_list)
                     self.map(wavecorr_frame,input_list)
                     wavecorr_av(file_list_tw,self.root)
             
@@ -2184,7 +2181,10 @@ class Manager:
                     fits_sky_list.append(
                         self.copy_as(fits, 'MFSKY', overwrite=overwrite))
             # Now reduce the fake sky files from all fields
-            reduced_files = self.reduce_file_iterable(fits_sky_list, overwrite=overwrite, check='SKY')
+            reduced_file = self.reduce_file_iterable(fits_sky_list, overwrite=overwrite, check='SKY')
+            # Rereduce it having many failures due to memory issue when multiprocessing
+            rereduced_file = self.reduce_file_iterable(fits_sky_list, overwrite=overwrite, check='SKY')
+            reduced_files = reduced_file + rereduced_file
 
             # Average the throughput values in each group. 
             if self.speed == 'slow':
