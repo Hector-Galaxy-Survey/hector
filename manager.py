@@ -1156,7 +1156,8 @@ class Manager:
             self.set_name(fits, trust_header=trust_header)
         else:
             self.set_name(fits, trust_header=trust_header)
-            print('Adding file: ', filename, fits.ndf_class, fits.plate_id, fits.name, fits.exposure_str, fits.lamp)
+            print('Adding file: ', filename, fits.ndf_class, fits.plate_id, fits.name, fits.exposure_str, fits.lamp, "\033[91m{}\033[00m".format('*disabled*') if fits.do_not_use else '')
+
             f = open(self.abs_root+'/filelist_'+str(self.abs_root)[-13:]+'.txt', 'a')
             #f.write(filename+' '+fits.ndf_class+' '+(fits.plate_id or 'None')+' '+(fits.name or 'None')+' '+(str(fits.spectrophotometric) or 'None')+' '+(str(fits.do_not_use) or 'None')+' '+fits.exposure_str+' '+(str(fits.lamp) or 'None')+'\n')
             f.write(filename+' '+fits.ndf_class+' '+(fits.plate_id or 'None')+' '+(fits.name or 'None')+' '+(str(fits.spectrophotometric) or 'None')+' '+(str(fits.do_not_use) or 'None')+' '+fits.exposure_str+'\n')
@@ -1164,6 +1165,9 @@ class Manager:
             
         fits.set_check_data()
         self.set_reduced_path(fits)
+
+        if fits.adc == 'Idle':
+                prRed(f"  WARNING: ADC status for {filename} is idle !")
 
         #Sree: ccd_4 data from 26, 27 Apr 2023, where overscan region is different but header does not point the right pixels
         if (fits.ccd == 'ccd_4' and fits.header['RO_PORTS'] == 'B'):
@@ -1832,7 +1836,9 @@ class Manager:
                 thput_inactive = thput_inactive + 0.1  
 
             tlmfail = np.zeros(len(fib_spec_id))
-            tlmfail[np.where( ((fib_type == 'P') | (fib_type == 'S')) & (thput < thput_active) & (fib_spec_id != 51) & (fib_spec_id != 181) )] = 1 # active (P, S) fibres with no signal
+            fib_weak = [51,181,202,210]
+            #tlmfail[np.where( ((fib_type == 'P') | (fib_type == 'S')) & (thput < thput_active) & (fib_spec_id != 51) & (fib_spec_id != 181) )] = 1 # active (P, S) fibres with no signal
+            tlmfail[np.where( ((fib_type == 'P') | (fib_type == 'S')) & (thput < thput_active) & (~np.isin(fib_spec_id, fib_weak)) )] = 1 # active (P, S) fibres with no signal
             tlmfail[np.where( ((fib_type == 'N') | (fib_type == 'U')) & (thput > thput_inactive))] = 2 # inactive (N, U) fibres with a signal
             tlmfile = pf.open(fits.reduced_path[0:-8]+'tlm.fits'); tlm = tlmfile['PRIMARY'].data #tlm position
         #    tlm[0,-1] = -10 # ****** only for testing cutoff detection
@@ -2129,9 +2135,14 @@ class Manager:
                 for f in file_list:
                     if f.ccd == nccd:
                         file_list_tw.append(f)
-                input_list = zip(file_list_tw,[overwrite]*len(file_list_tw))
-                self.map(wavecorr_frame,input_list)
+                #input_list = zip(file_list_tw,[overwrite]*len(file_list_tw))
+                #self.map(wavecorr_frame,input_list)
                 if len(file_list_tw) > 0:
+                    input_list = list(zip(file_list_tw,[overwrite]*len(file_list_tw)))
+                    print(len(file_list_tw),len(input_list))
+                    print(file_list_tw)
+                    print(input_list)
+                    self.map(wavecorr_frame,input_list)
                     wavecorr_av(file_list_tw,self.root)
             
                 kwargs_tmp = kwargs.copy()
@@ -2176,10 +2187,11 @@ class Manager:
             reduced_files = self.reduce_file_iterable(fits_sky_list, overwrite=overwrite, check='SKY')
 
             # Average the throughput values in each group. 
-            for fits in reduced_files:
-                path_list = [fits.reduced_path]
-                make_clipped_thput_files(
-                    path_list, overwrite=overwrite, edit_all=True, median=True)
+            if self.speed == 'slow':
+                for fits in reduced_files:
+                    path_list = [fits.reduced_path]
+                    make_clipped_thput_files(
+                        path_list, overwrite=overwrite, edit_all=True, median=True)
 
         self.next_step('reduce_sky', print_message=True)
         return
@@ -2318,7 +2330,7 @@ class Manager:
             bad_fields = set([fits.field_id for fits in fits_list])
         else:
             bad_fields = []
-        if recalculate_throughput: # and (self.speed == 'slow'):
+        if recalculate_throughput and (self.speed == 'slow'):
             # Average over individual throughputs measured from sky lines
             print('\n Reduction for frames with bad throughputs')
             extra_files = self.correct_bad_throughput(
@@ -3264,18 +3276,45 @@ class Manager:
 
                         #Sree: make it nan when mean transmission < 0.05
                         #TODO: remove this if the truncation is made at earlier stage (e.g. 2dfdr idx options)
-                        mean_transmission = pf.getdata(hector_path+'/standards/throughput/mean_throughput_'+pf.getheader(k0[i])['DETECTOR']+'.fits')
-                        mask = mean_transmission > 0.00#0.05
-                        count_true = np.count_nonzero(mask)
-                        if(count_true < pf.getval(k0[i],'NAXIS3')):
-                            continuous_regions = np.where(np.diff(np.concatenate(([False], mask, [False]))) == 1)[0].reshape(-1, 2)
-                            continuous_regions = continuous_regions[(continuous_regions[:, 1] - continuous_regions[:, 0]) >= 1000]
-                            badpixels = np.where((np.arange(pf.getval(k0[i],'NAXIS3'))<continuous_regions[0][0]) | (np.arange(pf.getval(k0[i],'NAXIS3'))>continuous_regions[0][1]))[0]
-                            hdul = pf.open(k0[i], mode='update') 
+                        #mean_transmission = pf.getdata(hector_path+'/standards/throughput/mean_throughput_'+pf.getheader(k0[i])['DETECTOR']+'.fits')
+                        #mask = mean_transmission > 0.00#0.05
+                        if pf.getheader(k0[i])['INSTRUME'].strip() == 'SPECTOR':
+                            crval3 = pf.getheader(k0[i])['CRVAL3']; cdelt3 = pf.getheader(k0[i])['CDELT3']; crpix3 = pf.getheader(k0[i])['CRPIX3']; naxis3 = pf.getheader(k0[i])['NAXIS3']
+                            x=np.arange(naxis3)+1; lam=(crval3-crpix3*cdelt3) + x*cdelt3 #wavelength
+                            if pf.getheader(k0[i])['SPECTID'].strip() == 'BL':
+                                mask = lam > 5810.
+                            else:
+                                mask = lam < 5770.
+                            hdul = pf.open(k0[i], mode='update')
                             new_data = hdul[0].data
-                            new_data[badpixels,:,:] = np.nan
+                            new_data[mask,:,:] = np.nan
                             hdul[0].data = new_data
                             hdul.close()
+
+
+#                        count_true = np.count_nonzero(mask)
+#                        print(count_true, pf.getval(k0[i],'NAXIS3'))
+#                        if(count_true < pf.getval(k0[i],'NAXIS3')):
+#                            continuous_regions = np.where(np.diff(np.concatenate(([False], mask, [False]))) == 1)[0].reshape(-1, 2)
+#                            continuous_regions = continuous_regions[(continuous_regions[:, 1] - continuous_regions[:, 0]) >= 1000]
+#                            badpixels = np.where((np.arange(pf.getval(k0[i],'NAXIS3'))<continuous_regions[0][0]) | (np.arange(pf.getval(k0[i],'NAXIS3'))>continuous_regions[0][1]))[0]
+#                            hdul = pf.open(k0[i], mode='update') 
+#                            new_data = hdul[0].data
+#                            new_data[badpixels,:,:] = np.nan
+#                            hdul[0].data = new_data
+#                            hdul.close()
+
+
+                #TODO: wavelength cropping here??? marie
+
+                #    crval1 = ifu_list[0].crval1; cdelt1 = ifu_list[0].cdelt1; crpix1 = ifu_list[0].crpix1; naxis1 = ifu_list[0].naxis1
+                #    x=np.arange(naxis1)+1; lam=(crval1-crpix1*cdelt1) + x*cdelt1 #wavelength
+                #    w0 = 0; w1 = int(ifu_list[0].naxis1)
+                #    if ifu_list[0].gratid == 'VPH-1099-484': # ccd3
+                #         w1 = max(np.where(lam < 5840.)[0]) # maximum index where wavelength < 5840A, this is arbitrary
+                #    if ifu_list[0].gratid == 'VPH-1178-679': # ccd4
+                #         w0 = min(np.where(lam > 5840.)[0]) # minimum index where wavelength > 5840A, this is arbitrary   
+
 
         #Delete the directory if there is no item in it
         print('\n')
@@ -3997,7 +4036,7 @@ class Manager:
 
     def qc_throughput_spectrum(self, path):
         """Save the throughput function for a TRANSFERcombined file."""
-        absolute_throughput = throughput(path)
+        absolute_throughput, data, probename, stdname = throughput(path)
         # Check the CCD and date for this file
         file_input = pf.getval(path, 'ORIGFILE', 1)
         print(path, file_input)
@@ -4257,6 +4296,16 @@ class Manager:
             files_to_match = ['bias', 'dark']
         elif fits.ndf_class == 'MFFFF' and tlm:
             files_to_match = ['bias', 'dark', 'lflat']
+            #Sree (19May2025): due to fibre damanges of bundle H, gauss extraction mode frequently fails for tlm mapping at the telescope with fast mode
+            #It may take more time but observers do not need to switch between the mode while observing
+            #TODO: Revisit this once bundle H has been repaired. 
+            #if self.speed == 'fast': 
+            #    options.extend(['-EXTR_OPERATION', 'OPTEX'])
+            #    options.extend(['-SCATSUB', 'TRACE'])
+            #    options.extend(['-SKYFITORDER', '1'])
+            #    options.extend(['-SKYSCRUNCHSM', 'TRUE'])
+            #    options.extend(['-TPMETH', 'OFFSKY'])
+            #    #options.extend(['-COSRAY_MTHD', 'LACOSMIC'])
         elif fits.ndf_class == 'MFARC':
             files_to_match = ['bias', 'dark', 'lflat', best_tlm]
             # Arc frames can't use optimal extraction because 2dfdr screws up
@@ -4265,6 +4314,13 @@ class Manager:
             # Sree: Hector uses optimal extraction from v0_02
             #options.extend(['-EXTR_OPERATION', 'GAUSS'])
         elif fits.ndf_class == 'MFFFF' and not tlm:
+            #f self.speed == 'fast': #TODO: remove this?
+            #    options.extend(['-EXTR_OPERATION', 'OPTEX'])
+            #    options.extend(['-SCATSUB', 'TRACE'])
+            #    options.extend(['-SKYFITORDER', '1'])
+            #    options.extend(['-SKYSCRUNCHSM', 'TRUE'])
+            #    options.extend(['-TPMETH', 'OFFSKY'])
+            #    #options.extend(['-COSRAY_MTHD', 'LACOSMIC'])
             # new version of 2dfdr aaorun (2dfdr 7.0) also needs to pass the TLMAP_FILENAME argument
             # when reducing flat fields.  As a result we need to add this to the arguments.
             # We need to be careful (see discussion below) that it is the right filename,
@@ -5332,6 +5388,7 @@ class Manager:
             raise ValueError("Speed must be 'fast' or 'slow'.")
         self.speed = speed
         self.idx_files = IDX_FILES[self.speed]
+        prRed(speed+' mode reduction starts')
         return
 
     @contextmanager
@@ -5691,6 +5748,7 @@ class FITSFile:
         self.set_detector()
         self.set_grating()
         self.set_exposure()
+        self.set_adc()
         self.set_epoch()
         # define the fluxlev property that is the 5-95th percentile range for the
         # raw frame.  This is a reasonable metric to use for assessing whether
@@ -5719,7 +5777,7 @@ class FITSFile:
         """Save the NDF_CLASS of an AAT fits file."""
         # Change DFLAT to LFLAT
 
-        prYellow(f"Next {self.filename}")
+        #prYellow(f"Next {self.filename}")
         if self.header['NDFCLASS'] == 'DFLAT':
             self.header['NDFCLASS'] = 'LFLAT'
 
@@ -6047,6 +6105,14 @@ class FITSFile:
         else:
             self.exposure = None
             self.exposure_str = None
+        return
+
+    def set_adc(self):
+        """ADC status"""
+        try:
+            self.adc = self.header['ADCSTATS'].strip()
+        except KeyError:
+            self.adc = None
         return
 
     def set_epoch(self):
