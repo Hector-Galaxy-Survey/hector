@@ -241,8 +241,9 @@ def prLightGray(skk): print("\033[97m {}\033[00m" .format(skk))
 def prBlack(skk): print("\033[98m {}\033[00m" .format(skk))
 
 
-def get_object_names(infile):
-    """Get the object names observed in the file infile."""
+def get_object_names(infile, active_only=False):
+    """Get the object names observed in the file infile.
+    Sree (June 2025): made this function only provide names from active bundles"""
 
     # Open up the file and pull out list of observed objects.
     try:
@@ -250,13 +251,17 @@ def get_object_names(infile):
     except KeyError:
         table=pf.getdata(infile, 'MORE.FIBRES_IFU')
     names=table.field('NAME')
+    types=table.field('TYPE')
 
     # Find the set of unique values in names
     names_unique=list(set(names))
 
     # Pick out the object names, rejecting SKY and empty strings
     object_names_unique = [s for s in names_unique if ((s.startswith('SKY')==False)
-                            and (s.startswith('Sky')==False)) and len(s)>0]
+                            and (s.startswith('Sky')==False)) and (len(s)>0)
+                            and ('P' in types[names == s])
+                            ]
+
 
     return object_names_unique
 
