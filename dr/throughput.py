@@ -54,7 +54,19 @@ def make_clipped_thput_files(path_list, overwrite=True, edit_all=False,
                              median=False):
     """Make thput files with bad values replaced by an average."""
     n_file = len(path_list)
-    n_fibre = pf.getval(path_list[0], 'NAXIS1', 'THPUT')
+    n_fibre = None
+    for path in path_list:
+        try:
+            n_fibre = pf.getval(path, 'NAXIS1', extname='THPUT')
+            break
+        except (FileNotFoundError, KeyError, OSError) as e:
+            print(f"Skipping file for NAXIS1 read: {path} — {e}")
+            continue
+
+    if n_fibre is None:
+        raise RuntimeError("make_clipped_thput_files: No valid file found with 'THPUT' extension and 'NAXIS1' header.")
+
+#    n_fibre = pf.getval(path_list[0], 'NAXIS1', 'THPUT')
     thput = np.zeros((n_file, n_fibre))
     for index in range(n_file):
         try:

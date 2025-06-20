@@ -133,13 +133,16 @@ def calculate_mean_throughput(path_out, mngr_list, detector, date_start=None,
     `detector' - name of the CCD, e.g. E2V2A
 
     Optional:
-    `date_start' - first date on which this CCD was used
-    `date_finish' - last date on which this CCD was used
+    `date_start' - first date since then this mean througput file is valid
+    `date_finish' - last date until this mean througput file is valid
     `reject' - fractional deviation from median throughput at which to
                reject a spectrum
 
     Dates should be recorded as fractional years, e.g. 2014.461
     If not provided then a semi-infinite or infinite range is allowed.
+    Note that the dates do not specify the frames used to generate the mean throughput, 
+    but rather indicate the valid dates for using the mean throughput in transmission estimation.
+    e.g. the pipeline will complain if try to reduce data in 2025 using the the mean throughput file with date_finish=2024.0 
 
     The following Python commands were used to make the most recent set of
     mean throughput files (Feb 2016):
@@ -163,9 +166,9 @@ def calculate_mean_throughput(path_out, mngr_list, detector, date_start=None,
     for mngr in mngr_list:
         for fits in mngr.files(ndf_class='MFOBJECT', spectrophotometric=True,
                                do_not_use=False):
-            if ((date_start is not None and fits.epoch < date_start) or 
-                (date_finish is not None and fits.epoch > date_finish)):
-                continue
+            #if ((date_start is not None and fits.epoch < date_start) or 
+            #    (date_finish is not None and fits.epoch > date_finish)):
+            #    continue
             if pf.getval(fits.reduced_path, 'DETECTOR') != detector:
                 continue
             try:
