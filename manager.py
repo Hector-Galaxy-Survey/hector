@@ -62,7 +62,7 @@ import multiprocessing
 import warnings
 from functools import wraps
 from contextlib import contextmanager
-from collections import defaultdict
+from collections import defaultdict, Counter
 from getpass import getpass
 from time import sleep
 from glob import glob
@@ -1802,12 +1802,13 @@ class Manager:
         f.write('Automatic detection of tramline failure using the following criteria:\n')
         f.write('  1. failed tlm maps may have active fibres allocated where there is no signal\n')
         f.write('  2. failed tlm maps may have inactive fibres allocated where there is a signal\n')
-        f.write('  3. failed tlm maps sometimes show tlms not in numerical order\n\n')
+        f.write('  3. failed tlm maps sometimes show tlms not in numerical order\n')
+        f.write('  4. issue on slit mounting may bring tlms lie outside the detector dimensions\n\n')
         f.write('  Find '+hector_path+'observing/check_tramline_example.pdf for examples.\n\n')
 
         typical_contrast = [5700,10500,5000,15000]
-        f.write('Also, check_tramline(check_focus=True) automatically checks the spectral focus based on the contrast btw the gap and signal at the centre of each flat.\n')
-        f.write('Note that the typical contrast for each ccds are ccd1(60s):'+str(typical_contrast[0])+' ccd2(60s):'+str(typical_contrast[1])+' ccd3(50s):'+str(typical_contrast[2])+' ccd4(25s):'+str(typical_contrast[3])+'\n\n')
+        #f.write('Also, check_tramline(check_focus=True) automatically checks the spectral focus based on the contrast btw the gap and signal at the centre of each flat.\n')
+        #f.write('Note that the typical contrast for each ccds are ccd1(60s):'+str(typical_contrast[0])+' ccd2(60s):'+str(typical_contrast[1])+' ccd3(50s):'+str(typical_contrast[2])+' ccd4(25s):'+str(typical_contrast[3])+'\n\n')
 
         nfail = 0; nfile = 0; nfocus = 0
         for fits in file_iterable:
@@ -1836,8 +1837,7 @@ class Manager:
                 thput_inactive = thput_inactive + 0.1  
 
             tlmfail = np.zeros(len(fib_spec_id))
-            fib_weak = [51,181,202,210]
-            #tlmfail[np.where( ((fib_type == 'P') | (fib_type == 'S')) & (thput < thput_active) & (fib_spec_id != 51) & (fib_spec_id != 181) )] = 1 # active (P, S) fibres with no signal
+            fib_weak = [51,181,202,210] #know weak fibres
             tlmfail[np.where( ((fib_type == 'P') | (fib_type == 'S')) & (thput < thput_active) & (~np.isin(fib_spec_id, fib_weak)) )] = 1 # active (P, S) fibres with no signal
             tlmfail[np.where( ((fib_type == 'N') | (fib_type == 'U')) & (thput > thput_inactive))] = 2 # inactive (N, U) fibres with a signal
             tlmfile = pf.open(fits.reduced_path[0:-8]+'tlm.fits'); tlm = tlmfile['PRIMARY'].data #tlm position
@@ -1897,8 +1897,8 @@ class Manager:
                     f.write('       Max count reaches to the saturation level. Is it saturated or just cosmic ray?\n')
                     f.write('       Visually check the frame: hector@aatlxe:~$ ds9 '+fits.reduced_dir+'/'+str(fits.filename)+' -scale limits 65000 65100 -zoom to fit&\n')
                     f.write('       If satureted, you should find white horizental line(s).\n')
-                    f.write('       If saturated, add it adding '+str(fits.filename)[0:-5]+' on '+str(self.abs_root)+'/disable.txt\n')
-                    f.write('       Take new dome flat with shorter exposure time. No need to continue to the next check point. \n')
+                    f.write('       If saturated, disable '+str(fits.filename)[0:-5]+'\n')
+                    f.write('       Take a new dome flat with shorter exposure time. No need to continue to the next check point. \n')
                 else:
                     f.write('     Check point: This frame is not saturated. Continue to the next check point.\n')
                 f.write('     Check point: check how the other arm ('+otherfilename[0:-5]+') is doing. You may find a solution there. \n')
@@ -2602,7 +2602,9 @@ class Manager:
                 print('\nCombining files to create', path_out)
                 fluxcal2.combine_transfer_functions(path_list, path_out)
                 # Run the QC throughput measurement
+                print(os.path.exists(path_out))
                 if os.path.exists(path_out):
+                    print('here')
                     self.qc_throughput_spectrum(path_out)
 
                 # Since we've now changed the transfer functions, mark these as needing checks.
@@ -3041,8 +3043,11 @@ class Manager:
              star_only=False, drop_factor=None, tag='', update_tol=0.02,
              size_of_grid=80, output_pix_size_arcsec=0.5, clip_throughput=False,
              min_transmission=0.333, max_seeing=4.0, min_frames=6, ndither=None,
-             tileid=None, objid=None, **kwargs):
-        """Make datacubes from the given RSS files."""
+             tileid=None, objid=None, qc_only=False, **kwargs):
+        """Make datacubes from the given RSS files.
+        Sree: specify tileid or objid if want to generate cubes only for the subset.
+        qc_only=True checks only galaxy IDs intended for cubing.
+        """
         groups = self.group_files_by(
             ['field_id', 'ccd'], ndf_class='MFOBJECT', do_not_use=False,
             reduced=True, name=name, include_linked_managers=True, **kwargs)
@@ -3054,6 +3059,7 @@ class Manager:
         failed_qc_file = os.path.join(self.root, 'failed_qc_fields.txt')
         with open(failed_qc_file, "w+") as infile:
             failed_fields = [line.rstrip() for line in infile]
+            passed_obj = []
 
             for (field_id, ccd), fits_list in groups.items():
                 good_fits_list = self.qc_for_cubing(
@@ -3073,6 +3079,11 @@ class Manager:
                     objects = get_object_names(path_list[0])
                     if field_id in failed_fields:
                         failed_fields.remove(field_id)
+                    # qc_passed_objects
+                    nccd = 'BL' if ccd in ['ccd_1', 'ccd_3'] else 'RD'
+                    ccd_objects = [nccd+str(s) for s in objects]
+                    passed_obj.extend(ccd_objects)
+
                 if drop_factor is None:
                     drop_factor = 0.75 # The decision has been made for Hector in Nov 2024 
                 #    if fits_list[0].epoch < 2013.0:
@@ -3099,21 +3110,20 @@ class Manager:
                             tag, update_tol, gridsize, output_pix_size_arcsec, clip_throughput,
                             ndither, overwrite))
 
-                #TODO: wavelength cropping here??? marie
-
-                #    crval1 = ifu_list[0].crval1; cdelt1 = ifu_list[0].cdelt1; crpix1 = ifu_list[0].crpix1; naxis1 = ifu_list[0].naxis1
-                #    x=np.arange(naxis1)+1; lam=(crval1-crpix1*cdelt1) + x*cdelt1 #wavelength
-                #    w0 = 0; w1 = int(ifu_list[0].naxis1)
-                #    if ifu_list[0].gratid == 'VPH-1099-484': # ccd3
-                #         w1 = max(np.where(lam < 5840.)[0]) # maximum index where wavelength < 5840A, this is arbitrary
-                #    if ifu_list[0].gratid == 'VPH-1178-679': # ccd4
-                #         w0 = min(np.where(lam > 5840.)[0]) # minimum index where wavelength > 5840A, this is arbitrary   
-
-
-
         with open(failed_qc_file, "w") as outfile:
             failed_fields = [field + '\n' for field in failed_fields]
             outfile.writelines(failed_fields)
+        with open(os.path.join(self.root, 'qc_passed_objects_'+str(self.abs_root)[-13:]+'.txt'), "w") as outfile:
+            # qc_passed_objects with both blue and red spectra
+            stripped_obj = sorted(set([s[2:] for s in passed_obj]))
+            filtered_obj = [item for item in stripped_obj if 'BL'+item in passed_obj and 'RD'+item in passed_obj]
+            passed_objects = [obj + '\n' for obj in filtered_obj]
+            outfile.writelines(passed_objects)
+
+        if qc_only:
+            print('qc check '+failed_qc_file+' if there are any failed tile')
+            print('pass '+os.path.join(self.root, 'qc_passed_objects_'+str(self.abs_root)[-13:]+'.txt')+' to TS team')
+            return
 
         # Send the cubing tasks off to multiple CPUs
         cubed_list = self.map(cube_object, inputs_list)
@@ -3274,10 +3284,8 @@ class Manager:
                             cfile.flush(); cfile.close()
                             hdul.writeto(filename,overwrite=True); hdul.close()
 
-                        #Sree: make it nan when mean transmission < 0.05
+                        #Sree: wavelength cropping 
                         #TODO: remove this if the truncation is made at earlier stage (e.g. 2dfdr idx options)
-                        #mean_transmission = pf.getdata(hector_path+'/standards/throughput/mean_throughput_'+pf.getheader(k0[i])['DETECTOR']+'.fits')
-                        #mask = mean_transmission > 0.00#0.05
                         if pf.getheader(k0[i])['INSTRUME'].strip() == 'SPECTOR':
                             crval3 = pf.getheader(k0[i])['CRVAL3']; cdelt3 = pf.getheader(k0[i])['CDELT3']; crpix3 = pf.getheader(k0[i])['CRPIX3']; naxis3 = pf.getheader(k0[i])['NAXIS3']
                             x=np.arange(naxis3)+1; lam=(crval3-crpix3*cdelt3) + x*cdelt3 #wavelength
@@ -3290,31 +3298,6 @@ class Manager:
                             new_data[mask,:,:] = np.nan
                             hdul[0].data = new_data
                             hdul.close()
-
-
-#                        count_true = np.count_nonzero(mask)
-#                        print(count_true, pf.getval(k0[i],'NAXIS3'))
-#                        if(count_true < pf.getval(k0[i],'NAXIS3')):
-#                            continuous_regions = np.where(np.diff(np.concatenate(([False], mask, [False]))) == 1)[0].reshape(-1, 2)
-#                            continuous_regions = continuous_regions[(continuous_regions[:, 1] - continuous_regions[:, 0]) >= 1000]
-#                            badpixels = np.where((np.arange(pf.getval(k0[i],'NAXIS3'))<continuous_regions[0][0]) | (np.arange(pf.getval(k0[i],'NAXIS3'))>continuous_regions[0][1]))[0]
-#                            hdul = pf.open(k0[i], mode='update') 
-#                            new_data = hdul[0].data
-#                            new_data[badpixels,:,:] = np.nan
-#                            hdul[0].data = new_data
-#                            hdul.close()
-
-
-                #TODO: wavelength cropping here??? marie
-
-                #    crval1 = ifu_list[0].crval1; cdelt1 = ifu_list[0].cdelt1; crpix1 = ifu_list[0].crpix1; naxis1 = ifu_list[0].naxis1
-                #    x=np.arange(naxis1)+1; lam=(crval1-crpix1*cdelt1) + x*cdelt1 #wavelength
-                #    w0 = 0; w1 = int(ifu_list[0].naxis1)
-                #    if ifu_list[0].gratid == 'VPH-1099-484': # ccd3
-                #         w1 = max(np.where(lam < 5840.)[0]) # maximum index where wavelength < 5840A, this is arbitrary
-                #    if ifu_list[0].gratid == 'VPH-1178-679': # ccd4
-                #         w0 = min(np.where(lam > 5840.)[0]) # minimum index where wavelength > 5840A, this is arbitrary   
-
 
         #Delete the directory if there is no item in it
         print('\n')
@@ -4039,7 +4022,7 @@ class Manager:
         absolute_throughput, data, probename, stdname = throughput(path)
         # Check the CCD and date for this file
         file_input = pf.getval(path, 'ORIGFILE', 1)
-        print(path, file_input)
+        #print(path, file_input)
         path_input = os.path.join(
             self.fits_file(file_input[:10]).reduced_dir, file_input)
         detector = pf.getval(path_input, 'DETECTOR')
@@ -4052,19 +4035,23 @@ class Manager:
         for path_mean in path_list:
             hdulist_mean = pf.open(path_mean)
             header = hdulist_mean[0].header
-            if ('DATESTRT' not in header or
-                 epoch >= header['DATESTRT']):
+            if (('DATESTRT' not in header or
+                 epoch >= header['DATESTRT']) and
+                    ('DATEFNSH' not in header or
+                     epoch <= header['DATEFNSH'])):
                 # This file is suitable for use
                 found_mean = True
                 mean_throughput = hdulist_mean[0].data
                 hdulist_mean.close()
+                print(path_mean+' has been used')
                 break
             hdulist_mean.close()
         else:
-            prRed('  Warning: No mean throughput file found for QC checks.')
-            print('     mean throughput file:', path_mean)
-            print('     mean throughput start, finish: ',header['DATESTRT'],header['DATEFNSH'])
+            prRed('  Warning: No valid mean throughput file found for QC checks.')
             print('     epoch of '+file_input+': ',epoch)
+            print('     go to '+hector_path+'standards/throughput/')
+            print('     check DATESTRT, DATEFNSH of the current mean throughput frame')
+            print('     if necessary change DATESTRT, DATEFNSH or generate the new mean througput (readme.txt)')
             found_mean = False
         if found_mean:
             relative_throughput = absolute_throughput / mean_throughput
@@ -4109,6 +4096,26 @@ class Manager:
             print('Warning: Flux calibration required to calculate transmission.')
             return
 
+        # Sree (June 2025): AAOmega transmission is currently unreliable due to extremely low throughput in bundle H.
+        # For now, we set the transmission to the higher value between AAOmega and Spector.
+        # TODO: Revisit this once bundle H has been properly fixed.
+
+        if pf.getval(path, 'EPOCH') > 2024.84  and pf.getval(path, 'INSTRUME') == 'AAOMEGA-HECTOR':
+            if 'ccd_1' in path:
+                path_spector = path.replace('ccd_1', 'ccd_3')[:-13]+'3'+path[-12:]
+            elif 'ccd_2' in path:
+                path_spector = path.replace('ccd_2', 'ccd_4')[:-13]+'4'+path[-12:]
+            try:
+                median_relative_throughput_spector = (
+                    pf.getval(pf.getval(path_spector, 'FCALFILE'),'MEDRELTH', 'THROUGHPUT'))
+            except KeyError:
+                median_relative_throughput_spector = -1.
+            try:
+                median_relative_throughput_spector /= (
+                    pf.getval(path_spector, 'RESCALE', 'FLUX_CALIBRATION'))
+            except KeyError:
+                pass
+            median_relative_throughput = max(median_relative_throughput, median_relative_throughput_spector)
 
         if not np.isfinite(median_relative_throughput):
             median_relative_throughput = -1.0
@@ -6446,11 +6453,13 @@ def telluric_correct_pair(inputs):
           ' and ' + fits_2.filename)
     try:
         prCyan("The inputs to telluric.derive_transfer_function:")
-        print(path_pair,PS_spec_file,use_PS,n_trim,scale_PS_by_airmass,model_name,MOLECFIT_AVAILABLE, MF_BIN_DIR)
+        debug = fits_1.epoch < 2025. or fits_1.instrument != 'AAOMEGA-HECTOR' #TODO:Sree (may2025): make debug=True once H bundle is fixed
+        
+        print(path_pair,PS_spec_file,use_PS,n_trim,scale_PS_by_airmass,model_name,MOLECFIT_AVAILABLE, MF_BIN_DIR, debug)
         telluric.derive_transfer_function(
             path_pair, PS_spec_file=PS_spec_file, use_PS=use_PS, n_trim=n_trim,
             scale_PS_by_airmass=scale_PS_by_airmass, model_name=model_name,
-            molecfit_available = MOLECFIT_AVAILABLE, molecfit_dir = MF_BIN_DIR,speed=inputs['speed'])
+            molecfit_available = MOLECFIT_AVAILABLE, molecfit_dir = MF_BIN_DIR,speed=inputs['speed'],debug=debug)
     except ValueError as err:
         if err.args[0].startswith('No star identified in file:'):
             # No standard star found; probably a star field
