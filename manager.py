@@ -3661,21 +3661,21 @@ class Manager:
                                 source = 'C'; type = 'G'
                             if (name[0] == 'W') or (plate[0] == 'H') or (plate[0] == 'G') or (plate == 'Commissioning_SAMI_low_mass_T001'):
                                 source = 'W'; type = 'G'
-                            if source == 'S':
+                            if (name[0] == 'S') or (source == 'S'):
                                 type = 'S'
-                            if (probe == 'H') or (probe == 'U'):
-                                type = 'S'
-                            qc_data = hdulist['QC'].data
-                            fwhm = np.nanmedian(qc_data['FWHM'])
-                            trans = np.nanmedian(qc_data['TRANSMIS'])
                             pname = name[:]
-                            if pname.isnumeric(): # add a prefix if it is not already included in the id
+                            if pname.isnumeric(): # add a prefix if it is not already included in the id; obj name was numeric and didn't have prefix in early data
+                                if (probe == 'H') or (probe == 'U'): #H and U were always for secondary stars at that time when id was numeric; it can be another bundle since 2025 
+                                    type = 'S'
                                 prefix = 'S'
                                 if (source=='C') and (type=='G'):
                                     prefix = 'C'
                                 if (source=='W') and (type=='G'):
                                     prefix = 'W'
                                 pname = prefix+pname
+                            qc_data = hdulist['QC'].data
+                            fwhm = np.nanmedian(qc_data['FWHM'])
+                            trans = np.nanmedian(qc_data['TRANSMIS'])
                             data = {
                                 'name': name,'pname': pname,'ccd': ccd,'runid': runid[i],'infile': infile, 'version': version,
                                 'ra': ra,'dec': dec,'xcen': xcen,'ycen': ycen, 'texp': texp,'ndither': ndither,
@@ -6453,7 +6453,10 @@ def telluric_correct_pair(inputs):
           ' and ' + fits_2.filename)
     try:
         prCyan("The inputs to telluric.derive_transfer_function:")
-        debug = fits_1.epoch < 2025. or fits_1.instrument != 'AAOMEGA-HECTOR' #TODO:Sree (may2025): make debug=True once H bundle is fixed
+        debug = (fits_1.epoch < 2025.) or (fits_1.instrument != 'AAOMEGA-HECTOR') #TODO:Sree (may2025): make debug=True once H bundle is fixed
+        if (fits_1.epoch < 2025.5) and (fits_1.instrument == 'AAOMEGA-HECTOR'):
+            use_probe = 'G'  #TODO: Sree (July2025): Bundle 'G' will be used for secondary standard stars from the 17 July 2025 run, until bundle 'H' is recovered.
+            debug = True
         
         print(path_pair,PS_spec_file,use_PS,n_trim,scale_PS_by_airmass,model_name,MOLECFIT_AVAILABLE, MF_BIN_DIR, debug)
         telluric.derive_transfer_function(

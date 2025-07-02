@@ -362,15 +362,33 @@ def identify_secondary_standard(path, use_probe=None):
     """Identify the secondary standard star in the given file."""
     # MLPG: commented out the full original code, and added new code for Hector
     # as the secondary stars in Hector are assigned to the hexabundles "U" and "H"
+    # Sree (July2025): revive the use_probe functionality to adopt the change of standard star bundle 
+
     fibre_table = pf.getdata(path, 'FIBRES_IFU')
+    epoch = pf.getval(path,'EPOCH')
 
-    mask = (fibre_table.field('TYPE') == 'P') & \
-           ((fibre_table.field('SPAX_ID') == 'H') | (fibre_table.field('SPAX_ID') == 'U'))
+    if use_probe:
+        probename = use_probe
+        index = (fibre_table['SPAX_ID'] == probename) & (fibre_table['TYPE'] == 'P')
+        if not index.any():
+            raise ValueError('dr.telluric: No bundle '+use_probe+' in file: ' + path)
+        name = fibre_table['NAME'][(fibre_table['SPAX_ID'] == probename) & (fibre_table['TYPE'] == 'P')]
+        probenum = fibre_table['PROBENUM'][(fibre_table['SPAX_ID'] == probename) & (fibre_table['TYPE'] == 'P')]
+        name = name[0]; probenum=probenum[0]
+        if name[0] != 'S':
+            print('manager.telluric_correct_pair: use_probe is specified as '+use_probe)
+            raise ValueError('dr.telluric: Is '+name+' a star? No star identified in specified bundle '+use_probe+' in file: ' + path)
+    else:
+        mask = (fibre_table.field('TYPE') == 'P') & \
+               ((fibre_table.field('SPAX_ID') == 'H') | (fibre_table.field('SPAX_ID') == 'U'))
+        probenum = fibre_table.field('PROBENUM')[mask][0]
+        probename = fibre_table.field('SPAX_ID')[mask][0]
+        name = fibre_table.field('NAME')[mask][0]
+        if (name[0] != 'S') and (epoch>2025.):
+            print(epoch)
+            raise ValueError('dr.telluric: Is '+name+' a star? No star identified from bundle '+probename+' in file: ' + path)
 
-    probenum = fibre_table.field('PROBENUM')[mask][0]
-    name = fibre_table.field('NAME')[mask][0]
-
-    star_match = {'name': name, 'probename': name, 'probenum': probenum}
+    star_match = {'name': name, 'probename': probename, 'probenum': probenum}
     return star_match
 
     # MLPG: commenting out the original code (from SAMI days) for the function "identify_secondary_standard"
