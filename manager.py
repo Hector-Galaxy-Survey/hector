@@ -3144,45 +3144,49 @@ class Manager:
         # Sree: there was a mistake on tile file which swap bundles B & T in the catalogue
         # 901006735001769 should have been allocated to T in the observed tile file
         # TODO: move this to post processing code for data release.. 
-        swap_id = ['901006735001769','901006999103632']; swap_bundle = ['T', 'B']
-        if(str(self.abs_root)[-13:] == '230710_230724'):
-            if(os.path.exists(cubed_root+'/'+swap_id[0]+'/')):
-                frames0 = glob(cubed_root + '/'+swap_id[0]+'/*')
-                frames1 = glob(cubed_root + '/'+swap_id[1]+'/*')
-
-                if(pf.getheader(frames0[0])['IFUPROBE'] != 'T'):
-                    shutil.move(frames0[0], cubed_root+'/'+swap_id[1]+'/')
-                    shutil.move(frames0[1], cubed_root+'/'+swap_id[1]+'/')
-                    shutil.move(frames1[0], cubed_root+'/'+swap_id[0]+'/')
-                    shutil.move(frames1[1], cubed_root+'/'+swap_id[0]+'/')
-                    prYellow('swap directories of 901006735001769 and 901006999103632')
-
-                for sid in swap_id: 
-                    for k in glob(cubed_root + '/'+sid+'/*'):
-                        tmp = k.split('/')[-1].split('_'); tmp[0] = sid
-                        newname = cubed_root + '/'+sid+'/'+'_'.join(tmp)
-                        if k != newname:
-                            prYellow('move '+k+' to '+newname)
-                            shutil.move(k,newname)
-
-                frames0 = glob(cubed_root + '/'+swap_id[0]+'/*')
-                frames1 = glob(cubed_root + '/'+swap_id[1]+'/*')
-                if(pf.getheader(frames0[0])['NAME'] != swap_id[0]):
-                    prYellow('modify header of 901006735001769 and 901006999103632')
-                    for i in [0,1]:
-                        hdulist0 = pf.open(frames0[i], 'update', do_not_scale_image_data=True)
-                        hdulist1 = pf.open(frames1[i], 'update', do_not_scale_image_data=True)
-                        crval1  = [hdulist1[0].header['CRVAL1'],hdulist0[0].header['CRVAL1']]
-                        crval2  = [hdulist1[0].header['CRVAL2'],hdulist0[0].header['CRVAL2']]
-                        catara  = [hdulist1[0].header['CATARA'],hdulist0[0].header['CATARA']]
-                        catadec = [hdulist1[0].header['CATADEC'],hdulist0[0].header['CATADEC']]
-                        hdulist0[0].header['CRVAL1']  = crval1[0] ; hdulist1[0].header['CRVAL1']  = crval1[1]
-                        hdulist0[0].header['CRVAL2']  = crval2[0] ; hdulist1[0].header['CRVAL2']  = crval2[1]
-                        hdulist0[0].header['CATARA']  = catara[0] ; hdulist1[0].header['CATARA']  = catara[1]
-                        hdulist0[0].header['CATADEC'] = catadec[0]; hdulist1[0].header['CATADEC'] = catadec[1]
-                        hdulist0[0].header['NAME'] = swap_id[0]; hdulist1[0].header['NAME'] = swap_id[1]
-                        hdulist0.flush();hdulist0.close()
-                        hdulist1.flush();hdulist1.close()
+        # Sree (July2025): cube orientation is earlier matched with the input information and does it is not correct 
+        # I disable all swapped fibres for now not saving them but maybe later this can be revisit.
+        # The list of swapped fibre can be found here:
+        # https://docs.google.com/spreadsheets/d/1GvQVK3rFZjZzgr-8Z2ViVs9HwJrZGeCYc6wJy7m5UFA/edit?gid=2048352866#gid=2048352866
+        #swap_id = ['901006735001769','901006999103632']; swap_bundle = ['T', 'B']
+        #if(str(self.abs_root)[-13:] == '230710_230724'):
+        #    if(os.path.exists(cubed_root+'/'+swap_id[0]+'/')):
+        #        frames0 = glob(cubed_root + '/'+swap_id[0]+'/*')
+        #        frames1 = glob(cubed_root + '/'+swap_id[1]+'/*')
+#
+#                if(pf.getheader(frames0[0])['IFUPROBE'] != 'T'):
+#                    shutil.move(frames0[0], cubed_root+'/'+swap_id[1]+'/')
+#                    shutil.move(frames0[1], cubed_root+'/'+swap_id[1]+'/')
+#                    shutil.move(frames1[0], cubed_root+'/'+swap_id[0]+'/')
+#                    shutil.move(frames1[1], cubed_root+'/'+swap_id[0]+'/')
+#                    prYellow('swap directories of 901006735001769 and 901006999103632')
+#
+#                for sid in swap_id: 
+#                    for k in glob(cubed_root + '/'+sid+'/*'):
+#                        tmp = k.split('/')[-1].split('_'); tmp[0] = sid
+#                        newname = cubed_root + '/'+sid+'/'+'_'.join(tmp)
+#                        if k != newname:
+#                            prYellow('move '+k+' to '+newname)
+#                            shutil.move(k,newname)
+#
+#                frames0 = glob(cubed_root + '/'+swap_id[0]+'/*')
+#                frames1 = glob(cubed_root + '/'+swap_id[1]+'/*')
+#                if(pf.getheader(frames0[0])['NAME'] != swap_id[0]):
+#                    prYellow('modify header of 901006735001769 and 901006999103632')
+#                    for i in [0,1]:
+#                        hdulist0 = pf.open(frames0[i], 'update', do_not_scale_image_data=True)
+#                        hdulist1 = pf.open(frames1[i], 'update', do_not_scale_image_data=True)
+#                        crval1  = [hdulist1[0].header['CRVAL1'],hdulist0[0].header['CRVAL1']]
+#                        crval2  = [hdulist1[0].header['CRVAL2'],hdulist0[0].header['CRVAL2']]
+#                        catara  = [hdulist1[0].header['CATARA'],hdulist0[0].header['CATARA']]
+#                        catadec = [hdulist1[0].header['CATADEC'],hdulist0[0].header['CATADEC']]
+#                        hdulist0[0].header['CRVAL1']  = crval1[0] ; hdulist1[0].header['CRVAL1']  = crval1[1]
+#                        hdulist0[0].header['CRVAL2']  = crval2[0] ; hdulist1[0].header['CRVAL2']  = crval2[1]
+#                        hdulist0[0].header['CATARA']  = catara[0] ; hdulist1[0].header['CATARA']  = catara[1]
+#                        hdulist0[0].header['CATADEC'] = catadec[0]; hdulist1[0].header['CATADEC'] = catadec[1]
+#                        hdulist0[0].header['NAME'] = swap_id[0]; hdulist1[0].header['NAME'] = swap_id[1]
+#                        hdulist0.flush();hdulist0.close()
+#                        hdulist1.flush();hdulist1.close()
 
 
         print('Start resizing the cubes...') #Susie's code resizing cubes
@@ -3659,7 +3663,7 @@ class Manager:
                             source = 'S'
                             if (name[0] == 'C') or (plate[0] == 'A'):
                                 source = 'C'; type = 'G'
-                            if (name[0] == 'W') or (plate[0] == 'H') or (plate[0] == 'G') or (plate == 'Commissioning_SAMI_low_mass_T001'):
+                            if (name[0] == 'W') or (plate[0] == 'H') or (plate[0] == 'G') or (plate == 'Commissioning_SAMI_low_mass_T001') or (plate == 'Commissioning_SAMI_MANGA_overlap_T001'):
                                 source = 'W'; type = 'G'
                             if (name[0] == 'S') or (source == 'S'):
                                 type = 'S'
@@ -3685,7 +3689,7 @@ class Manager:
                                 hdu = hdulist[0].data
                                 sn = der_snr(np.nanmedian(hdu, axis=(1, 2)))
                                 print(' S/N of ',listcube[j],' is ' ,sn)
-                                if sn < 0.1: #Sree: S/N < 0.1, this is potentially a broken bundle
+                                if sn < 0.05: #Sree: S/N < 0.05, this is potentially a broken bundle
                                     print('  skip ',listcube[j])
                                     skip_data.append(data)
                                     continue
