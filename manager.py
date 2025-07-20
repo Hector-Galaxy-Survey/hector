@@ -6465,7 +6465,7 @@ def telluric_correct_pair(inputs):
         print(path_pair,PS_spec_file,use_PS,n_trim,scale_PS_by_airmass,model_name,MOLECFIT_AVAILABLE, MF_BIN_DIR, debug)
         telluric.derive_transfer_function(
             path_pair, PS_spec_file=PS_spec_file, use_PS=use_PS, n_trim=n_trim,
-            scale_PS_by_airmass=scale_PS_by_airmass, model_name=model_name,
+            scale_PS_by_airmass=scale_PS_by_airmass, model_name=model_name, use_probe=use_probe,
             molecfit_available = MOLECFIT_AVAILABLE, molecfit_dir = MF_BIN_DIR,speed=inputs['speed'],debug=debug)
     except ValueError as err:
         if err.args[0].startswith('No star identified in file:'):
