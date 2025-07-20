@@ -1098,12 +1098,12 @@ def fit_integrated_moffat_func_and_get_parameters_for_primary(path_list, flux_im
     # Get the fitted model
     if elliptical:
         fit_flux = moffat_elliptical(x_mesh, y_mesh, *params)
-        prPurple(f"Best-fitting params from the RSS frame {file_name} are alpha1={params[0]}, alpha2={params[1]}, "
-                 f"rho={params[2]}, beta={params[3]}, x00={params[4]}, y00={params[5]}, intensity={params[6]}")
+        # prPurple(f"Best-fitting params from the RSS frame {file_name} are alpha1={params[0]}, alpha2={params[1]}, "
+                #  f"rho={params[2]}, beta={params[3]}, x00={params[4]}, y00={params[5]}, intensity={params[6]}")
     else:
         fit_flux = moffat_circular(x_mesh, y_mesh, *params)
-        prPurple(f"Best-fitting params from the RSS frame {file_name} are ALPHA={params[0]}, BETA={params[1]}, "
-                 f"X00={params[2]}, Y00={params[3]}, INTENSITY={params[4]}, LAMBDA={wave}")
+        #prPurple(f"Best-fitting params from the RSS frame {file_name} are ALPHA={params[0]}, BETA={params[1]}, "
+        #         f"X00={params[2]}, Y00={params[3]}, INTENSITY={params[4]}, LAMBDA={wave}")
 
 
     # Calculate the FWHM and create a data frame
