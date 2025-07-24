@@ -1186,7 +1186,7 @@ class Manager:
             biascol_modified = fits.header['BIASCOL']
         except KeyError:
             biascol_modified = 'F'
-        if ((fits.epoch > 2022.0) and (fits.epoch < 2023.99) and (fits.ccd == 'ccd_4') and biascol_modified != 'T'):
+        if (((fits.epoch > 2022.0) and (fits.epoch < 2023.99)) and (fits.ccd == 'ccd_4') and biascol_modified != 'T'):
             new_path = os.path.join(fits.raw_dir, (fits.filename[:10]+'_original.fits'))
             if not os.path.exists(new_path):
                 shutil.copy2(fits.raw_path, new_path)
@@ -6447,6 +6447,7 @@ def telluric_correct_pair(inputs):
     scale_PS_by_airmass = inputs['scale_PS_by_airmass']
     PS_spec_file = inputs['PS_spec_file']
     model_name = inputs['model_name']
+    use_probe = None
 
     if fits_1 is None or not os.path.exists(fits_1.fluxcal_path):
         print('Matching blue arm not found for ' + fits_2.filename +
@@ -6458,11 +6459,11 @@ def telluric_correct_pair(inputs):
     try:
         prCyan("The inputs to telluric.derive_transfer_function:")
         debug = (fits_1.epoch < 2025.) or (fits_1.instrument != 'AAOMEGA-HECTOR') #TODO:Sree (may2025): make debug=True once H bundle is fixed
-        if (fits_1.epoch < 2025.5) and (fits_1.instrument == 'AAOMEGA-HECTOR'):
+        if (fits_1.epoch > 2025.5) and (fits_1.instrument == 'AAOMEGA-HECTOR'):
             use_probe = 'G'  #TODO: Sree (July2025): Bundle 'G' will be used for secondary standard stars from the 17 July 2025 run, until bundle 'H' is recovered.
             debug = True
         
-        print(path_pair,PS_spec_file,use_PS,n_trim,scale_PS_by_airmass,model_name,MOLECFIT_AVAILABLE, MF_BIN_DIR, debug)
+        print(path_pair,PS_spec_file,use_PS,n_trim,scale_PS_by_airmass,model_name,MOLECFIT_AVAILABLE, MF_BIN_DIR, debug, use_probe)
         telluric.derive_transfer_function(
             path_pair, PS_spec_file=PS_spec_file, use_PS=use_PS, n_trim=n_trim,
             scale_PS_by_airmass=scale_PS_by_airmass, model_name=model_name, use_probe=use_probe,
