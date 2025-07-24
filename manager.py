@@ -1180,13 +1180,13 @@ class Manager:
             print('    DETECX? and WINDOX?? keywords have been modified having RO_PORTS=B from',fits.filename)
 
         #Sree (Feb 2024): A bias column is artificially added in ccd_4 at x = 2048 for Hector
-        #Here we make a modification before it is permanantly fixed
-        #TODO: should change fits.epoch range once the issue has been fixed
+        #It has been permanantly fixed from 2024 data
+        #It has been temporarily returned during 17-20 July 2025 due to UPS failure?
         try:
             biascol_modified = fits.header['BIASCOL']
         except KeyError:
             biascol_modified = 'F'
-        if (((fits.epoch > 2022.0) and (fits.epoch < 2023.99)) and (fits.ccd == 'ccd_4') and biascol_modified != 'T'):
+        if ( (((fits.epoch>2022.0) and (fits.epoch<2023.99)) or ((fits.epoch>2025.540) and (fits.epoch<2025.551))) and (fits.ccd == 'ccd_4') and biascol_modified != 'T'):
             new_path = os.path.join(fits.raw_dir, (fits.filename[:10]+'_original.fits'))
             if not os.path.exists(new_path):
                 shutil.copy2(fits.raw_path, new_path)
