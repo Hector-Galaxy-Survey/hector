@@ -2755,7 +2755,7 @@ def apply_secondary_tf(path1,path2,path_out1,path_out2,use_av_tf_sec=False,verbo
         return
 
     # Sree: to skip secondary fluxcal when failed
-    if 'FLUX_CALIBRATION2' not in hdulist1 or hdulist1['FLUX_CALIBRATION2'].header.get('SNR', 0) < 2.:
+    if 'FLUX_CALIBRATION2' not in hdulist1 or hdulist1['FLUX_CALIBRATION'].header.get('SNR', 0) < 2.:
         # write FITS header keyword to say it's done.
         hdulist1[0].header['SECCOR'] = (False,'Failed to apply secondary flux cal')
         hdulist2[0].header['SECCOR'] = (False,'Failed to apply secondary flux cal')
