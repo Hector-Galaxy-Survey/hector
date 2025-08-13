@@ -6858,9 +6858,11 @@ def read_hector_tiles(abs_root=None):
         for afile in not_in_list:
             with open(afile, 'r') as fp:
                 lines = fp.readlines()
-                if line.find("TILING_DATE") != -1:
-                    _line = (line.split(',')[1]).split()
-                    year, month, date = _line[0:3]
+                for index, line in enumerate(lines):
+                    if line.find("TILING_DATE") != -1:
+                        _line = (line.split(',')[1]).split()
+                        year, month, date = _line[0:3]
+                        break
 
             hector_tile = pd.read_csv(afile, header=11, index_col="Hexabundle")
             hector_tile['u_mag'] = np.repeat(-99.0, hector_tile.shape[0]) # fits.epoch>2025.540
