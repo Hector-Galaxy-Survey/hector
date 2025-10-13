@@ -6867,7 +6867,7 @@ def read_hector_tiles(abs_root=None):
             hector_tile = pd.read_csv(afile, header=11, index_col="Hexabundle")
             hector_tile['u_mag'] = np.repeat(-99.0, hector_tile.shape[0]) # fits.epoch>2025.540
 
-            if (int(year) >= 2025) & (int(month)>=7):
+            if (int(year) >= 2025) & (int(month)>=7) & (int(month)<10):
                 hector_tile.loc[["G", "U"]].to_csv(f"{base_path}/{file_names[1]}", mode='a', header=False, index=False)
                 hector_tile.loc[["G", "U"]].to_csv(f"{base_path}/{file_names[2]}", mode='a', header=False, index=False, columns=headerNew)
             else:
