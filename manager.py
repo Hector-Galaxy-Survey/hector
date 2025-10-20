@@ -70,6 +70,7 @@ from pydoc import pager
 import itertools
 import traceback
 import datetime
+from datetime import datetime as dt
 import csv
 import pandas as pd
 
@@ -4902,6 +4903,9 @@ class Manager:
 
     def other_inst(self, fits, include_linked_managers=False):
         """Return the FITSFile from the other spectrograph."""
+        if fits is None or not hasattr(fits, "ccd"):
+            return None
+            #print(fits.filename+' does not has no attribute ccd')
         if fits.ccd == 'ccd_1':
             other_number = '3'
         elif fits.ccd == 'ccd_2':
@@ -6459,8 +6463,8 @@ def telluric_correct_pair(inputs):
     try:
         prCyan("The inputs to telluric.derive_transfer_function:")
         debug = (fits_1.epoch < 2025.) or (fits_1.instrument != 'AAOMEGA-HECTOR') #TODO:Sree (may2025): make debug=True once H bundle is fixed
-        if (fits_1.epoch > 2025.5) and (fits_1.instrument == 'AAOMEGA-HECTOR'):
-            use_probe = 'G'  #TODO: Sree (July2025): Bundle 'G' will be used for secondary standard stars from the 17 July 2025 run, until bundle 'H' is recovered.
+        if (fits_1.epoch > 2025.5 and fits_1.epoch < 2025.75) and (fits_1.instrument == 'AAOMEGA-HECTOR'):
+            use_probe = 'G'  #TODO: Sree (July2025): Bundle "G" will be used for secondary standard stars from the 17 July 2025 run, until bundle 'H' is recovered.
             debug = True
         
         print(path_pair,PS_spec_file,use_PS,n_trim,scale_PS_by_airmass,model_name,MOLECFIT_AVAILABLE, MF_BIN_DIR, debug, use_probe)
@@ -6801,14 +6805,14 @@ def read_hector_tiles(abs_root=None):
         os.makedirs(robot_path)
 
     # grab new Hector tiles from the raw folder
-    update = False
+    update = True
     if abs_root is not None:
         tile_dir = abs_root + f'/raw/'
         for root, dirs, files in os.walk(tile_dir):
             for file in files:
                 if (('Tile' in file) and (file[-3:] == 'csv')):
                     src_path = os.path.join(root, file)
-                    dest_tile_path = os.path.join(tile_path, file)
+                    dest_tile_path = os.path.join(tile_path, file.replace('.csv','_'+abs_root[-13:]+'.csv'))
                     dest_robot_path = os.path.join(robot_path, file.replace('Tile', 'Robot'))
                     if not os.path.exists(dest_tile_path):
                         update = True
@@ -6865,9 +6869,20 @@ def read_hector_tiles(abs_root=None):
                         break
 
             hector_tile = pd.read_csv(afile, header=11, index_col="Hexabundle")
-            hector_tile['u_mag'] = np.repeat(-99.0, hector_tile.shape[0]) # fits.epoch>2025.540
+            hector_tile['u_mag'] = np.repeat(-99.0, hector_tile.shape[0]) 
 
-            if (int(year) >= 2025) & (int(month)>=7):
+            # The below is for temporary change of secondary standard bundles for AAOmega to bundle G from 250717_250803 (epoch~2025.539) to 250915_250928 (epoch~2025.739) runs
+            run_start = afile[-17:-11]
+            if run_start.isdigit():
+                d=dt.strptime(run_start,'%y%m%d')
+                run_start_epoch=d.year+(d-dt(d.year,1,1)).total_seconds()/((dt(d.year+1,1,1)-dt(d.year,1,1)).total_seconds())
+            else:
+                print(afile+' does not have run stamp. Read secondary from default H, U bundles')
+                run_start_epoch=0
+
+#            if (int(year) >= 2025) & (int(month)>=7):
+            print(afile, run_start_epoch)
+            if run_start_epoch > 2025.5 and run_start_epoch < 2025.75:
                 hector_tile.loc[["G", "U"]].to_csv(f"{base_path}/{file_names[1]}", mode='a', header=False, index=False)
                 hector_tile.loc[["G", "U"]].to_csv(f"{base_path}/{file_names[2]}", mode='a', header=False, index=False, columns=headerNew)
             else:
