@@ -6462,9 +6462,9 @@ def telluric_correct_pair(inputs):
           ' and ' + fits_2.filename)
     try:
         prCyan("The inputs to telluric.derive_transfer_function:")
-        debug = (fits_1.epoch < 2025.) or (fits_1.instrument != 'AAOMEGA-HECTOR') #TODO:Sree (may2025): make debug=True once H bundle is fixed
+        debug = (fits_1.epoch < 2025.) or (fits_1.epoch > 2025.75) or (fits_1.instrument != 'AAOMEGA-HECTOR') #TODO:Sree (may2025): make debug=True once H bundle is fixed
         if (fits_1.epoch > 2025.5 and fits_1.epoch < 2025.75) and (fits_1.instrument == 'AAOMEGA-HECTOR'):
-            use_probe = 'G'  #TODO: Sree (July2025): Bundle "G" will be used for secondary standard stars from the 17 July 2025 run, until bundle 'H' is recovered.
+            use_probe = 'G'  #TODO: Sree (July2025): Bundle "G" is used for secondary standard stars from the 250717_250803 and 250915_250928 runs, after that bundle 'H' is recovered.
             debug = True
         
         print(path_pair,PS_spec_file,use_PS,n_trim,scale_PS_by_airmass,model_name,MOLECFIT_AVAILABLE, MF_BIN_DIR, debug, use_probe)
@@ -6880,10 +6880,9 @@ def read_hector_tiles(abs_root=None):
                 print(afile+' does not have run stamp. Read secondary from default H, U bundles')
                 run_start_epoch=0
 
-#            if (int(year) >= 2025) & (int(month)>=7):
             print(afile, run_start_epoch)
-#            if run_start_epoch > 2025.5 and run_start_epoch < 2025.75:
-            if (int(year) >= 2025) & (int(month)>=7) & (int(month)<10):
+            if run_start_epoch > 2025.5 and run_start_epoch < 2025.75:
+#            if (int(year) >= 2025) & (int(month)>=7) & (int(month)<10):
                 hector_tile.loc[["G", "U"]].to_csv(f"{base_path}/{file_names[1]}", mode='a', header=False, index=False)
                 hector_tile.loc[["G", "U"]].to_csv(f"{base_path}/{file_names[2]}", mode='a', header=False, index=False, columns=headerNew)
             else:
