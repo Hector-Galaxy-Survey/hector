@@ -6882,7 +6882,8 @@ def read_hector_tiles(abs_root=None):
 
 #            if (int(year) >= 2025) & (int(month)>=7):
             print(afile, run_start_epoch)
-            if run_start_epoch > 2025.5 and run_start_epoch < 2025.75:
+#            if run_start_epoch > 2025.5 and run_start_epoch < 2025.75:
+            if (int(year) >= 2025) & (int(month)>=7) & (int(month)<10):
                 hector_tile.loc[["G", "U"]].to_csv(f"{base_path}/{file_names[1]}", mode='a', header=False, index=False)
                 hector_tile.loc[["G", "U"]].to_csv(f"{base_path}/{file_names[2]}", mode='a', header=False, index=False, columns=headerNew)
             else:
