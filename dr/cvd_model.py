@@ -140,7 +140,7 @@ robot_centre_in_arcsec = [constants.robot_center_x * 1.0E3 * MICRONS_TO_ARCSEC,
 robotCentreX_in_arcsec, robotCentreY_in_arcsec = robot_centre_in_arcsec[1], robot_centre_in_arcsec[0]  # switch, since y is x, and x is y
 
 
-def assert_sky_coord_sign_check(ifu):
+def assert_sky_coord_sign_check(ifu,verbose=True):
     """
     From IFU class within the manager:
         [xpos_rel, ypos_rel] in arcseconds relative to the field centre
@@ -160,7 +160,8 @@ def assert_sky_coord_sign_check(ifu):
     mean_xfibreMic = np.nanmean( ifu.x_microns ) # In microns
     mean_yfibreMic = np.nanmean( ifu.y_microns ) # In microns
 
-    prRed(f"IFU meanX, meanY = {ifu.mean_x}, {ifu.mean_y} \n plateX, plateY = {plateCentre_microns[0]}, {plateCentre_microns[1]}")
+    if verbose:
+        prRed(f"IFU meanX, meanY = {ifu.mean_x}, {ifu.mean_y} \n plateX, plateY = {plateCentre_microns[0]}, {plateCentre_microns[1]}")
 
     try:
         if (ifu.mean_y <= plateCentre_microns[1]) & (ifu.mean_x <= plateCentre_microns[0]): # Top-left of the plate
@@ -185,7 +186,7 @@ def assert_sky_coord_sign_check(ifu):
     return True
 
 
-def get_cvd_parameters(path_list, probenum, check_against_cvd_model=False, moffat_params=None, psf_parameters_array=None, wavelength=None, primary=None):
+def get_cvd_parameters(path_list, probenum, check_against_cvd_model=False, moffat_params=None, psf_parameters_array=None, wavelength=None, primary=None, verbose=True):
     """
     The main function to get the CvD corrections
     """
@@ -222,7 +223,7 @@ def get_cvd_parameters(path_list, probenum, check_against_cvd_model=False, moffa
         #                         6.14872408e-14, -5.95792839e-11,  8.96376563e-07, -3.20239518e-03 ]
 
         # Check for coordinate mis-matches to ensure the cvd correction is applied correctly. And record if it is INCORRECT
-        if not assert_sky_coord_sign_check(_ifu):
+        if not assert_sky_coord_sign_check(_ifu, verbose=verbose):
             fname = open(f"{dest_path}/check_coord_faliures.txt", "a")  # safer than w mode
             fname.write(f"Hexabundle: {_ifu.hexabundle_name[5]}, PLATEID: {_ifu.primary_header['PLATEID']}, Path: {path_list}\n")
             # Close opened file
@@ -247,22 +248,28 @@ def get_cvd_parameters(path_list, probenum, check_against_cvd_model=False, moffa
         xval, yval = meanX - plateCentre_microns[0], meanY - plateCentre_microns[1]
         r_plateCentre_probeCentre = np.sqrt( xval ** 2.0 + yval ** 2.0 )
 
-        prCyan(f"\n ----> Probe (MeanX, MeanY) = ({meanX, meanY}) \n PlateCentr (X, Y) = ({plateCentre_microns})")
+        print('verbose',verbose)
+        if verbose:
+            prCyan(f"\n ----> Probe (MeanX, MeanY) = ({meanX, meanY}) \n PlateCentr (X, Y) = ({plateCentre_microns})")
         if meanY < plateCentre_microns[1]:
             alphar = r_plateCentre_probeCentre * -1.0
-            prLightPurple(f"--> Hexa {ifu.hexabundle_name[5]} placed on the top half of the plate (i.e. MeanY < plateCentreY) in robot coor \n")
+            if verbose:
+                prLightPurple(f"--> Hexa {ifu.hexabundle_name[5]} placed on the top half of the plate (i.e. MeanY < plateCentreY) in robot coor \n")
         else:
             alphar = r_plateCentre_probeCentre
-            prLightPurple(f"--> Hexa {ifu.hexabundle_name[5]} placed on the bottom half of the plate (i.e. MeanY > plateCentreY) in robot coor \n")
+            if verbose:
+                prLightPurple(f"--> Hexa {ifu.hexabundle_name[5]} placed on the bottom half of the plate (i.e. MeanY > plateCentreY) in robot coor \n")
 
         Angle = np.rad2deg(np.arctan2(yval, xval)) # Angle is anti-clockwise from the plate Centre
-        if meanY < plateCentre_microns[1]:
-            prLightGray(f"Angle anti-clockwise from +ve x-axis about the plateCentre (i.e. -ve angle) = {Angle} \n")
-        else:
-            prLightGray(f"Angle clockwise from +ve x-axis about the plateCentre (i.e. +ve angle) = {Angle} \n")
+        if verbose:
+            if meanY < plateCentre_microns[1]:
+                prLightGray(f"Angle anti-clockwise from +ve x-axis about the plateCentre (i.e. -ve angle) = {Angle} \n")
+            else:
+                prLightGray(f"Angle clockwise from +ve x-axis about the plateCentre (i.e. +ve angle) = {Angle} \n")
 
         Angle = 180.0 - np.abs(Angle) # But we need the angle about the hexabundle (so, subtract from 180)
-        prLightGray(f"Angle about the hexabundleCentre = {Angle} \n")
+        if verbose:
+            prLightGray(f"Angle about the hexabundleCentre = {Angle} \n")
 
 
         A = (A7 * alphar ** 7.0) + (A5 * alphar ** 5.0) + (A3 * alphar ** 3.0) + (A1 * alphar)
@@ -521,13 +528,15 @@ def get_cvd_parameters(path_list, probenum, check_against_cvd_model=False, moffa
                                            xfibre, yfibre,  # Already switched (xfibre holds original yfibre postions), see L@373
                                            ifu.x_rotated, ifu.y_rotated,
                                            ifu.hexabundle_name, path_to_save=dest_path)
-                prCyan(f"xCen_mic, yCen_mic = {xCen_mic}, {yCen_mic}")
+                if verbose:
+                    prCyan(f"xCen_mic, yCen_mic = {xCen_mic}, {yCen_mic}")
                 if xCen_mic is None: bad_data_count += 1; continue
 
                 # STEP2: Add the CvD model vector magnitudes to the position in microns
                 xCen_mic = xCen_mic + np.polyval(zx, np.array(moffat_wave)) * ARCSEC_IN_MICRONS
                 yCen_mic = yCen_mic + np.polyval(zy, np.array(moffat_wave)) * ARCSEC_IN_MICRONS
-                prPurple(f"xCen_mic, yCen_mic [cvd added] =  {xCen_mic}, {yCen_mic}")
+                if verbose:
+                    prPurple(f"xCen_mic, yCen_mic [cvd added] =  {xCen_mic}, {yCen_mic}")
 
                 ax1.plot(ifu.x_rotated, ifu.y_rotated, 'kx', ms=8)
                 ax1.plot(xCen_mic, yCen_mic, 'o', ms=8, color=cmap(icmap[i]),
@@ -544,8 +553,9 @@ def get_cvd_parameters(path_list, probenum, check_against_cvd_model=False, moffa
                 ax2.plot(tmpx, tmpy, 'o', ms=10, color=cmap(icmap[i], alpha=.1),
                          label='CvD modelCrr [mic] added \n to hexaCentre (above fig) \n converted back to arcsec' if i == 5 else None)
 
-                prYellow(f"x_cvdCrr, y_cvdCrr [arcseconds] = {tmpx}, {tmpy}, \n "
-                         f"x_pos, y_pos [arcseconds] (swapped) = {np.nanmean(xfibre)}, {np.nanmean(yfibre)} (i.e. x_pos = y_pos from fits header)")
+                if verbose:
+                    prYellow(f"x_cvdCrr, y_cvdCrr [arcseconds] = {tmpx}, {tmpy}, \n "
+                             f"x_pos, y_pos [arcseconds] (swapped) = {np.nanmean(xfibre)}, {np.nanmean(yfibre)} (i.e. x_pos = y_pos from fits header)")
 
                 # In plotting to plateView in arcseconds, we use the x-, y- fibre positions from the header as it is.
                 # Here yfibre holds xpositions from the header (see L@373) and vice versa for xfibre
@@ -708,9 +718,10 @@ def get_cvd_parameters(path_list, probenum, check_against_cvd_model=False, moffa
     _xfibre = ifu.xpos_rel * np.cos(np.deg2rad(np.mean(ifu.ypos)))  # In arcsec
     _yfibre = ifu.ypos_rel
 
-    prGreen(f"probename={ifu.hexabundle_name[5]}, (x,y) = ({np.nanmean(_xfibre)}, {np.nanmean(_yfibre)}) in arcsec from centre")
-    prYellow(f"probename={ifu.hexabundle_name[5]}, (x,y) = ({-1.0 * (ifu.mean_x-robot_centre_in_mic[1]) * MICRONS_TO_ARCSEC}, "
-             f"{(robot_centre_in_mic[0] - ifu.mean_y) * MICRONS_TO_ARCSEC}) in microns from centre")
+    if verbose:
+        prGreen(f"probename={ifu.hexabundle_name[5]}, (x,y) = ({np.nanmean(_xfibre)}, {np.nanmean(_yfibre)}) in arcsec from centre")
+        prYellow(f"probename={ifu.hexabundle_name[5]}, (x,y) = ({-1.0 * (ifu.mean_x-robot_centre_in_mic[1]) * MICRONS_TO_ARCSEC}, "
+                f"{(robot_centre_in_mic[0] - ifu.mean_y) * MICRONS_TO_ARCSEC}) in microns from centre")
 
 
     offset, frac_offset, lam, delta_X, delta_Y = optical_model_function(ifu.mean_x, ifu.mean_y,

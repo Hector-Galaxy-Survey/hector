@@ -2524,7 +2524,7 @@ class Manager:
 
     def derive_transfer_function(self,
                                  overwrite=False, model_name='ref_centre_alpha_circ_hdr_cvd',
-                                 smooth='spline', this_only =None, **kwargs):
+                                 smooth='spline', this_only =None, verbose=False, **kwargs):
         """Derive flux calibration transfer functions and save them."""
         # modified model name to be the version that takes ZD from header values, not
         # fitted.  This is because the fitting is not always robust for ZD.
@@ -2563,7 +2563,7 @@ class Manager:
             if not this_only or fits.reduced_path[-18:-8] == this_only[:10]:
                 inputs_list.append({'path_pair': path_pair, 'n_trim': n_trim,
                         'model_name': model_name, 'smooth': smooth,
-                        'speed':self.speed,'tellcorprim':self.telluric_correct_primary})
+                        'speed':self.speed,'tellcorprim':self.telluric_correct_primary, 'verbose':verbose})
 
         self.map(derive_transfer_function_pair, inputs_list)
         self.next_step('derive_transfer_function', print_message=True)
@@ -6424,15 +6424,17 @@ def derive_transfer_function_pair(inputs):
     n_trim = inputs['n_trim']
     model_name = inputs['model_name']
     smooth = inputs['smooth']
+    verbose = inputs['verbose']
 
     try:
         fluxcal2.derive_transfer_function(
             path_pair, n_trim=n_trim, model_name=model_name, smooth=smooth,
             molecfit_available = MOLECFIT_AVAILABLE, molecfit_dir = MF_BIN_DIR,
-            speed=inputs['speed'],tell_corr_primary=inputs['tellcorprim'])
+            speed=inputs['speed'],tell_corr_primary=inputs['tellcorprim'],verbose=verbose)
     except ValueError:
-        print('  Warning: No star found in dataframe, skipping ' +
-              os.path.basename(path_pair[0]))
+        if verbose:
+            print('  Warning: No star found in dataframe, skipping ' +
+                os.path.basename(path_pair[0]))
         return
     good_psf = pf.getval(path_pair[0], 'GOODPSF', 'FLUX_CALIBRATION')
     if not good_psf:

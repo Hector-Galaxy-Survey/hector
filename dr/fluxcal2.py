@@ -760,7 +760,7 @@ def derive_transfer_function(path_list, max_sep_arcsec=60.0,
                              catalogues=STANDARD_CATALOGUES,
                              model_name='ref_centre_alpha_circ_hdr_cvd',
                              n_trim=0, smooth='spline',molecfit_available=False,
-                             molecfit_dir='',speed='',tell_corr_primary=False,debug=True,paper=False):
+                             molecfit_dir='',speed='',tell_corr_primary=False,debug=True,paper=False,verbose=True):
     """ Derive transfer function and save it in each FITS file.
     NOTE: cvd_parameters keyword added to various function call withint this routine
     (e.g. fit_model_flux, extract_flux)
@@ -790,7 +790,7 @@ def derive_transfer_function(path_list, max_sep_arcsec=60.0,
 
     # Get CvD parameters from the polynomial fits to the centroid varations in x-, y-directions
     #prRed(f"probeName = {star_match['probename']}")
-    cvd_parameters = get_cvd_parameters(path_list_tel, star_match['probenum'])
+    cvd_parameters = get_cvd_parameters(path_list_tel, star_match['probenum'], verbose=verbose)
 
     # Fit the PSF
     fixed_parameters = set_fixed_parameters(
@@ -810,7 +810,7 @@ def derive_transfer_function(path_list, max_sep_arcsec=60.0,
 
     if debug:
         # check_against_cvd_model=True # If debugging is True, turn-on the cvd debugging as well
-        debug_cvd(path_list, star_match, model_name, psf_parameters, cvd_parameters=cvd_parameters, primary=True)
+        debug_cvd(path_list, star_match, model_name, psf_parameters, cvd_parameters=cvd_parameters, primary=True, verbose=verbose)
 
     for path,path2 in zip(path_list_tel,path_list):
         ifu = IFU(path, star_match['probenum'], flag_name=False)
@@ -974,7 +974,7 @@ def match_standard_star(filename, max_sep_arcsec=60.0,
     # code deal with it.
     return
 
-def debug_cvd(path_list, star_match, model_name, psf_parameters, cvd_parameters=None, primary=True):
+def debug_cvd(path_list, star_match, model_name, psf_parameters, cvd_parameters=None, primary=True, verbose=True):
     for i_file, path in enumerate(path_list):
         ifu = IFU(path, star_match['probenum'], flag_name=False)
         remove_atmosphere(ifu)
@@ -994,10 +994,10 @@ def debug_cvd(path_list, star_match, model_name, psf_parameters, cvd_parameters=
 
         xfibre_all0 = ifu.xpos_rel * np.cos(np.deg2rad(np.mean(ifu.ypos)))  # In arcsec
         yfibre_all0 = ifu.ypos_rel
-
-    prYellow(f"HexaName: {star_match['probename']}")
-    prLightPurple(f"(xref_arcsec, yref_arcsec) = ({np.nanmean(xfibre_all0)}, {np.nanmean(yfibre_all0)})")
-    prLightPurple(f"(xref_mic, yref_mic) = ({np.nanmean(ifu.x_microns)}, {np.nanmean(ifu.y_microns)})")
+    if verbose:
+        prYellow(f"HexaName: {star_match['probename']}")
+        prLightPurple(f"(xref_arcsec, yref_arcsec) = ({np.nanmean(xfibre_all0)}, {np.nanmean(yfibre_all0)})")
+        prLightPurple(f"(xref_mic, yref_mic) = ({np.nanmean(ifu.x_microns)}, {np.nanmean(ifu.y_microns)})")
 
     n_lambda, nx_pix, ny_pix = len(wavelength), len(xfibre_all0), len(yfibre_all0)
     xfibre_all, yfibre_all = np.zeros((nx_pix, n_lambda)), np.zeros((ny_pix, n_lambda))
@@ -1043,7 +1043,7 @@ def debug_cvd(path_list, star_match, model_name, psf_parameters, cvd_parameters=
         _,_,_ = get_cvd_parameters(path_list[0], star_match['probenum'],
                                    check_against_cvd_model=True, moffat_params=para_all,
                                    psf_parameters_array=psf_param_arry, wavelength=wavelength,
-                                   primary=primary)
+                                   primary=primary,verbose=verbose)
 
     return
 
@@ -1386,7 +1386,7 @@ def fit_spline(wavelength, ratio, mf_av=False,tell_corr_primary=False):
         #TODO: if telluric correction for PS becomes good enough, the below can be removed, and know for ccd4 can be lower in the red end.
         good = np.where(np.isfinite(ratio) & ~(in_telluric_band(wavelength)) & (ratio > 0.))[0]
         knots = knots[~in_telluric_band(knots)]
-    print('knots',min(wavelength[good]), max(wavelength[good]),knots)
+    #print('knots',min(wavelength[good]), max(wavelength[good]),knots)
 
     # Remove any knots sitting in a telluric band, but only if not using tell_corr_primary:
     if (not tell_corr_primary):
