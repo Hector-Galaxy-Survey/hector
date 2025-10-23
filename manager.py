@@ -2605,7 +2605,6 @@ class Manager:
                 # Run the QC throughput measurement
                 print(os.path.exists(path_out))
                 if os.path.exists(path_out):
-                    print('here')
                     self.qc_throughput_spectrum(path_out)
 
                 # Since we've now changed the transfer functions, mark these as needing checks.
@@ -2675,7 +2674,7 @@ class Manager:
         self.next_step('flux_calibrate', print_message=True)
         return
 
-    def telluric_correct(self, overwrite=False, model_name=None, name='main',
+    def telluric_correct(self, overwrite=False, model_name=None, name='main',verbose=False,debug=True,
                          **kwargs):
         """Apply telluric correction to object frames."""
         # First make the list of file pairs to correct
@@ -2743,7 +2742,9 @@ class Manager:
                      'scale_PS_by_airmass': scale_PS_by_airmass,
                      'PS_spec_file': PS_spec_file,
                      'model_name': model_name_out,
-                     'speed':self.speed})
+                     'speed':self.speed,
+                     'verbose':verbose,
+                     'debug':debug})
         # Now send this list to as many cores as we are using
         # Limit this to 10, because of semaphore issues I don't understand
         old_n_cpu = self.n_cpu
@@ -2990,16 +2991,13 @@ class Manager:
             copy_to_other_arm = False
 
         for nccd in ccd_measure:
-            print('measure nccd',nccd)
-            print(min_exposure, name, nccd)
-            print(self.files(ndf_class='MFOBJECT', do_not_use=False,
-                reduced=True, min_exposure=min_exposure, name=name, ccd=nccd,
-                include_linked_managers=True, **kwargs))
+            #print(self.files(ndf_class='MFOBJECT', do_not_use=False,
+            #    reduced=True, min_exposure=min_exposure, name=name, ccd=nccd,
+            #    include_linked_managers=True, **kwargs))
             groups = self.group_files_by(
                 'field_id', ndf_class='MFOBJECT', do_not_use=False,
                 reduced=True, min_exposure=min_exposure, name=name, ccd=nccd,
                 include_linked_managers=True, **kwargs)
-            print('done')
             complete_groups = []
             for key, fits_list in groups.items():
                 fits_list_other_arm = [self.other_arm(fits, include_linked_managers=True)
@@ -3029,12 +3027,10 @@ class Manager:
                         complete_groups.append(
                             (key, fits_list, copy_to_other_arm,
                              fits_list_other_arm))
-                        print('add2')
 
                         # Also mark this group as requiring visual checks:
                         update_checks('ALI', fits_list, False)
                         break
-            print(complete_groups)
             self.map(measure_offsets_group, complete_groups)
 
         self.next_step('measure_offsets', print_message=True)
@@ -6454,6 +6450,8 @@ def telluric_correct_pair(inputs):
     PS_spec_file = inputs['PS_spec_file']
     model_name = inputs['model_name']
     use_probe = None
+    verbose=inputs['verbose']
+    debug=inputs['debug']
 
     if fits_1 is None or not os.path.exists(fits_1.fluxcal_path):
         print('Matching blue arm not found for ' + fits_2.filename +
@@ -6464,16 +6462,15 @@ def telluric_correct_pair(inputs):
           ' and ' + fits_2.filename)
     try:
         prCyan("The inputs to telluric.derive_transfer_function:")
-        debug = (fits_1.epoch < 2025.) or (fits_1.epoch > 2025.75) or (fits_1.instrument != 'AAOMEGA-HECTOR') #TODO:Sree (may2025): make debug=True once H bundle is fixed
+        #debug = (fits_1.epoch < 2025.) or (fits_1.epoch > 2025.75) or (fits_1.instrument != 'AAOMEGA-HECTOR') #TODO:Sree (may2025): make debug=True once H bundle is fixed
         if (fits_1.epoch > 2025.5 and fits_1.epoch < 2025.75) and (fits_1.instrument == 'AAOMEGA-HECTOR'):
             use_probe = 'G'  #TODO: Sree (July2025): Bundle "G" is used for secondary standard stars from the 250717_250803 and 250915_250928 runs, after that bundle 'H' is recovered.
-            debug = True
         
-        print(path_pair,PS_spec_file,use_PS,n_trim,scale_PS_by_airmass,model_name,MOLECFIT_AVAILABLE, MF_BIN_DIR, debug, use_probe)
+        print(path_pair,PS_spec_file,use_PS,n_trim,scale_PS_by_airmass,model_name,MOLECFIT_AVAILABLE, MF_BIN_DIR, debug, use_probe, verbose)
         telluric.derive_transfer_function(
             path_pair, PS_spec_file=PS_spec_file, use_PS=use_PS, n_trim=n_trim,
             scale_PS_by_airmass=scale_PS_by_airmass, model_name=model_name, use_probe=use_probe,
-            molecfit_available = MOLECFIT_AVAILABLE, molecfit_dir = MF_BIN_DIR,speed=inputs['speed'],debug=debug)
+            molecfit_available = MOLECFIT_AVAILABLE, molecfit_dir = MF_BIN_DIR,speed=inputs['speed'],debug=debug,verbose=verbose)
     except ValueError as err:
         if err.args[0].startswith('No star identified in file:'):
             # No standard star found; probably a star field

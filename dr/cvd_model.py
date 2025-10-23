@@ -191,6 +191,8 @@ def get_cvd_parameters(path_list, probenum, check_against_cvd_model=False, moffa
     The main function to get the CvD corrections
     """
 
+    print('cvd_model.py',verbose)
+
     if isinstance(path_list, str):
         path_list = [path_list]
     for i_file, path in enumerate(path_list):
@@ -248,7 +250,6 @@ def get_cvd_parameters(path_list, probenum, check_against_cvd_model=False, moffa
         xval, yval = meanX - plateCentre_microns[0], meanY - plateCentre_microns[1]
         r_plateCentre_probeCentre = np.sqrt( xval ** 2.0 + yval ** 2.0 )
 
-        print('verbose',verbose)
         if verbose:
             prCyan(f"\n ----> Probe (MeanX, MeanY) = ({meanX, meanY}) \n PlateCentr (X, Y) = ({plateCentre_microns})")
         if meanY < plateCentre_microns[1]:

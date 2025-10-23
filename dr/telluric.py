@@ -50,7 +50,7 @@ def derive_transfer_function(frame_list, PS_spec_file=None, use_PS=False,
                              scale_PS_by_airmass=False, 
                              model_name='ref_centre_alpha_dist_circ_hdr_cvd',
                              n_trim=0, use_probe=None, hdu_name='FLUX_CALIBRATION',
-                             molecfit_available = False, molecfit_dir ='',speed='',debug=True):
+                             molecfit_available = False, molecfit_dir ='',speed='',debug=True, verbose=False):
     """
     Finds the telluric correction factor to multiply object data by. The factor 
     as a function of wavelength is saved into the red frame under the extension 
@@ -70,7 +70,7 @@ def derive_transfer_function(frame_list, PS_spec_file=None, use_PS=False,
     # actually need to extract it, but we do still need to create the
     # extension and copy atmospheric parameters across
 
-    extract_secondary_standard(frame_list, model_name=model_name, n_trim=n_trim, use_probe=use_probe, hdu_name=hdu_name, debug=debug)
+    #extract_secondary_standard(frame_list, model_name=model_name, n_trim=n_trim, use_probe=use_probe, hdu_name=hdu_name, debug=debug,verbose=verbose)
 
     # if user defines, use a scaled primary standard telluric correction
     if use_PS:
@@ -95,7 +95,7 @@ def derive_transfer_function(frame_list, PS_spec_file=None, use_PS=False,
     
     else:
         # Get data
-        extract_secondary_standard(frame_list, model_name=model_name, n_trim=n_trim, use_probe=use_probe, hdu_name=hdu_name)
+        extract_secondary_standard(frame_list, model_name=model_name, n_trim=n_trim, use_probe=use_probe, hdu_name=hdu_name,debug=debug,verbose=verbose)
 
         hdulist = pf.open(frame_list[1])
         hdu = hdulist[hdu_name]
@@ -272,7 +272,7 @@ def create_transfer_function(standard_spectrum,sigma,wave_axis,naxis1):
     
     return transfer_function, sigma_factor, fit
 
-def extract_secondary_standard(path_list,model_name='ref_centre_alpha_dist_circ_hdr_cvd',n_trim=0,use_probe=None,hdu_name='FLUX_CALIBRATION',debug=False):
+def extract_secondary_standard(path_list,model_name='ref_centre_alpha_dist_circ_hdr_cvd',n_trim=0,use_probe=None,hdu_name='FLUX_CALIBRATION',debug=False,verbose=False):
     """Identify and extract the secondary standard in a reduced RSS file."""
     # MLPG: new model_name added
     # "identify_secondary_standard" function updated
@@ -286,7 +286,7 @@ def extract_secondary_standard(path_list,model_name='ref_centre_alpha_dist_circ_
     trim_chunked_data(chunked_data, n_trim)
 
     # Get CvD parameters from the polynomial fits to the centroid varations in x-, y-directions
-    cvd_parameters = get_cvd_parameters(path_list, star_match['probenum'])
+    cvd_parameters = get_cvd_parameters(path_list, star_match['probenum'],verbose=verbose)
 
     # Fit the PSF
     fixed_parameters = set_fixed_parameters(
@@ -330,6 +330,8 @@ def extract_secondary_standard(path_list,model_name='ref_centre_alpha_dist_circ_
                          bbox=dict(facecolor='white', edgecolor='none', pad=3.0))
             ax1.legend(loc='upper left', bbox_to_anchor=(0.01, 0.9))
             ax1.tick_params(axis='x', direction='in', which='both')
+            ylim = np.nanmax(observed_flux[100:-100])*1.2
+            ax1.set_ylim(0., ylim)
 
             ax2.set(xlabel='Wavelength [A]', ylabel='Extracted/Summed')
             f = interp1d(wavelength, data)

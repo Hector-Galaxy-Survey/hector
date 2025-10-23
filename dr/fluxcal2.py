@@ -852,7 +852,7 @@ def derive_transfer_function(path_list, max_sep_arcsec=60.0,
             data = data[good_fibre, :]; data = nansum(data, axis=0)
             ax1.plot(wavelength, data, 'grey', alpha=0.7, label='Summed')
             ax1.plot(ifu.lambda_range, observed_flux, 'blue', alpha=0.5, label='Extracted')
-            ylim = np.nanmax(observed_flux)*1.2
+            ylim = np.nanmax(observed_flux[100:-100])*1.2
             ax1.set_ylim(0., ylim)
             ax1.annotate('(a)',xy=(0, 1), xycoords='axes fraction',
             xytext=(+0.5, -0.5), textcoords='offset fontsize',
