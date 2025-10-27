@@ -44,11 +44,9 @@ def bin_cube_pair(path_blue, path_red, name=None, **kwargs):
     """Calculate bins, do binning and save results for a pair of cubes."""
     hdulist_blue = pf.open(path_blue, 'update')
     hdulist_red = pf.open(path_red, 'update')
-    bin_mask,bin_params = return_bin_mask(hdulist_red, **kwargs) #Sree: red cubes are much more reliable
+    bin_mask,bin_params = return_bin_mask(hdulist_blue, **kwargs) 
     if np.isnan(bin_params).any():
-        bin_mask,bin_params = return_bin_mask(hdulist_blue, **kwargs) #SAMI extracted mask and param from blue cubes. Why?
-    #print('bin_mask',bin_mask)
-    #print('bin_params',bin_params)
+        bin_mask,bin_params = return_bin_mask(hdulist_red, **kwargs) 
     bin_and_save(hdulist_blue, bin_mask, bin_params,name=name, **kwargs)
     bin_and_save(hdulist_red, bin_mask, bin_params, name=name, **kwargs)
     hdulist_blue.close()
@@ -629,6 +627,11 @@ def adaptive_bin_sami(hdu, targetSN=10.0, minSN=None):
     wei = hdu['WEIGHT'].data
     covar = hdu['COVAR'].data
     covar_header = hdu['COVAR'].header
+
+    # Sree (Oct 2025): To convert S/N per pixel to per Å
+    data_header = hdu['PRIMARY'].header
+    deltlam = data_header['CDELT3'] 
+    data = data / np.sqrt(deltlam)
     
     # Create signal and noise images
     image = nanmedian(data*wei,axis=0)
