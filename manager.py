@@ -3145,6 +3145,8 @@ class Manager:
         # I disable all swapped fibres for now not saving them but maybe later this can be revisit.
         # The list of swapped fibre can be found here:
         # https://docs.google.com/spreadsheets/d/1GvQVK3rFZjZzgr-8Z2ViVs9HwJrZGeCYc6wJy7m5UFA/edit?gid=2048352866#gid=2048352866
+        # Sree(Nov2025): This swaps generated cube but could not make galaxy orientation correct which has been decided before cubing.
+        #   So, the below bits of code has been commented out and those swapped objects have simply been disabled for now. 
         #swap_id = ['901006735001769','901006999103632']; swap_bundle = ['T', 'B']
         #if(str(self.abs_root)[-13:] == '230710_230724'):
         #    if(os.path.exists(cubed_root+'/'+swap_id[0]+'/')):
@@ -3586,19 +3588,29 @@ class Manager:
         self.next_step('record_dust',print_message=True)
         return
 
-    def data_release(self, version=None, date_start='221001', date_finish=None, move=False, moveback=False, check_data=True):
+    def data_release(self, version=None, date_start='221001', date_finish=None, move=False, moveback=False, check_data=True, base_version=None):
         """
         Sree:this generates release catalogue and move the generated cubes. It also change the name of cubes in a regular format.
         First import hector and manager with one of the any runs in the reduction directory for the current version.
-        The format of date_start and date_finish is 'YYMMDD'
-        if date_start and date_finish are not specified, it condisers runs between Aug 2022 and today
-        if move=False, it generates a catalogue, but doesn't move the cubes to the release directory
-        if move=True, it moves all cubes to the release directory.
-        if moveback=True, it moves back the cubes to the working directory.
-        The catalogue can be generated only when cubes are in working directories. Therefore, should moveback the cubes to working
-        directories first, to generate the catalogue again.
-        if check_data=True, it skipped cubes with extremly low S/N
-        mngr.data_release(version='0_01')
+        version : str
+            Version of the current release (format: 'x_xx', e.g., '0_03').
+        date_start : str, optional
+            Start date for runs to include (format 'YYMMDD'). Default is '221001'.
+        date_finish : str, optional
+            End date for runs to include (format 'YYMMDD'). Default is today.
+        move : bool, optional
+            If True, moves cubes to the release directory. Default is False.
+        moveback : bool, optional
+            If True, moves cubes back to the working directory. Default is False.
+            The catalogue can only be generated when cubes are in the working directories. 
+            If cubes were already moved, set moveback=True first to generate the catalogue again.
+        check_data : bool, optional
+            If True, cubes with extremely low S/N are skipped and listed in release_skip_vxxx.csv. Default is True.
+        base_version : str, optional
+            Version of a previous release (e.g., '0_02') to use as a reference for existing identifiers.
+            Identifiers in the base_version catalogue are preserved, and new identifiers for additional data
+            will continue from the last used letter. Use this option only when the release includes new data only. 
+            The release catalogue from the previous release should be exist in the expected release directory. 
         """
 
         import string
@@ -3685,9 +3697,9 @@ class Manager:
                             if check_data:
                                 hdu = hdulist[0].data
                                 sn = der_snr(np.nanmedian(hdu, axis=(1, 2)))
-                                print(' S/N of ',listcube[j],' is ' ,sn)
+                                #print(' S/N of ',listcube[j],' is ' ,sn)
                                 if sn < 0.05: #Sree: S/N < 0.05, this is potentially a broken bundle
-                                    print('  skip ',listcube[j])
+                                    print('  Skip ',listcube[j], ' S/N = ',sn)
                                     skip_data.append(data)
                                     continue
                             all_data.append(data)
@@ -3704,9 +3716,28 @@ class Manager:
 
             letters = list(string.ascii_uppercase); letter_counter = 0; cols['identifier'] = None
 
-            merge_identifiers = {}  
+            merge_identifiers = {}
+
+            if base_version is not None:
+                prRed('Load identifiers from v{base_version}')
+                base_cat_path = os.path.join(os.path.dirname(os.path.dirname(self.abs_root)),'v'+base_version,'release_v'+base_version, f'release_catalogue_v{base_version}.csv')
+                if os.path.exists(base_cat_path):
+                        base_cols = pd.read_csv(base_cat_path)
+
             for gname, group in cols.groupby('pname'):
-                letter_counter = 0
+
+                letter_counter = 0; max_letter = -1  # 초기값
+                if base_version is not None:
+                    if os.path.exists(base_cat_path):
+                        base_group = base_cols[base_cols['name'] == gname]
+                        existing_letters = [ord(x)-ord('A') for x in base_group['identifier']
+                                            if isinstance(x, str) and x.isalpha()]
+                        if existing_letters:
+                            max_letter = max(existing_letters)
+                            letter_counter = max_letter + 1
+                            print(f'   {gname}: starting identifier from {letters[letter_counter % len(letters)]}')
+
+                merge_identifiers = {}
                 for index, row in group.iterrows():
                     merge_value = row['merge']
                     if merge_value not in merge_identifiers:
@@ -3748,9 +3779,9 @@ class Manager:
                 if move:
                     shutil.move(oldpath, newpath)
             if move:
-                prRed(' Moved cubes to the release directory')
+                prRed('Moved cubes to the release directory')
             else:
-                prRed(' Cubes have not yet moved. Make move=True to move the cubes to the release directory')
+                prRed('Cubes have not yet moved. Make move=True to move the cubes to the release directory')
 
         else:  #return the cube to the reduction directory
             cols = pd.read_csv(os.path.join(dir_release, f'release_catalogue_v{version}.csv'))
@@ -6466,7 +6497,7 @@ def telluric_correct_pair(inputs):
         if (fits_1.epoch > 2025.5 and fits_1.epoch < 2025.75) and (fits_1.instrument == 'AAOMEGA-HECTOR'):
             use_probe = 'G'  #TODO: Sree (July2025): Bundle "G" is used for secondary standard stars from the 250717_250803 and 250915_250928 runs, after that bundle 'H' is recovered.
         
-        print(path_pair,PS_spec_file,use_PS,n_trim,scale_PS_by_airmass,model_name,MOLECFIT_AVAILABLE, MF_BIN_DIR, debug, use_probe, verbose)
+        print(path_pair,PS_spec_file,use_PS,n_trim,scale_PS_by_airmass,model_name,MOLECFIT_AVAILABLE, MF_BIN_DIR, debug, use_probe, verbose, fits_1.epoch)
         telluric.derive_transfer_function(
             path_pair, PS_spec_file=PS_spec_file, use_PS=use_PS, n_trim=n_trim,
             scale_PS_by_airmass=scale_PS_by_airmass, model_name=model_name, use_probe=use_probe,

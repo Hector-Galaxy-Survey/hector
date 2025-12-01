@@ -191,7 +191,7 @@ def get_cvd_parameters(path_list, probenum, check_against_cvd_model=False, moffa
     The main function to get the CvD corrections
     """
 
-    print('cvd_model.py',verbose)
+    #print('cvd_model.py',verbose)
 
     if isinstance(path_list, str):
         path_list = [path_list]

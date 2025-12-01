@@ -630,10 +630,16 @@ def save_results(results):
                     yref_col, xshift_col, yshift_col, 
                     xref_median_col, yref_median_col,
                     good_col]))
-    hdu.header['X_RMS'] = (results['xrms'], 'RMS of X_SHIFT')
-    hdu.header['Y_RMS'] = (results['yrms'], 'RMS of Y_SHIFT')
-    hdu.header['SIGMA'] = (results['sigma'], 'Sigma clipping used in the fit')
-    hdu.header['N_GOOD'] = (results['n_good'], 'Number of galaxies used in fit')
+    if np.isfinite(results['xrms']):
+        hdu.header['X_RMS'] = (results['xrms'], 'RMS of X_SHIFT')
+        hdu.header['Y_RMS'] = (results['yrms'], 'RMS of Y_SHIFT')
+        hdu.header['SIGMA'] = (results['sigma'], 'Sigma clipping used in the fit')
+        hdu.header['N_GOOD'] = (results['n_good'], 'Number of galaxies used in fit')
+    else:
+        hdu.header['X_RMS'] = (-9999, 'Fail: RMS of X_SHIFT')
+        hdu.header['Y_RMS'] = (-9999, 'Fail: RMS of Y_SHIFT')
+        hdu.header['SIGMA'] = (-9999, 'Fail: Sigma clipping used in the fit')
+        hdu.header['N_GOOD'] = (0, 'Fail: Number of galaxies used in fit')
     hdu.header['REF_FILE'] = (results['reference'], 'Reference filename')
 
     hdu.header['EXTNAME'] = 'ALIGNMENT'

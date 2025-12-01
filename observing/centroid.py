@@ -639,7 +639,7 @@ def centroid_fit(x,y,data,reference=None,rssframe=None,galaxyid=None,microns=Tru
 #** New masking method starts ————————————————————————————————————————————————
     from scipy.ndimage.filters import gaussian_filter
     from astropy.stats import sigma_clipped_stats
-    from photutils import find_peaks
+    from photutils.detection import find_peaks
 
    # Parameter initializations
     x0, y0 = x-np.min(x), y-np.min(y) # image x,y
