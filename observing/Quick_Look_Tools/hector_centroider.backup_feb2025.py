@@ -65,7 +65,7 @@ def prepare_files(save_files, object_file):
     # centroid_file2 = open(centroid_filename2, "w")
     # print("# Probe RotatedX_microns RotatedY_microns FWHM MagX MagY", file=centroid_file2)
 
-    colnames = ['Probe', 'MeanX', 'MeanY', 'Probe_maxRadius', 'RotationAngle', 'CentroidX_rotated', 'CentroidY_rotated',
+    colnames = ['Probe', 'MeanX', 'MeanY', 'RotationAngle', 'CentroidX_rotated', 'CentroidY_rotated',
                 'CentroidXErr_rotated', 'CentroidYErr_rotated', 'CentroidX_COM_rotated', 'CentroidY_COM_rotated',
                 'CentroidRMS_Err', 'RotationAngle_Centroid', 'RadialDist', 'RadialDistErr',
                 'PDist', 'QDist', 'PDistErr', 'QDistErr', 'NDist', 'EDist', 'NDistErr',
@@ -82,9 +82,6 @@ def prepare_files(save_files, object_file):
 def call_centroider(Probe, Probe_data, Probe_annulus, x, y, mean_x, mean_y, rotation_angle, robot_centre_in_mm, ax, centroid_stat, scat_plt, centroider=None, make_plots=None):
     scale_factor = 18
     hexabundle_tail_length = scale_factor * 1000
-
-    # Probe radius (approximatly)
-    probe_maxRadius = np.nanmax( np.sqrt((x ** 2.0) + (y ** 2.0)) )
 
     quiet = False
     savecentdata = False
@@ -152,15 +149,15 @@ def call_centroider(Probe, Probe_data, Probe_annulus, x, y, mean_x, mean_y, rota
 
         # -------------- DETERMINE VARIOUS OFFSETS
         # (1) RADIAL DISTANCE within the hexabundle
-        def radial_distance_from_centre(rotatedXcentroid, rotatedYcentroid, mean_X, mean_Y):
+        def radial_distance_from_centre(rotated_Xcentroid, rotated_Ycentroid, meanX, meanY):
             """
-            :param rotatedXcentroid:
-            :param rotatedYcentroid:
-            :param mean_X: The centre X-coordinate
-            :param mean_Y: The centre Y-coordinate
+            :param rotated_Xcentroid:
+            :param rotated_Ycentroid:
+            :param meanX: The centre X-coordinate
+            :param meanY: The centre Y-coordinate
             :return: Radial distance
             """
-            distance_radial = np.sqrt((rotatedXcentroid - mean_X) ** 2.0 + (rotatedYcentroid - mean_Y) ** 2.0)
+            distance_radial = np.sqrt((rotated_Xcentroid - meanX) ** 2.0 + (rotated_Ycentroid - meanY) ** 2.0)
             return distance_radial
 
         radial_dist = radial_distance_from_centre(centroidX_rotated + mean_x, centroidY_rotated + mean_y, mean_x, mean_y)
@@ -220,8 +217,7 @@ def call_centroider(Probe, Probe_data, Probe_annulus, x, y, mean_x, mean_y, rota
         """  (5) CALCULATE THE PARALLEL AND PERPENDICULAR DISTANCES from the centroid position to the Radial axis -
         # the radial axis is defined as the axis from the hexabundle centre to the plate centre. The hexabundle
         # centre to plate centre direction is negative. For the axis orthogonal to the radial axis, 90deg
-        # anti-clockwise from hexa-centre to plate-centre vector is negative. 
-        # BE CAREFUL: the above sign definitions work when y-axis is inverted (i.e. in (partial) robot coordinates as in quicklook plots)
+        # anti-clockwise from hexa-centre to plate-centre vector is negative.
         """
         plate_x, plate_y = robot_centre_in_mm[1], robot_centre_in_mm[0]
         hexaCen_x, hexaCen_y = mean_x, mean_y
@@ -253,8 +249,7 @@ def call_centroider(Probe, Probe_data, Probe_annulus, x, y, mean_x, mean_y, rota
         #     centroid_stat[coln] = locals()[coln]
 
         centroid_stat = centroid_stat.append(
-            {'Probe': Probe, 'MeanX': mean_x, 'MeanY': mean_y, 'Probe_maxRadius':probe_maxRadius,
-             'RotationAngle': rotation_angle,
+            {'Probe': Probe, 'MeanX': mean_x, 'MeanY': mean_y, 'RotationAngle': rotation_angle,
              'CentroidX_rotated': centroidX_rotated, 'CentroidY_rotated': centroidY_rotated,
              'CentroidXErr_rotated': centroidXErr_rotated, 'CentroidYErr_rotated': centroidYErr_rotated,
              'CentroidX_COM_rotated': centroidXErr1_rotated, 'CentroidY_COM_rotated': centroidYErr1_rotated,

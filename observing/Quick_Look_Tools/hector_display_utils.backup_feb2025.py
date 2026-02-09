@@ -1,4 +1,3 @@
-import os.path
 import sys
 import numpy as np
 import scipy as sp
@@ -182,7 +181,7 @@ def display_ifu(x_coords, y_coords, xcen, ycen, scaling, values, zorder=10):
     return pcol
 
 
-def display_ifu_nofill(x_coords, y_coords, xcen, ycen, scaling, values=None, color='grey', zorder=10):
+def display_ifu_nofill(x_coords, y_coords, xcen, ycen, scaling, values, zorder=10):
     bundle_patches = []
 
     for x1,y1 in zip(x_coords, y_coords):
@@ -190,7 +189,7 @@ def display_ifu_nofill(x_coords, y_coords, xcen, ycen, scaling, values=None, col
         bundle_patches.append(circle)
     pcol = PatchCollection(bundle_patches, cmap=plt.get_cmap('afmhot'), zorder=zorder)
     # pcol.set_array(values)
-    pcol.set_edgecolors(color)
+    pcol.set_edgecolors('grey')
     pcol.set_facecolors('none')
     pcol.set_alpha(0.5)
     return pcol
@@ -762,18 +761,7 @@ def get_alive_fibres_from_tlm(flat_file, object_file, robot_file, IFU="unknown",
     object_robottab = pd.read_csv(robot_file, skiprows=6)
 
     # Import flat field frame
-    try:
-        flat = pf.open(flat_file)
-    except FileNotFoundError:
-        text = str(os.path.basename(robot_file.with_suffix(''))).replace('Robot_', '')  # Extract the tile name from the full path
-        replacements = { text + '/' + text + '_F0/calibrators/': '',  'reduced': 'raw' }
-
-        # Take the flat file in the "reduced" folder and re-direct it to the "raw" folder
-        flat_rawfile = str(flat_file)
-        for old_, new_ in replacements.items(): flat_rawfile = flat_rawfile.replace(old_, new_)
-
-        flat = pf.open(flat_rawfile)
-
+    flat = pf.open(flat_file)
     flat_data = flat['Primary'].data
 
     # Find the tramline map relevant for the given flat
@@ -939,7 +927,7 @@ def perform_sigma_clip(object_cut):
     return object_cut
 
 
-def get_alive_fibres_reduced_frames(flat_file, object_file, robot_file, IFU="unknown", sigma_clip=True, log=True, pix_waveband=100,
+def get_alive_fibres_reduced_frames(flat_file, object_file, IFU="unknown", sigma_clip=True, log=True, pix_waveband=100,
                      pix_start="unknown", figfile=None, plot_fibre_trace=False):
     """
     # "get alive fibres from the reduced frames"
@@ -997,14 +985,8 @@ def get_alive_fibres_reduced_frames(flat_file, object_file, robot_file, IFU="unk
     print("--->")
 
     # Import flat field frame
-    try:
-        flat = pf.open(flat_file)
-    except FileNotFoundError:
-        flat = pf.open(str(flat_file).replace('.fits', 'tlm.fits'))
+    flat = pf.open(flat_file)
     flat_data = flat['Primary'].data
-
-    # Import robot file
-    object_robottab = pd.read_csv(robot_file, skiprows=6)
 
     # Import object frame
     object_frame = pf.open(object_file)
@@ -1019,7 +1001,7 @@ def get_alive_fibres_reduced_frames(flat_file, object_file, robot_file, IFU="unk
     # The data is reduced. So we can simply specify a cut location, somewhere in the middle
     cut_loc = 0.5
 
-    if object_header['INSTRUME'] == "AAOMEGA-HECTOR":
+    if flat['Primary'].header['INSTRUME'] == "AAOMEGA-HECTOR":
         # Fibres B 120 and 175 are just fine, no idea why masked
         object_fibtab.field('TYPE')[120 - 1] = "P"
         object_fibtab.field('TYPE')[175 - 1] = "P"
@@ -1027,7 +1009,7 @@ def get_alive_fibres_reduced_frames(flat_file, object_file, robot_file, IFU="unk
         # fibre 637 is broken for all purposes
         object_fibtab.field('TYPE')[637 - 1] = "U"
 
-    if object_header['INSTRUME'] == "SPECTOR":
+    if flat['Primary'].header['INSTRUME'] == "SPECTOR":
         # there is one broken fibre, can't identify so fudge one
         object_fibtab.field('TYPE')[151 - 1] = "U"
 
@@ -1105,7 +1087,7 @@ def get_alive_fibres_reduced_frames(flat_file, object_file, robot_file, IFU="unk
     # spec_id_alive[nalive] = np.arange(Npeaks)
     spec_id_alive = None
 
-    return object_header, object_fibtab, object_guidetab, object_robottab, object_spec, spec_id_alive
+    return object_fibtab, object_guidetab, object_spec, spec_id_alive
 
 
 def fill_variance(nx, ny, dataray, noise, gain):
