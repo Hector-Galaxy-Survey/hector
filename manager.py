@@ -4121,7 +4121,7 @@ class Manager:
         try:
             median_relative_throughput /= (
                 pf.getval(path, 'RESCALE', 'FLUX_CALIBRATION'))
-            print('median_relative_throughput2',median_relative_throughput, pf.getval(path, 'RESCALE', 'FLUX_CALIBRATION'))
+            #print('median_relative_throughput2',median_relative_throughput, pf.getval(path, 'RESCALE', 'FLUX_CALIBRATION'))
 
         except KeyError:
             # Not all the data is available
@@ -4131,23 +4131,22 @@ class Manager:
         # Sree (June 2025): AAOmega transmission is currently unreliable due to extremely low throughput in bundle H.
         # For now, we set the transmission to the higher value between AAOmega and Spector.
         # TODO: Revisit this once bundle H has been properly fixed.
-
-        if pf.getval(path, 'EPOCH') > 2024.84  and pf.getval(path, 'INSTRUME') == 'AAOMEGA-HECTOR':
-            if 'ccd_1' in path:
-                path_spector = path.replace('ccd_1', 'ccd_3')[:-13]+'3'+path[-12:]
-            elif 'ccd_2' in path:
-                path_spector = path.replace('ccd_2', 'ccd_4')[:-13]+'4'+path[-12:]
-            try:
-                median_relative_throughput_spector = (
-                    pf.getval(pf.getval(path_spector, 'FCALFILE'),'MEDRELTH', 'THROUGHPUT'))
-            except KeyError:
-                median_relative_throughput_spector = -1.
-            try:
-                median_relative_throughput_spector /= (
-                    pf.getval(path_spector, 'RESCALE', 'FLUX_CALIBRATION'))
-            except KeyError:
-                pass
-            median_relative_throughput = max(median_relative_throughput, median_relative_throughput_spector)
+        #if pf.getval(path, 'EPOCH') > 2024.84  and pf.getval(path, 'INSTRUME') == 'AAOMEGA-HECTOR':
+        #    if 'ccd_1' in path:
+        #        path_spector = path.replace('ccd_1', 'ccd_3')[:-13]+'3'+path[-12:]
+        #    elif 'ccd_2' in path:
+        #        path_spector = path.replace('ccd_2', 'ccd_4')[:-13]+'4'+path[-12:]
+        #    try:
+        #        median_relative_throughput_spector = (
+        #            pf.getval(pf.getval(path_spector, 'FCALFILE'),'MEDRELTH', 'THROUGHPUT'))
+        #    except KeyError:
+        #        median_relative_throughput_spector = -1.
+        #    try:
+        #        median_relative_throughput_spector /= (
+        #            pf.getval(path_spector, 'RESCALE', 'FLUX_CALIBRATION'))
+        #    except KeyError:
+        #        pass
+        #    median_relative_throughput = max(median_relative_throughput, median_relative_throughput_spector)
 
         if not np.isfinite(median_relative_throughput):
             median_relative_throughput = -1.0
