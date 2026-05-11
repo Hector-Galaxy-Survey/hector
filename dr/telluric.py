@@ -330,7 +330,8 @@ def extract_secondary_standard(path_list,model_name='ref_centre_alpha_dist_circ_
                          bbox=dict(facecolor='white', edgecolor='none', pad=3.0))
             ax1.legend(loc='upper left', bbox_to_anchor=(0.01, 0.9))
             ax1.tick_params(axis='x', direction='in', which='both')
-            ylim = np.nanmax(observed_flux[100:-100])*1.2 if len(flux[np.isfinite(observed_flux[100:-100])]) > 0 else 10
+            obsflux = observed_flux[100:-100]
+            ylim = np.nanmax(obsflux)*1.2 if len(obsflux[np.isfinite(obsflux)]) > 0 else 10
             ax1.set_ylim(0., ylim)
 
             ax2.set(xlabel='Wavelength [A]', ylabel='Extracted/Summed')
