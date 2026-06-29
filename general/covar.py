@@ -20,8 +20,8 @@ def create_covar_matrix_original(overlap_array,variances):
         return covariance_array
     
     #Set up coordinate arrays for the covariance sub-arrays
-    xB = np.zeros(((covarS*2+1)**2),dtype=np.int)
-    yB = np.zeros(((covarS*2+1)**2),dtype=np.int)
+    xB = np.zeros(((covarS*2+1)**2),dtype=int)
+    yB = np.zeros(((covarS*2+1)**2),dtype=int)
     for i in range(covarS*2+1):
         for j in range(covarS*2+1):
             xB[j+i*(covarS*2+1)] = i
@@ -86,8 +86,8 @@ def create_covar_matrix_vectorised(overlap_array,variances):
         return covariance_array
     
     #Set up coordinate arrays for the covariance sub-arrays
-    xB = np.zeros(((covarS*2+1)**2),dtype=np.int)
-    yB = np.zeros(((covarS*2+1)**2),dtype=np.int)
+    xB = np.zeros(((covarS*2+1)**2),dtype=int)
+    yB = np.zeros(((covarS*2+1)**2),dtype=int)
     for i in range(covarS*2+1):
         for j in range(covarS*2+1):
             xB[j+i*(covarS*2+1)] = i
@@ -166,8 +166,8 @@ def create_covar_matrix_newest(overlap_array,variances):
         return covariance_array
     
     #Set up coordinate arrays for the covariance sub-arrays
-    xB = np.zeros(((covarS*2+1)**2),dtype=np.int)
-    yB = np.zeros(((covarS*2+1)**2),dtype=np.int)
+    xB = np.zeros(((covarS*2+1)**2),dtype=int)
+    yB = np.zeros(((covarS*2+1)**2),dtype=int)
     for i in range(covarS*2+1):
         for j in range(covarS*2+1):
             xB[j+i*(covarS*2+1)] = i
@@ -183,8 +183,8 @@ def create_covar_matrix_newest(overlap_array,variances):
     overlap_array_padded[covarS:-covarS,covarS:-covarS,:] = overlap_array
     overlap_array = overlap_array_padded
 
-    xA = np.arange(sx, dtype=np.int)
-    yA = np.arange(sy, dtype=np.int)
+    xA = np.arange(sx, dtype=int)
+    yA = np.arange(sy, dtype=int)
 
     xC = xA[:, None, None, None] + covarS + xB[None, None, :, :]
     yC = yA[None, :, None, None] + covarS + yB[None, None, :, :]
@@ -199,7 +199,7 @@ def create_covar_matrix_newest(overlap_array,variances):
     #a[to_be_processed][np.where(~np.isfinite(a[to_be_processed]))] = 1.0
     a[np.where(~np.isfinite(a))] = 1.0 # This new.
 
-    fake_ax = np.arange(len(variances), dtype=np.int)
+    fake_ax = np.arange(len(variances), dtype=int)
 
     #b = overlap_array[xC[:, :, None, :, :], yC[:, :, None, :, :], fake_ax[None, None, :, None, None]] * np.sqrt(variances[None, None, :, None, None]) # 50 x 50 x 427 x 25
     b = overlap_array[xC[:, :, None, :, :], yC[:, :, None, :, :], fake_ax[None, None, :, None, None]][t2[0], t2[1], :, :, :] * np.sqrt(variances[None, None, :, None, None]) # 50 x 50 x 427 x 25

@@ -832,7 +832,7 @@ def prescribed_bin_sami(hdu,sectors=8,radial=5,log=False,
 
     #Shift and rotate the spaxel coordinates so that the galaxy centre
     #is at (0,0) and the major axis is aligned with the x axis
-    spax_pos = np.indices(np.shape(image),dtype=np.float)
+    spax_pos = np.indices(np.shape(image),dtype=float)  # float removed in numpy 1.24
     spax_pos[0,:] = spax_pos[0,:] - round(xmed)
     spax_pos[1,:] = spax_pos[1,:] - round(ymed)
     spax_pos_rot = np.zeros(np.shape(spax_pos))
@@ -922,7 +922,7 @@ def aperture_bin_sami(hdu, aperture_radius=1, ellipticity=0, pa=0):
     # galaxy, i.e., distance from the major axis in the first coordinate and
     # distance from the minor axis in the second coordinate
 
-    spax_pos = np.indices((n_spax, n_spax), dtype=np.float)
+    spax_pos = np.indices((n_spax, n_spax), dtype=float)  # float removed in numpy 1.24
     # Shift centre to be centre of cube.
     spax_pos[0, :] = spax_pos[0, :, :] - xmed
     spax_pos[1, :] = spax_pos[1, :, :] - ymed

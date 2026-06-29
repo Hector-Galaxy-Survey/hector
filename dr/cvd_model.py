@@ -931,8 +931,8 @@ def get_chunks(ifu, n_drop=None, n_chunk=None, sigma_clip=None):
     else:
         data = ifu.data
     # Convert to integer for future compatibility.
-    n_chunk = np.int(np.floor(n_chunk))
-    chunk_size = np.int(np.floor(chunk_size))
+    n_chunk = int(np.floor(n_chunk))  # int removed in numpy 1.24
+    chunk_size = int(np.floor(chunk_size))
     start = n_drop
     end = n_drop + n_chunk * chunk_size
     data = data[:, start:end].reshape(n_fibre, n_chunk, chunk_size)
@@ -958,8 +958,8 @@ def chunk_again(chunked_data_i, islice, n_drop=None, n_chunk=None, sigma_clip=No
     chunk_size = round((n_pixel - 2*n_drop) / n_chunk)
 
     # Convert to integer for future compatibility.
-    n_chunk = np.int(np.floor(n_chunk))
-    chunk_size = np.int(np.floor(chunk_size))
+    n_chunk = int(np.floor(n_chunk))  # int removed in numpy 1.24
+    chunk_size = int(np.floor(chunk_size))
     start = n_drop
     end = n_drop + n_chunk * chunk_size
     data = data[:, start:end].reshape(n_fibre, n_chunk, chunk_size)
@@ -1302,7 +1302,7 @@ def parameters_dict_to_vector(parameters_dict, model_name):
 def parameters_vector_to_dict(parameters_vector, model_name):
     """Convert a parameters vector to a dictionary."""
     parameters_dict = {}
-    n_slice = np.int((len(parameters_vector) - 10) // 3)
+    n_slice = int((len(parameters_vector) - 10) // 3)
     parameters_dict['flux'] = parameters_vector[0:n_slice]
     parameters_dict['background'] = parameters_vector[n_slice:2*n_slice]
     parameters_dict['wavelength'] = parameters_vector[2*n_slice:3*n_slice]

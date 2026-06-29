@@ -88,7 +88,7 @@ def sn_list(inlist, tablein, l1, l2, ifus='all'):
         cols=line.split(' ')
         cols[0]=str.strip(cols[0])
         
-        files.append(np.str(cols[0]))
+        files.append(str(cols[0]))
 
     print("I have received", len(files), \
         "files for which to calculate and combine S/N measurements.")
@@ -459,7 +459,7 @@ def sn_re(insami, tablein, l1, l2, plot=False, ifus='all',
 
             # Write images
             if output: 
-                outsnfile='sn_'+np.str(l1)+'_'+np.str(l2)+'_'+\
+                outsnfile='sn_'+str(l1)+'_'+str(l2)+'_'+\
                     str(ifu_num)+'_'+insami
                 pf.writeto(outsnfile, np.transpose(frame), clobber=True)
             
