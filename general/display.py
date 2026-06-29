@@ -145,7 +145,7 @@ def display_list(inlist, ifu, log=True):
         cols=line.split(' ')
         cols[0]=str.strip(cols[0])
         
-        files.append(np.str(cols[0]))
+        files.append(str(cols[0]))
 
     # Number of files 
     n=len(files)
@@ -422,7 +422,7 @@ def raw(flat_file, object_file, IFU="unknown", sigma_clip=False, log=True,
 
     # Range to find spatial cut
     if pix_start != "unknown":
-        cut_loc_start = np.float(pix_start+5)/np.float(2048)
+        cut_loc_start = float(pix_start+5)/float(2048)
         cut_locs = np.linspace(cut_loc_start,0.75,201)
     else:
         cut_locs = np.linspace(0.25,0.75,201)
@@ -682,7 +682,7 @@ def raw2(flat_file, object_file, IFU="unknown", sigma_clip=False, log=True,
 
     # Range to find spatial cut
     if pix_start != "unknown":
-        cut_loc_start = np.float(pix_start+5)/np.float(2048)
+        cut_loc_start = float(pix_start+5)/float(2048)
         cut_locs = np.linspace(cut_loc_start,0.75,201)
     else:
         cut_locs = np.linspace(0.25,0.75,201)

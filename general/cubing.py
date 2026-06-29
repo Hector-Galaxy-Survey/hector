@@ -506,7 +506,7 @@ def dithered_cubes_from_rss_files(inlist, **kwargs):
         cols=line.split(' ')
         cols[0]=str.strip(cols[0])
 
-        files.append(np.str(cols[0]))
+        files.append(str(cols[0]))
 
     dithered_cubes_from_rss_list(files, **kwargs)
     return
@@ -1613,13 +1613,13 @@ def create_metadata_table(ifu_list):
             columns.append(pf.Column(
                 name=keyword,
                 format='L',
-                array=get_primary_header_values(keyword,np.bool)
+                array=get_primary_header_values(keyword,bool)
                 )) 
         elif (isinstance(first_header[keyword],int)):
             columns.append(pf.Column(
                 name=keyword,
                 format='K',
-                array=get_primary_header_values(keyword,np.int)
+                array=get_primary_header_values(keyword,int)
                 )) # 64-bit integer
         elif (isinstance(first_header[keyword],str)):
             columns.append(pf.Column(
@@ -1631,7 +1631,7 @@ def create_metadata_table(ifu_list):
             columns.append(pf.Column(
                 name=keyword,
                 format='E',
-                array=get_primary_header_values(keyword,np.float)
+                array=get_primary_header_values(keyword,float)  # float removed in numpy 1.24
                 )) # single-precision float
 
     del get_primary_header_values
