@@ -268,7 +268,9 @@ def chunk_data(ifu, n_drop=None, n_chunk=None, sigma_clip=None):
     variance = (np.nansum(variance, axis=2) / 
                 np.sum(np.isfinite(variance), axis=2)**2)
     # Replace any remaining NaNs with 0.0; not ideal but should be very rare
-    bad_data = ~np.isfinite(data) & ~np.isfinite(variance) & (variance < 0.0)
+    # SMC(10/09/26) bug fix change & to | in statement below, need to flag any one of
+    # thse cases:
+    bad_data = ~np.isfinite(data) | ~np.isfinite(variance) | (variance < 0.0)
     data[bad_data] = 0.0
     variance[bad_data] = np.inf
     wavelength = np.median(wavelength, axis=1)
@@ -328,10 +330,22 @@ def residual(parameters_vector, datatube, vartube, xfibre, yfibre,
     model = model_flux(parameters_dict, xfibre, yfibre, wavelength, model_name, cvd_parameters=cvd_parameters)
     # 2dfdr variance is just plain wrong for fibres with little or no flux!
     # Try replacing with something like sqrt(flux), but with a floor
+    #
+    # SMC bugfix (10/09/26) need to make sure that we handle bad values properly.
+    # earlier they are set to have infinite variance
+    #not sure why this data cehcking is being done here.  Could be donebefore
+    # residual function as should be the same for every call.  Should mak the code alot quicker.
+
+    bad_data = np.isinf(vartube)
     if (secondary):
         vartube = datatube.copy()
         cutoff = 0.05 * datatube.max()
+        # this only works for non-bad values (which should
+        # have data = 0 and var = inf.  
         vartube[datatube < cutoff] = cutoff
+        # Don't give bad pixels any weight
+        vartube[bad_data] = np.inf
+
     res = np.ravel((model - datatube) / np.sqrt(vartube))
     # Really crude way of putting bounds on the value of alpha
     if 'alpha_ref' in parameters_dict:
@@ -353,7 +367,16 @@ def fit_model_flux(datatube, vartube, xfibre, yfibre, wavelength, model_name,
     par_0_vector = parameters_dict_to_vector(par_0_dict, model_name)
     args = (datatube, vartube, xfibre, yfibre, wavelength, model_name,
             fixed_parameters, cvd_parameters, secondary)
-    parameters_vector = leastsq(residual, par_0_vector, args=args)[0]
+    # needs to catch error flags.  Update code to catch errors:
+    #parameters_vector = leastsq(residual, par_0_vector, args=args)[0]
+    # may even want to throw an exception here and raise a run time error:
+    parameters_vector, cov_x, infodict, mesg, ier = leastsq(residual, par_0_vector, args=args,full_output=True)
+    if ier > 4:
+        # raise a runtime error:
+        raise RuntimeError(f"leastsq failed (ier={ier}): {mesg}")
+        #print("LEASTSQ FAILED")
+        #print("ier =", ier)
+        #print("message =", mesg)
     parameters_dict = parameters_vector_to_dict(parameters_vector, model_name)
     return parameters_dict
 
