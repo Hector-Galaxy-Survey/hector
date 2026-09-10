@@ -48,7 +48,7 @@ except ImportError:
 
 def derive_transfer_function(frame_list, PS_spec_file=None, use_PS=False,
                              scale_PS_by_airmass=False, 
-                             model_name='ref_centre_alpha_dist_circ_hdr_cvd',
+                             model_name='ref_centre_alpha_circ_hdr_cvd',
                              n_trim=0, use_probe=None, hdu_name='FLUX_CALIBRATION',
                              molecfit_available = False, molecfit_dir ='',speed='',debug=True, verbose=False):
     """
@@ -272,7 +272,7 @@ def create_transfer_function(standard_spectrum,sigma,wave_axis,naxis1):
     
     return transfer_function, sigma_factor, fit
 
-def extract_secondary_standard(path_list,model_name='ref_centre_alpha_dist_circ_hdr_cvd',n_trim=0,use_probe=None,hdu_name='FLUX_CALIBRATION',debug=False,verbose=False):
+def extract_secondary_standard(path_list,model_name='ref_centre_alpha_circ_hdr_cvd',n_trim=0,use_probe=None,hdu_name='FLUX_CALIBRATION',debug=False,verbose=False):
     """Identify and extract the secondary standard in a reduced RSS file."""
     # MLPG: new model_name added
     # "identify_secondary_standard" function updated
