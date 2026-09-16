@@ -6862,7 +6862,7 @@ def read_hector_tiles(abs_root=None):
         # Check to see if the number of columns and their names match by comparing the headers
         ss_header = pd.read_csv(f"{base_path}/{file_names[1]}", nrows=0).columns
         for abs_path in not_in_list:
-            print(abs_path)
+            log.debug(abs_path)  # was a bare print() flooding stdout every fluxcal_secondary iter
             pd.read_csv(abs_path, nrows=0, header=11).columns
         cols = [pd.read_csv(abs_path, nrows=0, header=11).columns for abs_path in not_in_list]
         cols_identical = [all(ss_header == colx) for colx in cols]
@@ -6889,7 +6889,7 @@ def read_hector_tiles(abs_root=None):
                 print(afile+' does not have run stamp. Read secondary from default H, U bundles')
                 run_start_epoch=0
 
-            print(afile, run_start_epoch)
+            log.debug("%s %s", afile, run_start_epoch)  # was a bare print() flooding stdout
             if run_start_epoch > 2025.5 and run_start_epoch < 2025.75:
 #            if (int(year) >= 2025) & (int(month)>=7) & (int(month)<10):
                 hector_tile.loc[["G", "U"]].to_csv(f"{base_path}/{file_names[1]}", mode='a', header=False, index=False)

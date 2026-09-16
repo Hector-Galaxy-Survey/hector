@@ -360,7 +360,7 @@ def focus(inlist, ifu):
         cols=line.split()
         cols[0]=str.strip(cols[0])
         
-        files.append(np.str(cols[0]))
+        files.append(str(cols[0]))
 
     # Number of files 
     n=len(files)
@@ -627,6 +627,9 @@ def centroid_fit(x,y,data,reference=None,rssframe=None,galaxyid=None,microns=Tru
     working_dir = rssframe.strip('sci.fits')
 
     # Smooth the data spectrally to get rid of cosmics
+    # Cast to native float64 — FITS data is big-endian (>f4), which scipy >= 1.13's
+    # median_filter rejects with "Unsupported array type".
+    data = np.ascontiguousarray(data, dtype=np.float64)
     data_smooth=np.zeros_like(data)
     for q in range(np.shape(data)[0]):
         # data_smooth[q,:]=utils.smooth(data[q,:], 11) #default hanning smooth
