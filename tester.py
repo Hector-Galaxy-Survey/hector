@@ -435,7 +435,6 @@ def _check_existing_cubing(dir_name):
         if match_files.search(dirpath + '/' + filename)]
 
     return len(cubes_file_list)==2 # 1 IFU (star_only=True) x 2 spectrogroph arms.
-    return len(cubes_file_list)==26 # 13 IFUs x 2 spectrogroph arms.
 
 
 
