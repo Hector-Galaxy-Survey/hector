@@ -103,8 +103,13 @@ def psf_check_rss(parent_path=None, write_file='Moffat_Circular_RSS_gband.csv'):
 
     all_fits_list = os.listdir(parent_path)
     new_list = []
-    all_fits_list_cp = all_fits_list[:]
-    for fitsname in all_fits_list_cp:
+    # Pair each frame with its other-arm partner exactly once. Track which
+    # files are already paired instead of mutating the list being iterated
+    # (removing from the iterated list silently skips entries).
+    processed = set()
+    for fitsname in all_fits_list:
+        if fitsname in processed:
+            continue
 
         fitsname_other = fitsname
 
@@ -117,7 +122,8 @@ def psf_check_rss(parent_path=None, write_file='Moffat_Circular_RSS_gband.csv'):
         elif fitsname_other[5] == '4':
             fitsname_other = fitsname[:5] + '3' + fitsname[6:]
 
-        all_fits_list_cp.remove(fitsname_other)
+        processed.add(fitsname)
+        processed.add(fitsname_other)
 
         small_list = [fitsname, fitsname_other]
         # new_list is a 2-d list, each row is a 1-d list include red_arm_fits_path and blue_arm_fits_path
