@@ -311,7 +311,7 @@ def make_figures(centroid_statFinal, save_files, robot_centre_in_mm, plate_radiu
 
         nbins = np.ceil((dataFrame.max() - dataFrame.min()) / width)
 
-        n1, bins1, patchs = ax0.hist(dataFrame, bins=np.int(np.array(nbins).squeeze()), histtype='bar',
+        n1, bins1, patchs = ax0.hist(dataFrame, bins=int(np.array(nbins).squeeze()), histtype='bar',
                                      color=colr, edgecolor='black', label=label, alpha=0.5)
 
         autolabel(n1, bins1, patchs, datFrame, name, ax0, with_error=with_error)

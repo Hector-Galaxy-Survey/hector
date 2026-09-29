@@ -63,7 +63,7 @@ def make_figures(centroid_statFinal, supltitle):
                  dataFrame[datFrame['TelecentricAng'] == 'g'],
                  dataFrame[datFrame['TelecentricAng'] == 'y'],
                  dataFrame[datFrame['TelecentricAng'] == 'm']],
-                bins=np.int(np.array(nbins).squeeze()),
+                bins=int(np.array(nbins).squeeze()),
                 stacked=True,
                 label=[],
                 edgecolor='white',
@@ -140,7 +140,7 @@ def make_figures(centroid_statFinal, supltitle):
                 ax0.set_ylabel(r'$\bot$ to radial axis [$\mu $m]')
                 ax0.legend(loc='best', frameon=False)
             else:
-                n1, bins1, patchs = ax0.hist(dataFrame, bins=np.int(np.array(nbins).squeeze()), histtype='bar',
+                n1, bins1, patchs = ax0.hist(dataFrame, bins=int(np.array(nbins).squeeze()), histtype='bar',
                                              color=colr, edgecolor='black', label=label, alpha=0.5)
 
                 autolabel(n1, bins1, patchs, datFrame, name, ax0, with_error=with_error)

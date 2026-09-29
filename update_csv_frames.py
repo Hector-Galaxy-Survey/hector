@@ -80,7 +80,7 @@ class BoxesFrame(tkinter.Frame):
         self.boxes = []
         self.names = []
         for target_no, target in enumerate(self.master.target_list):
-            if target.has_key('Name'):
+            if 'Name' in target:
                 name = target['Name']
             else:
                 name = 'Target {0}'.format(target_no)

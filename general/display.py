@@ -121,7 +121,7 @@ def display(infile, ifus='all', log=True):
         py.colorbar(allpatches)
 
         # Give each subplot a title (necessary?).
-        title_string=string.join(['Probe ', str(ifu_data.ifu)])
+        title_string=' '.join(['Probe ', str(ifu_data.ifu)])
         ax.set_title(title_string, fontsize=11)
 
         # Get rid of the tick labels.
@@ -230,7 +230,7 @@ def display_list(inlist, ifu, log=True):
         py.title(subtitle_string, fontsize=11)
 
     # Title for the plot - the probe number.
-    title_string=string.join(['Probe ', str(ifu)])
+    title_string=' '.join(['Probe ', str(ifu)])
     fig.suptitle(title_string)
 
 def summed_spectrum(infile, ifu, overplot=False):
@@ -422,7 +422,7 @@ def raw(flat_file, object_file, IFU="unknown", sigma_clip=False, log=True,
 
     # Range to find spatial cut
     if pix_start != "unknown":
-        cut_loc_start = np.float(pix_start+5)/np.float(2048)
+        cut_loc_start = float(pix_start+5)/float(2048)
         cut_locs = np.linspace(cut_loc_start,0.75,201)
     else:
         cut_locs = np.linspace(0.25,0.75,201)
@@ -682,7 +682,7 @@ def raw2(flat_file, object_file, IFU="unknown", sigma_clip=False, log=True,
 
     # Range to find spatial cut
     if pix_start != "unknown":
-        cut_loc_start = np.float(pix_start+5)/np.float(2048)
+        cut_loc_start = float(pix_start+5)/float(2048)
         cut_locs = np.linspace(cut_loc_start,0.75,201)
     else:
         cut_locs = np.linspace(0.25,0.75,201)

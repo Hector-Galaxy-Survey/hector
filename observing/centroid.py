@@ -150,7 +150,7 @@ def centroid(infile, ifus='all', savefile=True, plot=True):
 
         # Find the name of the input file
         outfile=str.split(os.path.basename(infile), '.')[0]
-        out_txt=string.join([outfile, ".txt"],'')
+        out_txt=''.join([outfile, ".txt"])
         
         print("Output text file is:", out_txt)
         
@@ -271,7 +271,7 @@ def centroid(infile, ifus='all', savefile=True, plot=True):
             #con1=ax1.contour(xlin_sky, ylin_sky, np.transpose(model_sky), origin='lower')
 
             # Title and get rid of ticks.
-            title_string=string.join(['Probe ', str(ifu_data.ifu)])
+            title_string=' '.join(['Probe ', str(ifu_data.ifu)])
             py.title(title_string)
 
             py.setp(ax0.get_xticklabels(), visible=False)
@@ -306,7 +306,7 @@ def centroid(infile, ifus='all', savefile=True, plot=True):
         # Save the figure
         if savefile:
             # Save the figure
-            out_fig=string.join([outfile, ".pdf"],'') # outfile has been defined above
+            out_fig=''.join([outfile, ".pdf"]) # outfile has been defined above
             print("Output pdf file is:", out_fig)
             
             py.savefig(out_fig, format='pdf')
@@ -484,14 +484,14 @@ def focus(inlist, ifu):
         # Add the model fit as contors.
         con0=ax0.contour(xlin_mic, ylin_mic, np.transpose(model_mic), origin='lower')
 
-        subtitle_string=string.join(['Focus ', str(focus), '\n', str(infile)])
+        subtitle_string=' '.join(['Focus ', str(focus), '\n', str(infile)])
         py.title(subtitle_string, fontsize=11)
         
         py.setp(ax0.get_xticklabels(), visible=False)
         py.setp(ax0.get_yticklabels(), visible=False)
 
     # Title and get rid of ticks.
-    title_string=string.join(['Focus Run: Probe ', str(ifu)])
+    title_string=' '.join(['Focus Run: Probe ', str(ifu)])
     py.suptitle(title_string)
 
     # Now make a plot of the focus values vs FWHM of the Gaussian fit.    
@@ -617,7 +617,7 @@ def seeing(infile, ifu):
     ax0.contour(xlin_mic, ylin_mic, np.transpose(model_mic), origin='lower')
 
     # A title for the axes
-    title_string=string.join(['Probe ', str(ifu_data.ifu)])
+    title_string=' '.join(['Probe ', str(ifu_data.ifu)])
     ax0.set_title(title_string, fontsize=14)    
 
 def centroid_fit(x,y,data,reference=None,rssframe=None,galaxyid=None,microns=True, circular=True): #** reference,rssframe,galaxyid added 

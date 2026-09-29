@@ -602,7 +602,7 @@ def get_alive_fibres(flat_file, object_file, robot_file, IFU="unknown", sigma_cl
 
     # Range to find spatial cut
     if pix_start != "unknown":
-        cut_loc_start = np.float(pix_start + 5) / np.float(2048) + 200
+        cut_loc_start = float(pix_start + 5) / float(2048) + 200
         cut_locs = np.linspace(cut_loc_start, 0.75, 201)
     else:
         cut_locs = np.linspace(0.25, 0.75, 201)
@@ -796,7 +796,7 @@ def get_alive_fibres_from_tlm(flat_file, object_file, robot_file, IFU="unknown",
 
     # Range to find spatial cut
     if pix_start != "unknown":
-        cut_loc_start = np.float(pix_start + 5) / np.float(2048) + 200
+        cut_loc_start = float(pix_start + 5) / float(2048) + 200
         cut_locs = np.linspace(cut_loc_start, 0.75, 201)
     else:
         cut_locs = np.linspace(0.25, 0.75, 201)
