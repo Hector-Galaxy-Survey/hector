@@ -49,7 +49,10 @@ CCD_INFO = {
 # manager.scale_frame_pair and manager.fluxcal_secondary
 FCAL_KEYS = ['PROBENUM', 'PROBENAM', 'STDNAME', 'MODEL', 'GOODPSF', 'SNR',
              'FWHM', 'XCENREF', 'YCENREF', 'ALPHAREF', 'BETA', 'RESCALE',
-             'CATMAGG', 'CATMAGR']
+             'CATMAGG', 'CATMAGR',
+             # SS quality metrics from dr/ss_quality.py (branch ss-fluxcal-qc)
+             'SSEDGE', 'SSEDGEF', 'SSPHI', 'SSOUTER', 'SSASYM', 'SSASYMR',
+             'SSCHI2', 'SSNFIB', 'SSEXSUM']
 PRIMARY_KEYS = ['NDFCLASS', 'EXPOSED', 'UTDATE', 'UTSTART', 'EPOCH',
                 'INSTRUME', 'ZDSTART', 'MNGRSPMS', 'MNGRNAME']
 

@@ -359,8 +359,14 @@ def residual(parameters_vector, datatube, vartube, xfibre, yfibre,
     return res
 
 def fit_model_flux(datatube, vartube, xfibre, yfibre, wavelength, model_name,
-                   fixed_parameters=None, cvd_parameters=None, secondary=False):
-    """Fit a model to the given datatube. slow_task 100 sec """
+                   fixed_parameters=None, cvd_parameters=None, secondary=False,
+                   return_chi2=False):
+    """Fit a model to the given datatube. slow_task 100 sec
+
+    If return_chi2 is True, also return the reduced chi^2 of the fit.  For
+    secondary=True the residual uses a data-based variance with a floor, so
+    this is a pseudo-chi^2, useful for comparing fits rather than as an
+    absolute goodness of fit."""
     # MLPG: new keyword "cvd_parameters" added, which goes into leastsq via args
     par_0_dict = first_guess_parameters(datatube, vartube, xfibre, yfibre, 
                                         wavelength, model_name)
@@ -378,6 +384,12 @@ def fit_model_flux(datatube, vartube, xfibre, yfibre, wavelength, model_name,
         #print("ier =", ier)
         #print("message =", mesg)
     parameters_dict = parameters_vector_to_dict(parameters_vector, model_name)
+    if return_chi2:
+        fvec = infodict['fvec']
+        n_good = np.count_nonzero(np.isfinite(fvec) & (fvec != 0.0))
+        dof = max(n_good - len(parameters_vector), 1)
+        chi2_red = np.nansum(fvec**2) / dof
+        return parameters_dict, chi2_red
     return parameters_dict
 
 def first_guess_parameters(datatube, vartube, xfibre, yfibre, wavelength, 

@@ -20,6 +20,7 @@ from .fluxcal2 import read_chunked_data, set_fixed_parameters, fit_model_flux
 from .fluxcal2 import insert_fixed_parameters, check_psf_parameters
 from .fluxcal2 import extract_total_flux, save_extracted_flux, trim_chunked_data
 from .fluxcal2 import debug_cvd
+from .ss_quality import assess_secondary_quality, extracted_to_summed
 from .telluric2 import TelluricCorrect as molecfit_telluric
 from .cvd_model import get_cvd_parameters
 
@@ -291,8 +292,8 @@ def extract_secondary_standard(path_list,model_name='ref_centre_alpha_circ_hdr_c
     # Fit the PSF
     fixed_parameters = set_fixed_parameters(
         path_list, model_name, probenum=star_match['probenum'])
-    psf_parameters = fit_model_flux(
-        chunked_data['data'], 
+    psf_parameters, psf_chi2 = fit_model_flux(
+        chunked_data['data'],
         chunked_data['variance'],
         chunked_data['xfibre'],
         chunked_data['yfibre'],
@@ -300,9 +301,21 @@ def extract_secondary_standard(path_list,model_name='ref_centre_alpha_circ_hdr_c
         model_name,
         fixed_parameters=fixed_parameters,
         cvd_parameters=cvd_parameters,
-		secondary=True)
+		secondary=True, return_chi2=True)
     psf_parameters = insert_fixed_parameters(psf_parameters, fixed_parameters)
     good_psf = check_psf_parameters(psf_parameters, chunked_data)
+
+    # Quality metrics for the SS extraction (see dr/ss_quality.py)
+    fwhm = None
+    if 'alpha_ref' in psf_parameters and 'beta' in psf_parameters:
+        fwhm = psf_parameters['alpha_ref'] * 2.0 * np.sqrt(
+            2.0**(1.0/psf_parameters['beta']) - 1)
+    quality_header = assess_secondary_quality(chunked_data, psf_parameters,
+                                              fwhm=fwhm)
+    quality_header.append(('SSCHI2', psf_chi2,
+                           'SS PSF fit reduced pseudo-chi2'))
+    quality_header.append(('SSNFIB', len(chunked_data['xfibre']),
+                           'Number of good fibres in SS fit'))
 
     if debug:
         # check_against_cvd_model=True # If debugging is True, turn-on the cvd debugging as well
@@ -355,10 +368,15 @@ def extract_secondary_standard(path_list,model_name='ref_centre_alpha_circ_hdr_c
                                                                                             :10] + "_extracted_secondary.pdf \n")
         #######################
 
+        exsum = extracted_to_summed(observed_flux, ifu.data,
+                                    ifu.fib_type == 'P')
         save_extracted_flux(path, observed_flux, observed_background,
                             sigma_flux, sigma_background,
                             star_match, psf_parameters, model_name,
-                            good_psf, hdu_name=hdu_name, snr=der_snr(observed_flux))
+                            good_psf, hdu_name=hdu_name, snr=der_snr(observed_flux),
+                            extra_header=quality_header + [
+                                ('SSEXSUM', exsum,
+                                 'Median SS extracted/summed-bundle flux')])
     return
 
 def identify_secondary_standard(path, use_probe=None):

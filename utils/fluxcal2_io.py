@@ -42,8 +42,12 @@ def header_translate_inverse(header_name):
 def save_extracted_flux(path, observed_flux, observed_background,
                         sigma_flux, sigma_background,
                         star_match, psf_parameters, model_name,
-                        good_psf, hdu_name='FLUX_CALIBRATION', snr=None):
-    """Add the extracted flux to the specified FITS file."""
+                        good_psf, hdu_name='FLUX_CALIBRATION', snr=None,
+                        extra_header=None):
+    """Add the extracted flux to the specified FITS file.
+
+    extra_header is an optional list of (key, value, comment) tuples, e.g.
+    the SS quality metrics from dr.ss_quality."""
     # Turn the data into a single array
     data = np.vstack((observed_flux, observed_background, 
                       sigma_flux, sigma_background))
@@ -79,6 +83,8 @@ def save_extracted_flux(path, observed_flux, observed_background,
     if snr is not None:
         header_item_list.append(
             ('SNR', snr, 'Derived SNR from secondary standard star flux'))
+    if extra_header is not None:
+        header_item_list.extend(extra_header)
     for key, value, comment in header_item_list:
         try:
             new_hdu.header[key] = (value, comment)
