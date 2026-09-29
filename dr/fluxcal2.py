@@ -463,8 +463,21 @@ def first_guess_parameters(datatube, vartube, xfibre, yfibre, wavelength,
 
         par_0['flux'] = np.nansum(datatube, axis=0)
         par_0['background'] = np.zeros(len(par_0['flux']))
-        par_0['xcen_ref'] = np.sum(xfibre * weighted_data)
-        par_0['ycen_ref'] = np.sum(yfibre * weighted_data)
+        # Seed the centre at the brightest good fibre rather than the
+        # flux-weighted centroid, so the local PSF fit starts at the true peak
+        # and is far less likely to converge to a wrong (non-peak) centre.
+        good_fibre = np.isfinite(weighted_data)
+        var_slice = vartube[:, waveslice_mask]
+        good_fibre = good_fibre & np.any(
+            np.isfinite(var_slice) & (var_slice > 0.0), axis=1)
+        if np.any(good_fibre):
+            i_bright = int(np.argmax(np.where(good_fibre, weighted_data, -np.inf)))
+            par_0['xcen_ref'] = xfibre[i_bright]
+            par_0['ycen_ref'] = yfibre[i_bright]
+        else:
+            # No good fibre identified; fall back to the flux-weighted centroid.
+            par_0['xcen_ref'] = np.sum(xfibre * weighted_data)
+            par_0['ycen_ref'] = np.sum(yfibre * weighted_data)
         par_0['alpha_ref'] = 1.0
         par_0['beta'] = 4.0
     else:
@@ -2020,8 +2033,22 @@ def check_psf_parameters(psf_parameters, chunked_data):
     if 'xcen_ref' in psf_parameters and 'ycen_ref' in psf_parameters:
         xcen_hexa = np.mean(chunked_data['xfibre'])
         ycen_hexa = np.mean(chunked_data['yfibre'])
-        if np.sqrt((psf_parameters['xcen_ref'] - xcen_hexa)**2 + 
+        if np.sqrt((psf_parameters['xcen_ref'] - xcen_hexa)**2 +
                    (psf_parameters['ycen_ref'] - ycen_hexa)**2) > 6.0:
+            return False
+    # Flag fits that never converged to a real PSF, which otherwise yield a
+    # plausible-looking but meaningless FWHM:
+    #   - alpha pinned on the [0.5, 5.0] bounds enforced in residual(), or
+    #   - alpha and beta both still at their (1.0, 4.0) seed values (the fit
+    #     never moved). alpha ~ 1.0 alone is legitimate (~0.87" seeing), so the
+    #     seed test requires both alpha and beta to be stuck.
+    if 'alpha_ref' in psf_parameters:
+        alpha_ref = psf_parameters['alpha_ref']
+        if alpha_ref <= 0.52 or alpha_ref >= 4.98:
+            return False
+        if ('beta' in psf_parameters and
+                abs(alpha_ref - 1.0) < 0.01 and
+                abs(psf_parameters['beta'] - 4.0) < 0.01):
             return False
     # Survived the checks
     return True
