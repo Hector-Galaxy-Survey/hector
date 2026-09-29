@@ -438,7 +438,7 @@ def make_figures(centroid_statFinal, save_files, robot_centre_in_mm, plate_radiu
             indx2 = np.array(np.where(distance < 0.0)).squeeze()  # -ve ?-distance (red arrow)
             plot1, plot2 = False, False
 
-            if type_dist is 'PDist':
+            if type_dist == 'PDist':
                 if indx1.size > 0:
                     plot1, colr1 = True, 'b'
                     dist1 = np.abs(distance[indx1]) * 100.  # 100 is a scaling factor
@@ -449,7 +449,7 @@ def make_figures(centroid_statFinal, save_files, robot_centre_in_mm, plate_radiu
                     dist2 = np.abs(distance[indx2]) * 100.
                     ang_adust2 = angle_rotation[indx2]  # direction of the centre-to-ferral axis
 
-            elif type_dist is 'QDist':
+            elif type_dist == 'QDist':
                 if indx1.size > 0:
                     plot1, colr1 = True, 'b'
                     dist1 = np.abs(distance[indx1]) * 100.
