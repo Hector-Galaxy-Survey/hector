@@ -74,17 +74,12 @@ def find_red_frames(root):
 
 def path_components(path, root):
     """Return date, plate_id, field_id, name, ccd from the reduced path."""
+    # The five directories above the file are always
+    # <date>/<plate_id>/<field_id>/<name>/<ccd>, whether root is the manager
+    # root, its reduced/ dir, or a single date dir copied on its own.
     parts = os.path.normpath(path).split(os.sep)
-    try:
-        i = parts.index('reduced')
-    except ValueError:
-        # root was the reduced dir itself
-        i = len(os.path.normpath(root).split(os.sep)) - 1
-    rel = parts[i + 1:-1]
-    if len(rel) != 5:
-        return dict(date=None, plate_id=None, field_id=None, name=None,
-                    ccd=parts[-2])
-    return dict(zip(['date', 'plate_id', 'field_id', 'name', 'ccd'], rel))
+    return dict(zip(['date', 'plate_id', 'field_id', 'name', 'ccd'],
+                    parts[-6:-1]))
 
 
 def read_header_safe(path, ext=0):
@@ -141,6 +136,8 @@ def census_frame(red_path, root, minexp):
     sci_path = os.path.join(os.path.dirname(red_path), fileroot + 'sci.fits')
     row['has_fcal'] = os.path.exists(fcal_path)
     row['has_sci'] = os.path.exists(sci_path)
+    row['path_red'] = red_path
+    row['path_sci'] = sci_path if row['has_sci'] else None
 
     # SS extraction results: prefer sci (post-telluric), fall back to fcal
     src = sci_path if row['has_sci'] else (fcal_path if row['has_fcal'] else None)
