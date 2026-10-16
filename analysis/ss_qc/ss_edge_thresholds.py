@@ -161,8 +161,8 @@ def make_figure(df, table, path, tol_line=2.0):
                         (table['metric'] == name)].iloc[0]
             if np.isfinite(row['cut']):
                 ax.axvline(row['cut'], color=SERIES[1], lw=1.5, ls='--')
-                ax.text(row['cut'], 22, '  aper cut %.2f\n  (loses %.0f%% '
-                        'good)' % (row['cut'], 100 * row['good_rejected']),
+                ax.text(row['cut'], 22, '  onset cut %.2f\n  (aperture, '
+                        'beta 3.5 corr.)' % row['cut'],
                         color=INK, fontsize=8, va='top')
             ax.set_xlabel(name + ('  (<- towards/outside edge)'
                                   if METRICS[name][1] else
@@ -196,7 +196,7 @@ def main(argv=None):
     table.to_csv(os.path.join(args.qc_dir, 'ss_edge_thresholds.csv'),
                  index=False)
     os.makedirs(args.fig_dir, exist_ok=True)
-    make_figure(df, table, os.path.join(args.fig_dir,
+    make_figure(df, onset_table(df, args.tol), os.path.join(args.fig_dir,
                                         'fig7_edge_thresholds.png'),
                 tol_line=args.tol[0])
     pd.set_option('display.width', 200)
