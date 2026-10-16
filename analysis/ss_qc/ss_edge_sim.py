@@ -8,7 +8,7 @@ The night 260904 has no SS stars near a bundle edge, so instead:
   * fibre layouts: the real H (AAOmega) and U (Spector) bundles from a
     260904 frame (FIBRES_IFU, fit coordinates);
   * star brightness: the median SS band flux on 260904 for that
-    spectrograph and band (from ss_refit.csv, aperture method);
+    spectrograph and band (from ss_refit.csv, beta = 2.5 Moffat fit);
   * noise: per-fibre variance = v0 + g * flux, fitted to the real variance
     of the same frame and band;
   * truth: circular Moffat with FWHM 1.2/1.8/2.4" and beta 2/2.5/3.5,
@@ -46,8 +46,7 @@ FLUX_SCALES = (1.0, 0.1)  # 260904-like stars, and ~2.5 mag fainter
 FWHMS = (1.2, 1.8, 2.4)
 BETAS = (2.0, 2.5, 3.5)
 RADII = np.round(np.arange(0.0, 7.01, 0.35), 2)
-METHODS = ('free', 'beta2.5', 'aper_b2.5', 'aper_b3.5', 'aper_b5',
-           'bundlesum')
+METHODS = ('free', 'beta2.5', 'beta3.5')
 
 
 def noise_model(qc_dir, spectrograph, band):
@@ -64,7 +63,7 @@ def noise_model(qc_dir, spectrograph, band):
     g, v0 = np.polyfit(np.clip(flux, 0, None), var, 1)
     v0 = max(v0, np.percentile(var, 10))
     g = max(g, 0.0)
-    sel = refit[(refit['band'] == band) & (refit['method'] == 'aper_b3.5')
+    sel = refit[(refit['band'] == band) & (refit['method'] == 'beta2.5')
                 & (refit['spectrograph'] == spectrograph)]
     f_star = np.median(sel['F'])
     return dict(x=x, y=y, v0=v0, g=g, F=f_star, name=f['PROBENAM'],

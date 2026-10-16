@@ -10,8 +10,8 @@ spectrographs cover.  Each exposure's mean ratio is removed, leaving its
 shape; the scatter of that shape between dithers (in each chunk, then
 averaged) is the colour error a method would put into the secondary TF.
 
-Methods: pipeline (FLUX_CALIBRATION extraction, as reduced), free-beta
-Moffat fit, and the aperture method with beta = 2.5 and 3.5 corrections.
+Methods: pipeline (FLUX_CALIBRATION extraction, as reduced), and Moffat
+fits with beta free and fixed at 2.5 and 3.5.
 
 Read-only.  Usage:
     python ss_refit_chromatic.py <qc_dir> [--chunk 200]
@@ -37,11 +37,11 @@ ARMS = {  # arm: {spectrograph: ccd}, usable range
     'red': ({'AAOmega': '2', 'Spector': '4'}, (6300.0, 7400.0)),
 }
 TELLURIC = [(6860.0, 6930.0), (7150.0, 7350.0)]
-METHODS = ['pipeline', 'free', 'aper_b2.5', 'aper_b3.5']
-LABEL = {'pipeline': 'pipeline extraction',
+METHODS = ['pipeline', 'free', 'beta2.5', 'beta3.5']
+LABEL = {'pipeline': 'pipeline extraction (as reduced)',
          'free': 'Moffat fit, beta free',
-         'aper_b2.5': 'aperture, beta = 2.5 corr.',
-         'aper_b3.5': 'aperture, beta = 3.5 corr.'}
+         'beta2.5': 'Moffat fit, beta = 2.5',
+         'beta3.5': 'Moffat fit, beta = 3.5'}
 
 
 def chunks(lo, hi, width):
@@ -60,9 +60,7 @@ def chunk_fluxes(fcal, probenum, wrange):
     free = fit(x, y, flux, var, None, beta_free=True)
     res['free'] = free['F']
     for b in (2.5, 3.5):
-        f = fit(x, y, flux, var, b)
-        res['aper_b%g' % b] = ((flux.sum() - f['bkg'] * len(flux))
-                               / f['frac_on_fibres'])
+        res['beta%g' % b] = fit(x, y, flux, var, b)['F']
     return res
 
 
@@ -104,7 +102,7 @@ def make_figure(lr, path):
     fields = sorted(lr['field_id'].unique())
     fig, axes = plt.subplots(1, len(fields) + 1, figsize=(17, 4.8))
     for ax, field in zip(axes, fields):
-        for m in ('pipeline', 'aper_b3.5'):
+        for m in ('pipeline', 'beta2.5'):
             g = lr[(lr['method'] == m) & (lr['field_id'] == field)]
             for k, (exp, e) in enumerate(g.groupby('exposure_id')):
                 for blue_arm in (True, False):  # no line across the gap

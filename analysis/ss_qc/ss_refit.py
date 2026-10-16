@@ -6,8 +6,8 @@ Motivation: on 260904 the same-exposure AAOmega/Spector RESCALE ratio, in
 which transparency cancels, scatters by 4-7% between dithers and tracks the
 fitted Moffat beta.  The bundle (~5" radius) does not constrain the PSF
 wings, but the wings set how much flux the model extrapolates.  This script
-tests whether constraining the profile shape, or relying on the observed
-flux with only a small model correction, reduces that scatter.
+tests whether constraining the profile shape (fixing beta) reduces that
+scatter.
 
 For each exposure and spectrograph, per-fibre fluxes are summed over a band
 common to both spectrographs (from the primary-calibrated fcal.fits) and
@@ -16,9 +16,6 @@ fitted with each method:
   free         Moffat, alpha and beta free (as in the pipeline)
   beta2.5/3.5/5  Moffat, beta fixed
   gauss        Gaussian (beta -> infinity)
-  aper_*       observed bundle sum / model fraction of flux on the fibres,
-               with the fraction from the beta2.5/3.5/5, gauss or free fit
-  bundlesum    observed bundle sum, no model
 
 The figure of merit is the robust scatter, across the dithers of a field,
 of F(AAOmega)/F(Spector) from the same exposure.  Transparency cancels in
@@ -53,8 +50,7 @@ BANDS = {
     'red': {'ccd': {'AAOmega': '2', 'Spector': '4'},
             'range': (6300.0, 7300.0), 'mask': [(6860.0, 6930.0)]},
 }
-METHODS = ['free', 'beta2.5', 'beta3.5', 'beta5', 'gauss', 'aper_b2.5',
-           'aper_b3.5', 'aper_b5', 'aper_gauss', 'aper_free', 'bundlesum']
+METHODS = ['free', 'beta2.5', 'beta3.5', 'beta5', 'gauss']
 
 # sub-sampling of a fibre core for the model integral
 _g = np.linspace(-R_CORE, R_CORE, 11)
@@ -149,17 +145,6 @@ def extract(x, y, flux, var):
     for b in (2.5, 3.5, 5.0):
         res['beta%g' % b] = fit(x, y, flux, var, b)
     res['gauss'] = fit(x, y, flux, var, None)
-    # aperture: observed sum (background removed) / model fraction of the
-    # star's flux landing on the fibres.  The fraction is mostly the core
-    # fill factor; only the part beyond the bundle depends on the wings, so
-    # this should be insensitive to which profile supplies it.
-    for name, model in (('aper_b2.5', 'beta2.5'), ('aper_b3.5', 'beta3.5'),
-                        ('aper_b5', 'beta5'), ('aper_gauss', 'gauss'),
-                        ('aper_free', 'free')):
-        m = res[model]
-        obs = flux.sum() - m['bkg'] * len(flux)
-        res[name] = dict(m, F=obs / m['frac_on_fibres'])
-    res['bundlesum'] = {'F': flux.sum(), 'frac_on_fibres': np.nan}
     return res
 
 
@@ -244,21 +229,13 @@ def make_figure(df, path):
     import matplotlib.pyplot as plt
     from plot_ss_quality_tests import SERIES, INK, INK2, MUTED, GRID
 
-    labels = {'PIPELINE': 'pipeline extraction',
+    labels = {'PIPELINE': 'pipeline extraction (as reduced)',
               'free': 'Moffat fit, beta free',
               'beta2.5': 'Moffat fit, beta = 2.5',
               'beta3.5': 'Moffat fit, beta = 3.5',
               'beta5': 'Moffat fit, beta = 5',
-              'gauss': 'Gaussian fit',
-              'aper_free': 'aperture, beta-free corr.',
-              'aper_b2.5': 'aperture, beta = 2.5 corr.',
-              'aper_b3.5': 'aperture, beta = 3.5 corr.',
-              'aper_b5': 'aperture, beta = 5 corr.',
-              'aper_gauss': 'aperture, Gaussian corr.',
-              'bundlesum': 'bundle sum, no correction'}
-    order = ['PIPELINE', 'free', 'beta2.5', 'beta3.5', 'beta5', 'gauss',
-             'aper_free', 'aper_b2.5', 'aper_b3.5', 'aper_b5', 'aper_gauss',
-             'bundlesum']
+              'gauss': 'Gaussian fit'}
+    order = ['PIPELINE', 'free', 'beta2.5', 'beta3.5', 'beta5', 'gauss']
     band_colour = {'blue': SERIES[0], 'red': SERIES[1]}
 
     fig = plt.figure(figsize=(15, 6.5))
@@ -279,9 +256,6 @@ def make_figure(df, path):
                         else None)
     ax.set_yticks(ypos)
     ax.set_yticklabels([labels[m] for m in order])
-    for i, m in zip(ypos, order):
-        if m.startswith('aper'):
-            ax.axhspan(i - 0.45, i + 0.45, color=GRID, zorder=0, lw=0)
     ax.set_xscale('log')
     ax.set_xticks([1, 2, 3, 5, 10, 20, 30])
     ax.set_xticklabels(['1', '2', '3', '5', '10', '20', '30'])
@@ -289,7 +263,7 @@ def make_figure(df, path):
                   '(transparency cancels; 68% bootstrap interval)')
     ax.set_title('(a) Extraction methods ranked by dither-to-dither '
                  'consistency')
-    ax.legend(loc='lower right')
+    ax.legend(loc='upper right')
     ax.grid(axis='x', color=GRID, lw=0.8)
 
     for k, band in enumerate(('blue', 'red')):
@@ -298,8 +272,8 @@ def make_figure(df, path):
         traces = [('pipeline extraction',
                    ratio_resid(g[g['method'] == 'free'], 'F_pipeline'), INK2,
                    '--'),
-                  ('aperture, beta = 3.5 corr.',
-                   ratio_resid(g[g['method'] == 'aper_b3.5']), SERIES[2],
+                  ('Moffat fit, beta = 2.5',
+                   ratio_resid(g[g['method'] == 'beta2.5']), SERIES[2],
                    '-')]
         for label, lr, colour, ls in traces:
             for (field, sub), marker in zip(lr.groupby(level=0), ('o', '^')):

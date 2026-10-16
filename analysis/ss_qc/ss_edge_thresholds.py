@@ -31,8 +31,8 @@ from plot_ss_quality_tests import SERIES, INK, INK2, MUTED, GRID
 
 METHOD_LABEL = {'free': 'Moffat fit, beta free',
                 'beta2.5': 'Moffat fit, beta = 2.5',
-                'aper_b2.5': 'aperture, beta = 2.5 corr.',
-                'aper_b3.5': 'aperture, beta = 3.5 corr.'}
+                'beta3.5': 'Moffat fit, beta = 3.5'}
+CUT_METHOD = 'beta2.5'  # method whose onset cut is drawn in the figure
 METRICS = {  # name: (column, True if larger = safer)
     'SSEDGE': ('SSEDGE', True),
     'SSEDGEF': ('SSEDGEF', True),
@@ -83,6 +83,15 @@ def threshold_table(df, tols):
     return pd.DataFrame(rows)
 
 
+AXIS_LABEL = {
+    'SSEDGE': 'SSEDGE (arcsec): centre to bundle edge\n'
+              'centre <-------- edge (0) --------> outside bundle',
+    'SSEDGEF': 'SSEDGEF = SSEDGE / FWHM\n'
+               'centre <-------- edge (0) --------> outside bundle',
+    'SSOUTER': 'SSOUTER: fraction of observed flux in outer fibres\n'
+               'centred star <----------------> truncated star',
+}
+
 ONSET_BINS = {'SSEDGE': np.arange(-1.5, 5.6, 0.25),
               'SSEDGEF': np.arange(-1.0, 4.6, 0.125),
               'SSOUTER': np.arange(0.0, 1.0001, 0.025)}
@@ -130,7 +139,7 @@ def binned(g, col, bins):
 
 def make_figure(df, table, path, tol_line=2.0):
     methods = list(METHOD_LABEL)
-    colour = dict(zip(methods, [MUTED, SERIES[0], SERIES[2], SERIES[1]]))
+    colour = dict(zip(methods, [MUTED, SERIES[0], SERIES[1]]))
     scales = sorted(df['flux_scale'].unique(), reverse=True)
     fig, axes = plt.subplots(len(scales), 3, figsize=(16, 4.6 * len(scales)),
                              squeeze=False)
@@ -156,17 +165,15 @@ def make_figure(df, table, path, tol_line=2.0):
             if METRICS[name][1]:
                 ax.invert_xaxis()
             row = table[(table['flux_scale'] == scale) &
-                        (table['method'] == 'aper_b3.5') &
+                        (table['method'] == CUT_METHOD) &
                         (table['tol'] == tol_line) &
                         (table['metric'] == name)].iloc[0]
             if np.isfinite(row['cut']):
-                ax.axvline(row['cut'], color=SERIES[1], lw=1.5, ls='--')
-                ax.text(row['cut'], 22, '  onset cut %.2f\n  (aperture, '
-                        'beta 3.5 corr.)' % row['cut'],
+                ax.axvline(row['cut'], color=colour[CUT_METHOD], lw=1.5, ls='--')
+                ax.text(row['cut'], 22, '  onset cut %.2f\n  (%s)'
+                        % (row['cut'], METHOD_LABEL[CUT_METHOD]),
                         color=INK, fontsize=8, va='top')
-            ax.set_xlabel(name + ('  (<- towards/outside edge)'
-                                  if METRICS[name][1] else
-                                  '  (more light in outer ring ->)'))
+            ax.set_xlabel(AXIS_LABEL[name])
             if j == 0:
                 ax.set_ylabel('extra flux error from position (%%)\n'
                               'flux x%g of 260904 SS' % scale)
