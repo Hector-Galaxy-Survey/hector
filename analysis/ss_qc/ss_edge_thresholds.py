@@ -54,8 +54,9 @@ def best_cut(metric, safe_high, bad, catch=0.95):
     """Cut on metric that rejects >= catch of bad frames.
 
     Returns (cut, fraction of bad rejected, fraction of good rejected)."""
-    m = metric.values
-    b = bad.values
+    ok = np.isfinite(metric.values)  # SSOUTER is NaN if the noisy sum <= 0
+    m = metric.values[ok]
+    b = bad.values[ok]
     if b.sum() == 0:
         return np.nan, np.nan, 0.0
     vals = np.sort(m[b])
@@ -79,6 +80,39 @@ def threshold_table(df, tols):
                 rows.append(dict(flux_scale=scale, method=method, tol=tol,
                                  metric=name, cut=cut, bad_frac=bad.mean(),
                                  bad_rejected=caught, good_rejected=lost))
+    return pd.DataFrame(rows)
+
+
+ONSET_BINS = {'SSEDGE': np.arange(-1.5, 5.6, 0.25),
+              'SSEDGEF': np.arange(-1.0, 4.6, 0.125),
+              'SSOUTER': np.arange(0.0, 1.0001, 0.025)}
+
+
+def onset_table(df, tols, frac=0.68):
+    """Threshold = the safe edge of the first bin, moving from the safe end
+    towards the edge, in which fewer than `frac` of frames have
+    |delta| <= tol.  Frames on the safe side of it are kept."""
+    rows = []
+    for (scale, method), g in df.groupby(['flux_scale', 'method']):
+        for tol in tols:
+            for name, (col, safe_high) in METRICS.items():
+                bins = ONSET_BINS[name]
+                idx = np.digitize(g[col], bins)
+                order = range(len(bins) - 1, 0, -1) if safe_high \
+                    else range(1, len(bins))
+                cut = np.nan
+                for i in order:
+                    s = g['delta'][idx == i]
+                    if len(s) < 10:
+                        continue
+                    if np.mean(s.abs() <= tol) < frac:
+                        cut = bins[i] if safe_high else bins[i - 1]
+                        break
+                keep = (g[col] > cut) if safe_high else (g[col] < cut)
+                rows.append(dict(flux_scale=scale, method=method, tol=tol,
+                                 metric=name, cut=cut,
+                                 kept_within_tol=np.mean(
+                                     g['delta'][keep].abs() <= tol)))
     return pd.DataFrame(rows)
 
 
@@ -167,6 +201,14 @@ def main(argv=None):
                 tol_line=args.tol[0])
     pd.set_option('display.width', 200)
     print(table.to_string(index=False, float_format=lambda v: '%.2f' % v))
+
+    onset = onset_table(df, args.tol)
+    onset.to_csv(os.path.join(args.qc_dir, 'ss_edge_onset.csv'), index=False)
+    print('\nOnset thresholds: skip when the metric is on the unsafe side of '
+          'the cut (SSEDGE/SSEDGEF below it, SSOUTER above it).')
+    print(onset.pivot_table(index=['metric', 'tol'],
+                            columns=['flux_scale', 'method'], values='cut')
+          .round(2).to_string())
 
     print('\nCentred-star absolute error (mean over truths, %), showing the '
           'profile-mismatch bias a threshold cannot remove:')
