@@ -29,6 +29,20 @@ Caveats: one night; a simplified single-band refit without the chromatic
 (DAR/CvD) model; simulated rather than real edge stars. The pipeline's own SS
 step has not been re-run (it needs the tiles' robot files).
 
+If β is fixed, the preferred value is the night's median β from the free
+fits, excluding failed fits and fits that hit a parameter limit or give an
+implausible β.
+
+`SSEDGE` uses the fitted centre at the reference wavelength. Refraction moves
+the star by up to ~1″ across the blue arm at high airmass, so a star could
+pass at the reference wavelength yet be closer to the edge at the blue end;
+the simulations do not include this. A wavelength-aware version (minimum edge
+distance along the fitted DAR/CvD centre track) is to be tested. The blue end
+is noisier, so it should use the fitted track, or only wavelengths where the
+star is well detected, rather than per-slice centroids. In the simulations the
+fitted centre is otherwise accurate near the edge (median −0.04″), and its
+errors make stars look closer to the edge, so false passes are rare (≤ 0.6%).
+
 ## Quality metrics
 
 Computed by `dr/ss_quality.py` and written to the `FLUX_CALIBRATION` header by
