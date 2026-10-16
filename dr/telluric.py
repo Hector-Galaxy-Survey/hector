@@ -51,12 +51,15 @@ def derive_transfer_function(frame_list, PS_spec_file=None, use_PS=False,
                              scale_PS_by_airmass=False, 
                              model_name='ref_centre_alpha_circ_hdr_cvd',
                              n_trim=0, use_probe=None, hdu_name='FLUX_CALIBRATION',
-                             molecfit_available = False, molecfit_dir ='',speed='',debug=True, verbose=False):
+                             molecfit_available = False, molecfit_dir ='',speed='',debug=True, verbose=False,
+                             ss_extraction='model', ss_beta=None):
     """
-    Finds the telluric correction factor to multiply object data by. The factor 
-    as a function of wavelength is saved into the red frame under the extension 
-    "FLUX_CALIBRATION" and has values that are mostly 1s apart from the telluric 
+    Finds the telluric correction factor to multiply object data by. The factor
+    as a function of wavelength is saved into the red frame under the extension
+    "FLUX_CALIBRATION" and has values that are mostly 1s apart from the telluric
     regions.
+
+    ss_extraction and ss_beta are passed to extract_secondary_standard.
     """
     # MLPG: new model name added in the def (.....) above
     # turning on "extract_secondary_standard"
@@ -96,7 +99,8 @@ def derive_transfer_function(frame_list, PS_spec_file=None, use_PS=False,
     
     else:
         # Get data
-        extract_secondary_standard(frame_list, model_name=model_name, n_trim=n_trim, use_probe=use_probe, hdu_name=hdu_name,debug=debug,verbose=verbose)
+        extract_secondary_standard(frame_list, model_name=model_name, n_trim=n_trim, use_probe=use_probe, hdu_name=hdu_name,debug=debug,verbose=verbose,
+                                   ss_extraction=ss_extraction, ss_beta=ss_beta)
 
         hdulist = pf.open(frame_list[1])
         hdu = hdulist[hdu_name]
@@ -273,8 +277,16 @@ def create_transfer_function(standard_spectrum,sigma,wave_axis,naxis1):
     
     return transfer_function, sigma_factor, fit
 
-def extract_secondary_standard(path_list,model_name='ref_centre_alpha_circ_hdr_cvd',n_trim=0,use_probe=None,hdu_name='FLUX_CALIBRATION',debug=False,verbose=False):
-    """Identify and extract the secondary standard in a reduced RSS file."""
+def extract_secondary_standard(path_list,model_name='ref_centre_alpha_circ_hdr_cvd',n_trim=0,use_probe=None,hdu_name='FLUX_CALIBRATION',debug=False,verbose=False,
+                               ss_extraction='model', ss_beta=None):
+    """Identify and extract the secondary standard in a reduced RSS file.
+
+    ss_extraction: 'model' (default) takes the total flux from the fitted
+        PSF amplitude; 'aperture' sums the observed fibre flux and divides by
+        the model fraction on the fibres (fluxcal2.extract_total_flux).
+    ss_beta: if given, hold the Moffat beta fixed at this value in the PSF
+        fit instead of fitting it.  The 37-core SS bundles constrain beta
+        poorly, and a free beta drives dither-to-dither flux errors."""
     # MLPG: new model_name added
     # "identify_secondary_standard" function updated
     # cvd_model.py added and get_cvd_parameters called
@@ -292,6 +304,10 @@ def extract_secondary_standard(path_list,model_name='ref_centre_alpha_circ_hdr_c
     # Fit the PSF
     fixed_parameters = set_fixed_parameters(
         path_list, model_name, probenum=star_match['probenum'])
+    if ss_beta is not None:
+        # residual() inserts fixed parameters after unpacking the fit vector,
+        # so this overrides the fitted beta
+        fixed_parameters['beta'] = float(ss_beta)
     psf_parameters, psf_chi2 = fit_model_flux(
         chunked_data['data'],
         chunked_data['variance'],
@@ -316,6 +332,10 @@ def extract_secondary_standard(path_list,model_name='ref_centre_alpha_circ_hdr_c
                            'SS PSF fit reduced pseudo-chi2'))
     quality_header.append(('SSNFIB', len(chunked_data['xfibre']),
                            'Number of good fibres in SS fit'))
+    quality_header.append(('SSEXTRAC', ss_extraction,
+                           'SS total flux method (model/aperture)'))
+    quality_header.append(('SSBETAFX', ss_beta is not None,
+                           'SS Moffat beta held fixed in PSF fit'))
 
     if debug:
         # check_against_cvd_model=True # If debugging is True, turn-on the cvd debugging as well
@@ -324,7 +344,8 @@ def extract_secondary_standard(path_list,model_name='ref_centre_alpha_circ_hdr_c
     for path in path_list:
         ifu = IFU(path, star_match['probenum'], flag_name=False)
         observed_flux, observed_background, sigma_flux, sigma_background = \
-            extract_total_flux(ifu, psf_parameters, model_name, clip=5.0, cvd_parameters=cvd_parameters)
+            extract_total_flux(ifu, psf_parameters, model_name, clip=5.0, cvd_parameters=cvd_parameters,
+                               method=ss_extraction)
 
         #######################
         # MLPG: Diagnostic plot showing extracted flux versus summed flux, saved in the data reduction location

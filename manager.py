@@ -2675,8 +2675,12 @@ class Manager:
         return
 
     def telluric_correct(self, overwrite=False, model_name=None, name='main',verbose=False,debug=True,
-                         **kwargs):
-        """Apply telluric correction to object frames."""
+                         ss_extraction='model', ss_beta=None, **kwargs):
+        """Apply telluric correction to object frames.
+
+        ss_extraction ('model' or 'aperture') and ss_beta (None to fit the
+        Moffat beta, or a value to hold it fixed) control how the secondary
+        standard flux is extracted; see telluric.extract_secondary_standard."""
         # First make the list of file pairs to correct
         # MLPG: adding new model name = ref_centre_alpha_circ_hdr_cvd
         inputs_list = []
@@ -2744,7 +2748,9 @@ class Manager:
                      'model_name': model_name_out,
                      'speed':self.speed,
                      'verbose':verbose,
-                     'debug':debug})
+                     'debug':debug,
+                     'ss_extraction': ss_extraction,
+                     'ss_beta': ss_beta})
         # Now send this list to as many cores as we are using
         # Limit this to 10, because of semaphore issues I don't understand
         old_n_cpu = self.n_cpu
@@ -6480,7 +6486,9 @@ def telluric_correct_pair(inputs):
         telluric.derive_transfer_function(
             path_pair, PS_spec_file=PS_spec_file, use_PS=use_PS, n_trim=n_trim,
             scale_PS_by_airmass=scale_PS_by_airmass, model_name=model_name, use_probe=use_probe,
-            molecfit_available = MOLECFIT_AVAILABLE, molecfit_dir = MF_BIN_DIR,speed=inputs['speed'],debug=debug,verbose=verbose)
+            molecfit_available = MOLECFIT_AVAILABLE, molecfit_dir = MF_BIN_DIR,speed=inputs['speed'],debug=debug,verbose=verbose,
+            ss_extraction=inputs.get('ss_extraction', 'model'),
+            ss_beta=inputs.get('ss_beta', None))
     except ValueError as err:
         if err.args[0].startswith('No star identified in file:'):
             # No standard star found; probably a star field

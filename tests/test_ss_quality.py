@@ -186,6 +186,69 @@ def test_fit_model_flux_return_chi2(layout_u):
     assert 0.5 < chi2 < 3.0
 
 
+def slice_params(x0, y0, fwhm, beta):
+    alpha = fwhm / (2.0 * np.sqrt(2.0 ** (1.0 / beta) - 1.0))
+    return {'xcen': x0, 'ycen': y0, 'alphax': alpha, 'alphay': alpha,
+            'beta': beta, 'rho': 0.0}
+
+
+def test_extract_flux_slice_aperture_matches_model_when_exact(layout_u):
+    """With data drawn from the assumed model, both methods recover F."""
+    from hector.dr.fluxcal2 import extract_flux_slice, moffat_normalised
+    xf, yf = layout_u
+    p = slice_params(0.5, -0.3, 1.6, 3.0)
+    model = moffat_normalised(p, xf, yf)
+    data = 1000.0 * model + 2.0
+    var = np.full(len(xf), 1.0)
+    f_model = extract_flux_slice(data, var, xf, yf, p)[0]
+    f_aper = extract_flux_slice(data, var, xf, yf, p, aperture=True)[0]
+    assert f_model == pytest.approx(1000.0, rel=1e-3)
+    assert f_aper == pytest.approx(1000.0, rel=1e-3)
+
+
+def test_extract_flux_slice_aperture_equals_model_for_equal_weights(layout_u):
+    """With a background fitted and equal variances, the least-squares
+    normal equation sum(data - F m - b) = 0 makes the aperture flux
+    identical to the fitted amplitude, whatever the profile mismatch.  The
+    two only differ through the weighting."""
+    from hector.dr.fluxcal2 import extract_flux_slice, moffat_normalised
+    xf, yf = layout_u
+    data = 1000.0 * moffat_normalised(slice_params(0, 0, 1.6, 2.0), xf, yf)
+    var = np.full(len(xf), 1.0)
+    assumed = slice_params(0.0, 0.0, 1.6, 5.0)
+    f_model = extract_flux_slice(data, var, xf, yf, assumed)[0]
+    f_aper = extract_flux_slice(data, var, xf, yf, assumed, aperture=True)[0]
+    assert f_aper == pytest.approx(f_model, rel=1e-6)
+
+
+def test_extract_total_flux_rejects_unknown_method():
+    from hector.dr.fluxcal2 import extract_total_flux
+    with pytest.raises(ValueError):
+        extract_total_flux(None, {}, 'ref_centre_alpha_circ_hdr_cvd',
+                           method='bogus')
+
+
+def test_fit_model_flux_with_fixed_beta(layout_u):
+    """A beta in fixed_parameters overrides the fitted one (as used by
+    telluric.extract_secondary_standard with ss_beta)."""
+    from hector.dr.fluxcal2 import fit_model_flux, insert_fixed_parameters
+    xf, yf = layout_u
+    wl = np.linspace(4000, 7000, 6)
+    model = np.column_stack([moffat_fibre_flux(1.0, -0.5, xf, yf, beta=2.5)
+                             for _ in wl])
+    var = np.abs(model) + 5
+    name = 'ref_centre_alpha_circ_hdratm'
+    fixed = {'zenith_direction': 0.5, 'zenith_distance': 0.0,
+             'temperature': 10.0, 'pressure': 700.0, 'vapour_pressure': 8.0,
+             'beta': 2.5}
+    params, chi2 = fit_model_flux(model, var, xf, yf, wl, name,
+                                  fixed_parameters=fixed, return_chi2=True)
+    params = insert_fixed_parameters(params, fixed)
+    assert params['beta'] == 2.5
+    assert params['xcen_ref'] == pytest.approx(1.0, abs=0.05)
+    assert np.isfinite(chi2)
+
+
 def test_extracted_to_summed():
     data = np.ones((4, 10))
     good = np.array([True, True, True, False])
