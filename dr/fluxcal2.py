@@ -1116,21 +1116,10 @@ def match_star_coordinates(ra, dec, max_sep_arcsec=60.0,
     # No matching star found. Let outer code deal with it.
     return
 
-def extract_total_flux(ifu, psf_parameters, model_name, clip=None, cvd_parameters=None,
-                       method='model'):
-    """Extract the total flux, including light between fibres.
-
-    method='model' (default) fits the PSF model's amplitude to the fibre
-    fluxes in each wavelength slice, so the total flux is the integral of
-    the model.  method='aperture' instead sums the observed fibre fluxes
-    (background removed) and divides by the fraction of the model's flux
-    that falls on those fibres; the model then only supplies the light
-    between and beyond the fibres.  See extract_flux_slice."""
+def extract_total_flux(ifu, psf_parameters, model_name, clip=None, cvd_parameters=None):
+    """Extract the total flux, including light between fibres."""
     # MLPG: added the keyword = cvd_parameters, which is input into "parameters_dict_to_array"
     # function call, and "model_flux" call
-    if method not in ('model', 'aperture'):
-        raise ValueError('Unknown extraction method: ' + str(method))
-    aperture = (method == 'aperture')
     psf_parameters_array = parameters_dict_to_array(
         psf_parameters, ifu.lambda_range, model_name, cvd_parameters=cvd_parameters)
     n_pixel = len(psf_parameters_array)
@@ -1144,9 +1133,9 @@ def extract_total_flux(ifu, psf_parameters, model_name, clip=None, cvd_parameter
     for index, psf_parameters_slice in enumerate(psf_parameters_array):
         flux[index], background[index], sigma_flux[index], \
             sigma_background[index] = extract_flux_slice(
-                ifu.data[good_fibre, index], ifu.var[good_fibre, index],
+                ifu.data[good_fibre, index], ifu.var[good_fibre, index], 
                 xfibre[good_fibre], yfibre[good_fibre],
-                psf_parameters_slice, aperture=aperture)
+                psf_parameters_slice)
     if clip is not None:
         # Clip out discrepant data. Wavelength slices are targeted based on
         # their overall deviation from the model, but within a slice only
@@ -1181,8 +1170,8 @@ def extract_total_flux(ifu, psf_parameters, model_name, clip=None, cvd_parameter
                     sigma_flux[bad_pixel], sigma_background[bad_pixel] = \
                     extract_flux_slice(
                         ifu.data[keep, bad_pixel], ifu.var[keep, bad_pixel],
-                        xfibre[keep], yfibre[keep],
-                        psf_parameters_array[bad_pixel], aperture=aperture)
+                        xfibre[keep], yfibre[keep], 
+                        psf_parameters_array[bad_pixel])
                 # Re-calculate the deviation from the model
                 model_parameters['flux'] = np.array(
                     [flux[bad_pixel]])
@@ -1220,20 +1209,8 @@ def extract_total_flux(ifu, psf_parameters, model_name, clip=None, cvd_parameter
 
     return flux, background, sigma_flux, sigma_background
 
-def extract_flux_slice(data, variance, xpos, ypos, psf_parameters_slice,
-                       aperture=False):
-    """Extract the flux from a single wavelength slice.
-
-    The model amplitude and a constant background are fitted to the fibre
-    fluxes.  With aperture=True the returned flux is instead
-        (sum of fibre fluxes - n_fibre * background) / sum of model fractions
-    over the same fibres, i.e. the observed light divided by the fraction of
-    the star's light that the model puts on the fibres.  With equal weights
-    this is identical to the fitted amplitude; with 2dfdr (Poisson-like)
-    variances the fit leans on the faint outer fibres while the sum is
-    dominated by the bright core.  Whether that makes SS fluxes more
-    consistent between dithers in the full pipeline is still to be tested
-    on real frames (analysis/ss_qc)."""
+def extract_flux_slice(data, variance, xpos, ypos, psf_parameters_slice):
+    """Extract the flux from a single wavelength slice."""
     good_data = np.where((np.isfinite(data)) & (np.isfinite(variance)) & (variance > 0.))[0] 
     # Require at least half the fibres to perform a fit
     if len(good_data) > 30:
@@ -1256,13 +1233,6 @@ def extract_flux_slice(data, variance, xpos, ypos, psf_parameters_slice,
         try:
             sigma_flux_slice, sigma_background_slice = np.sqrt(
                 covar[np.arange(2), np.arange(2)] / reduced_chi2)
-            if aperture:
-                frac = np.sum(model)
-                n_fib = len(data)
-                flux_slice = (np.sum(data) - n_fib * background_slice) / frac
-                sigma_flux_slice = np.sqrt(
-                    np.sum(variance) +
-                    (n_fib * sigma_background_slice)**2) / frac
         except TypeError:
             # covar wasn't returned as an array
             flux_slice = np.nan
