@@ -2831,7 +2831,7 @@ def apply_secondary_tf(path1,path2,path_out1,path_out2,use_av_tf_sec=False,verbo
             idx_b = np.where((lam_av_b>4500.0) & (lam_av_b<5500.0))  
             idx_r = np.where((lam_av_r>6500.0) & (lam_av_r<7200.0))  
             scale_b = nanmean(ratio_b[idx_b]) 
-            scale_r = nanmean(ratio_b[idx_r])
+            scale_r = nanmean(ratio_r[idx_r])
 
             # have a single scaling for blue and red:
             scale = (scale_b+scale_r)/2.0
@@ -2845,6 +2845,12 @@ def apply_secondary_tf(path1,path2,path_out1,path_out2,use_av_tf_sec=False,verbo
                 print('scale_r: ',scale_r)
     
         # apply the TF to data and variance:
+        # NOTE: the per-frame TF is always applied here.  With
+        # use_av_tf_sec=True the rescaled field-average TF (tf_av_b/tf_av_r)
+        # is computed above but not used, so use_av_tf_sec currently has no
+        # effect on the output.  Applying it would change the default
+        # (manager.fluxcal_secondary uses use_av_tf_sec=True) and TF_MEAN
+        # currently averages all frames, including poor SS fits.
         hdulist1[0].data /= tf_b
         hdulist1['VARIANCE'].data /= tf_b**2
 
