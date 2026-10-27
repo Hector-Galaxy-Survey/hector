@@ -27,7 +27,7 @@ figures, is in the shared interim report.
 
 Caveats: one night; a simplified single-band refit without the chromatic
 (DAR/CvD) model; simulated rather than real edge stars. The pipeline's own SS
-step has not been re-run (it needs the tiles' robot files).
+step has been re-run for one field (A3716_T061; see ss_rerun_extraction.py).
 
 If β is fixed, the preferred value is the night's median β from the free
 fits, excluding failed fits and fits that hit a parameter limit or give an
